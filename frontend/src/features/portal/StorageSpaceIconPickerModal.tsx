@@ -2,6 +2,9 @@
  * Copyright (c) 2026 Laurent Barbe
  * Licensed under the Apache License, Version 2.0
  */
+import {
+  messageCancel,
+} from "../../uiMessages";
 import ModalActions from "../../components/ModalActions";
 import { useEffect, useRef, useState } from "react";
 import type { S3AccountSelector } from "../../api/accountParams";
@@ -235,7 +238,7 @@ export default function StorageSpaceIconPickerModal({
 
         <ModalActions>
           <UiButton variant="secondary" onClick={guard.requestClose} disabled={busy}>
-            {t({ en: "Cancel", fr: "Annuler", de: "Abbrechen", zh: "取消" })}
+            {t(messageCancel)}
           </UiButton>
           <UiButton onClick={save} loading={busy} disabled={!dirty || busy}>
             {t({ en: "Save icon", fr: "Enregistrer l’icône", de: "Symbol speichern", zh: "保存图标" })}

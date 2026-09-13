@@ -2,6 +2,10 @@
  * Copyright (c) 2026 Laurent Barbe
  * Licensed under the Apache License, Version 2.0
  */
+import {
+  messageCancel,
+} from "../uiMessages";
+import { useI18n } from "../i18n";
 import ModalActions from "./ModalActions";
 import ModalOptions from "./ModalOptions";
 import { type ReactNode, useId } from "react";
@@ -43,9 +47,9 @@ export default function ConfirmActionDialog({
   title,
   description,
   confirmLabel,
-  cancelLabel = "Cancel",
-  processingLabel = "Processing...",
-  impactLabel = "Impact",
+  cancelLabel: cancelLabelOverride,
+  processingLabel: processingLabelOverride,
+  impactLabel: impactLabelOverride,
   closeLabel,
   tone = "danger",
   loading = false,
@@ -61,6 +65,20 @@ export default function ConfirmActionDialog({
   onCancel,
   onConfirm,
 }: ConfirmActionDialogProps) {
+  const { t } = useI18n();
+  const cancelLabel = cancelLabelOverride ?? t(messageCancel);
+  const processingLabel = processingLabelOverride ?? t({
+    en: "Processing...",
+    fr: "Traitement…",
+    de: "Wird verarbeitet…",
+    zh: "正在处理…",
+  });
+  const impactLabel = impactLabelOverride ?? t({
+    en: "Impact",
+    fr: "Impact",
+    de: "Auswirkungen",
+    zh: "影响",
+  });
   const descriptionId = useId();
   return (
     <Modal

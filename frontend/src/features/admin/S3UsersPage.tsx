@@ -2,6 +2,47 @@
  * Copyright (c) 2025 Laurent Barbe
  * Licensed under the Apache License, Version 2.0
  */
+import {
+  messageName,
+  messageGeneral,
+} from "../../uiMessages";
+import {
+  adminRgwAdmin,
+  adminRgwRGWUsers,
+  adminRgwUnexpectedError,
+  adminRgwSelectACephEndpoint,
+  adminRgwEndpoint,
+  adminRgwActions,
+  adminRgwEdit,
+  adminRgwKeys,
+  adminRgwDeleting,
+  adminRgwDelete,
+  adminRgwImport,
+  adminRgwCreateUser,
+  adminRgwCreating,
+  adminRgwCephEndpoint,
+  adminRgwImportRGWUsers,
+  adminRgwBackToRGWUsers,
+  adminRgwLinkedUIUsers,
+  adminRgwLinkedUIGroups,
+  adminRgwUserDetails,
+  adminRgwEmail,
+  adminRgwTags,
+  adminRgwAddATagForThisRGWUser,
+  adminRgwLoadingExistingTagCatalog,
+  adminRgwClose,
+  adminRgwAddUIUsers,
+  adminRgwUser,
+  adminRgwRemove,
+  adminRgwAddUIGroups,
+  adminRgwBucketQuotaManagement,
+  adminRgwCephS3UserKeys,
+  adminRgwManagedPrivateConnectionProvisioning,
+  adminRgwCancel,
+  adminRgwSaving,
+} from "./adminRgwMessages";
+import type { PageBreadcrumb } from "../../components/PageHeader";
+import { useI18n } from "../../i18n";
 import TableSortControls from "../../components/list/TableSortControls";
 import { ListActions, ListActionButton, ListActionLink } from "../../components/list/ListControls";
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -89,6 +130,8 @@ function getS3UserSearchCandidates(user: S3User): Array<string | number | null |
 }
 
 export default function S3UsersPage() {
+  const { t, locale } = useI18n();
+  const rgwBreadcrumbs = (...trailing: PageBreadcrumb[]) => adminPageBreadcrumbs("rgw-users", ...trailing).map((crumb, index) => ({ ...crumb, label: index === 0 ? t(adminRgwAdmin) : index === 1 ? t(adminRgwRGWUsers) : crumb.label }));
   const [users, setUsers] = useState<S3User[]>([]);
   const [portalUsers, setPortalUsers] = useState<UserSummary[]>([]);
   const [portalUsersLoaded, setPortalUsersLoaded] = useState(false);
@@ -218,7 +261,7 @@ export default function S3UsersPage() {
     Boolean(showCreateModal || editingUser)
   );
 
-  const extractError = (err: unknown) => extractApiError(err, "Unexpected error");
+  const extractError = useCallback((err: unknown) => extractApiError(err, t(adminRgwUnexpectedError)), [t]);
 
   const fetchUsers = useCallback(async () => {
     setLoading(true);
@@ -276,7 +319,7 @@ export default function S3UsersPage() {
     } finally {
       setLoading(false);
     }
-  }, [filter, quickFilterMode, page, pageSize, sort.direction, sort.field]);
+  }, [filter, quickFilterMode, pageSize, page, sort.field, sort.direction, extractError]);
 
   useEffect(() => {
     fetchUsers();
@@ -349,7 +392,7 @@ export default function S3UsersPage() {
         setEndpointPermissionLoading((prev) => ({ ...prev, [endpointId]: false }));
       }
     },
-    [endpointPermissionLoading]
+    [endpointPermissionLoading, extractError]
   );
 
   const portalUserOptions = useMemo(() => portalUsers.map((u) => ({ id: u.id, label: u.email })), [portalUsers]);
@@ -368,7 +411,12 @@ export default function S3UsersPage() {
       return {
         id: link.user_id,
         kind: "user",
-        label: link.user_full_name || link.user_email || `User #${link.user_id}`,
+        label: link.user_full_name || link.user_email || t({
+          en: `User #${link.user_id}`,
+          fr: `Utilisateur n° ${link.user_id}`,
+          de: `Benutzer #${link.user_id}`,
+          zh: `用户 #${link.user_id}`,
+        }),
         email: link.user_email,
         avatar: link.user_avatar,
       };
@@ -376,7 +424,12 @@ export default function S3UsersPage() {
     const groupItems: AssociationPrincipalItem[] = (user.group_links ?? []).map((link) => ({
       id: link.group_id,
       kind: "group" as const,
-      label: link.group_name || `Group #${link.group_id}`,
+      label: link.group_name || t({
+        en: `Group #${link.group_id}`,
+        fr: `Groupe n° ${link.group_id}`,
+        de: `Gruppe #${link.group_id}`,
+        zh: `用户组 #${link.group_id}`,
+      }),
       avatar: link.group_avatar,
     }));
     return <AssociationPrincipalStack items={[...userItems, ...groupItems]} />;
@@ -550,7 +603,12 @@ export default function S3UsersPage() {
       await updateS3User(editingUser.id, payload);
       await fetchUsers();
       closeEditModal();
-      setActionMessage("User updated.");
+      setActionMessage(t({
+        en: "User updated.",
+        fr: "Utilisateur mis à jour.",
+        de: "Benutzer aktualisiert.",
+        zh: "用户已更新。",
+      }));
     } catch (err) {
       setEditError(extractError(err));
     } finally {
@@ -558,11 +616,11 @@ export default function S3UsersPage() {
     }
   };
 
-  const createValidation = useAdminRgwFormValidation(createForm, rgwCreateErrors(createForm));
-  const importEntries = rgwImportEntries(importText, "user");
+  const createValidation = useAdminRgwFormValidation(createForm, rgwCreateErrors(createForm, locale));
+  const importEntries = rgwImportEntries(importText, "user", locale);
   const importValidation = useAdminRgwFormValidation({importText, storage_endpoint_id: importEndpointId}, {
     ...(importEntries.error ? {importText: importEntries.error} : {}),
-    ...(!importEndpointId ? {storage_endpoint_id: "Select a Ceph endpoint."} : {}),
+    ...(!importEndpointId ? {storage_endpoint_id: t(adminRgwSelectACephEndpoint)} : {}),
   });
   const createPending = useRef(false);
   const importPending = useRef(false);
@@ -571,11 +629,21 @@ export default function S3UsersPage() {
     e.preventDefault();
     if (createPending.current || !createValidation.validate(e.currentTarget)) return;
     if (createPermissionLoading) {
-      setCreateError("Checking endpoint permissions. Please wait.");
+      setCreateError(t({
+        en: "Checking endpoint permissions. Please wait.",
+        fr: "Vérification des autorisations du point de terminaison. Patientez.",
+        de: "Endpunktberechtigungen werden geprüft. Bitte warten.",
+        zh: "正在检查端点权限，请稍候。",
+      }));
       return;
     }
     if (!createEndpointCanWrite) {
-      setCreateError("Selected endpoint does not allow this operation (missing users=write).");
+      setCreateError(t({
+        en: "Selected endpoint does not allow this operation (missing users=write).",
+        fr: "Le point de terminaison sélectionné n’autorise pas cette opération (users=write manquant).",
+        de: "Der ausgewählte Endpunkt erlaubt diese Aktion nicht (users=write fehlt).",
+        zh: "所选端点不允许此操作（缺少 users=write）。",
+      }));
       return;
     }
     createPending.current = true;
@@ -602,7 +670,12 @@ export default function S3UsersPage() {
         quota_max_size_gb: "",
         quota_max_objects: "",
       }));
-      setActionMessage("User created.");
+      setActionMessage(t({
+        en: "User created.",
+        fr: "Utilisateur créé.",
+        de: "Benutzer erstellt.",
+        zh: "用户已创建。",
+      }));
       await fetchUsers();
     } catch (err) {
       setCreateError(extractError(err));
@@ -625,7 +698,12 @@ export default function S3UsersPage() {
         uid: identifier,
         storage_endpoint_id: Number(importEndpointId),
       })));
-      setImportMessage("Users imported.");
+      setImportMessage(t({
+        en: "Users imported.",
+        fr: "Utilisateurs importés.",
+        de: "Benutzer importiert.",
+        zh: "用户已导入。",
+      }));
       importValidation.reset();
       setImportText("");
       setImportInitialSignature(stableSignature({ importText: "", importEndpointId }));
@@ -711,7 +789,7 @@ export default function S3UsersPage() {
   const userTableColumns: Array<DataTableColumn<S3User, SortField>> = [
     {
       id: "name",
-      label: "Name",
+      label: t(messageName),
       field: "name",
       primary: true,
       cellClassName: "min-w-[240px] max-w-[360px]",
@@ -742,7 +820,7 @@ export default function S3UsersPage() {
     },
     {
       id: "endpoint",
-      label: "Endpoint",
+      label: t(adminRgwEndpoint),
       cellClassName: "min-w-[160px]",
       render: (user) => (
         <span title={user.storage_endpoint_url || undefined}>
@@ -752,13 +830,18 @@ export default function S3UsersPage() {
     },
     {
       id: "associations",
-      label: "UI Users / Groups",
+      label: t({
+        en: "UI Users / Groups",
+        fr: "Utilisateurs / groupes de l’interface",
+        de: "UI-Benutzer / -Gruppen",
+        zh: "界面用户 / 用户组",
+      }),
       cellClassName: "min-w-[180px] max-w-[240px] align-middle",
       render: renderUserAssociations,
     },
     {
       id: "actions",
-      label: "Actions",
+      label: t(adminRgwActions),
       align: "right",
       mobileRole: "actions",
       cellClassName: "min-w-[176px]",
@@ -772,13 +855,11 @@ export default function S3UsersPage() {
 
               {...dataTableDefaultActionProps}
             >
-              Edit
-            </ListActionButton>
+              {t(adminRgwEdit)}</ListActionButton>
             <ListActionLink to={`/admin/s3-users/${user.id}/keys`}>
-              Keys
-            </ListActionLink>
+              {t(adminRgwKeys)}</ListActionLink>
             <ListActionButton type="button" onClick={() => startDeleteUser(user)}  variant="danger" disabled={deleteBusy}>
-              {deleteBusy ? "Deleting..." : "Delete"}
+              {deleteBusy ? t(adminRgwDeleting) : t(adminRgwDelete)}
             </ListActionButton>
           </ListActions>
         );
@@ -799,7 +880,12 @@ export default function S3UsersPage() {
     try {
       await deleteS3User(userToDelete.id, { deleteRgw: deleteFromRgw });
       await fetchUsers();
-      setActionMessage(`Deleted ${userToDelete.name}.`);
+      setActionMessage(t({
+        en: `Deleted ${userToDelete.name}.`,
+        fr: `${userToDelete.name} supprimé.`,
+        de: `${userToDelete.name} gelöscht.`,
+        zh: `已删除 ${userToDelete.name}。`,
+      }));
       setUserToDelete(null);
       setDeleteFromRgw(false);
     } catch (err) {
@@ -812,12 +898,17 @@ export default function S3UsersPage() {
   return (
     <div className={workflowPageHostClass(showImportModal || Boolean(editingUser))}>
       <PageHeader actionPresentation="listing"
-        title="RGW Users"
-        description="Manage standalone RGW users for direct access to Manager."
-        breadcrumbs={adminPageBreadcrumbs("rgw-users")}
+        title={t(adminRgwRGWUsers)}
+        description={t({
+          en: "Manage standalone RGW users for direct access to Manager.",
+          fr: "Gérez les utilisateurs RGW autonomes pour un accès direct au gestionnaire.",
+          de: "Eigenständige RGW-Benutzer für den direkten Zugriff auf die Verwaltung verwalten.",
+          zh: "管理可直接访问管理控制台的独立 RGW 用户。",
+        })}
+        breadcrumbs={rgwBreadcrumbs()}
         actions={[
           {
-            label: "Import",
+            label: t(adminRgwImport),
             onClick: () => {
               importValidation.reset();
               setImportError(null);
@@ -829,7 +920,7 @@ export default function S3UsersPage() {
             variant: "ghost",
           },
           {
-            label: "Create user",
+            label: t(adminRgwCreateUser),
             onClick: () => {
               createValidation.reset();
               setCreateError(null);
@@ -847,13 +938,23 @@ export default function S3UsersPage() {
       <ListPageSection
         variant="page"
         mobileSort={<TableSortControls columns={userTableColumns} sort={{ field: sort.field, direction: sort.direction, onSort: toggleSort }} />}
-          title="RGW Users"
-          countLabel={`${totalUsers} entr${totalUsers === 1 ? "y" : "ies"}`}
+          title={t(adminRgwRGWUsers)}
+          countLabel={t({
+            en: `${totalUsers} entr${totalUsers === 1 ? "y" : "ies"}`,
+            fr: `${totalUsers} entrée${totalUsers === 1 ? "" : "s"}`,
+            de: `${totalUsers} Eintr${totalUsers === 1 ? "ag" : "äge"}`,
+            zh: `${totalUsers} 条记录`,
+          })}
           search={
             <ToolbarSearchInput
               value={filter}
               onChange={handleFilterChange}
-              placeholder="Search by name, UID, email, group, or tag"
+              placeholder={t({
+                en: "Search by name, UID, email, group, or tag",
+                fr: "Rechercher par nom, UID, e-mail, groupe ou étiquette",
+                de: "Nach Name, UID, E-Mail, Gruppe oder Tag suchen",
+                zh: "按名称、UID、邮箱、用户组或标签搜索",
+              })}
               className="w-full sm:w-64"
               active={quickFilterActive}
               matchMode={quickFilterMode}
@@ -863,11 +964,21 @@ export default function S3UsersPage() {
           secondaryContent={
             quickFilterActive ? (
               <ActiveFiltersBar
-                label="Active filters summary"
+                label={t({
+                  en: "Active filters summary",
+                  fr: "Résumé des filtres actifs",
+                  de: "Übersicht aktiver Filter",
+                  zh: "当前筛选条件",
+                })}
                 items={[
                   {
                     id: "search",
-                    label: `Search ${quickFilterMode === "exact" ? "exact" : "contains"}: ${filter.trim()}`,
+                    label: t({
+                      en: `Search ${quickFilterMode === "exact" ? "exact" : "contains"}: ${filter.trim()}`,
+                      fr: `Recherche ${quickFilterMode === "exact" ? "exacte" : "partielle"} : ${filter.trim()}`,
+                      de: `Suche (${quickFilterMode === "exact" ? "exakt" : "enthält"}): ${filter.trim()}`,
+                      zh: `${quickFilterMode === "exact" ? "精确" : "包含"}搜索：${filter.trim()}`,
+                    }),
                   },
                 ]}
                 onClearAll={clearAllFilters}
@@ -880,9 +991,24 @@ export default function S3UsersPage() {
           rows={users}
           rowKey={(user) => user.id}
           status={tableStatus}
-          loadingMessage="Loading users..."
-          errorMessage="Unable to load users."
-          emptyMessage="No users."
+          loadingMessage={t({
+            en: "Loading users...",
+            fr: "Chargement des utilisateurs…",
+            de: "Benutzer werden geladen…",
+            zh: "正在加载用户…",
+          })}
+          errorMessage={t({
+            en: "Unable to load users.",
+            fr: "Impossible de charger les utilisateurs.",
+            de: "Benutzer konnten nicht geladen werden.",
+            zh: "无法加载用户。",
+          })}
+          emptyMessage={t({
+            en: "No users.",
+            fr: "Aucun utilisateur.",
+            de: "Keine Benutzer.",
+            zh: "暂无用户。",
+          })}
           sort={{ field: sort.field, direction: sort.direction, onSort: toggleSort }}
           primaryColumnId="name"
           responsiveCards
@@ -899,13 +1025,18 @@ export default function S3UsersPage() {
       </ListPageSection>
 
       {showCreateModal && (
-        <SettingsDialog title="Create user" onClose={createCloseGuard.requestClose} closeDisabled={creating} maxWidthClass="max-w-2xl">
-          <SettingsForm label="Create RGW user" presentation="dialog" busy={creating} onSubmit={submitCreate}
+        <SettingsDialog title={t(adminRgwCreateUser)} onClose={createCloseGuard.requestClose} closeDisabled={creating} maxWidthClass="max-w-2xl">
+          <SettingsForm label={t({
+            en: "Create RGW user",
+            fr: "Créer un utilisateur RGW",
+            de: "RGW-Benutzer erstellen",
+            zh: "创建 RGW 用户",
+          })} presentation="dialog" busy={creating} onSubmit={submitCreate}
             submitDisabled={createPermissionLoading || !createEndpointCanWrite}
-            onCancel={createCloseGuard.requestClose} submitLabel="Create user" busyLabel="Creating...">
+            onCancel={createCloseGuard.requestClose} submitLabel={t(adminRgwCreateUser)} busyLabel={t(adminRgwCreating)}>
             <AdminRgwCreateFields kind="user" value={createForm} onChange={patch => setCreateForm(current => ({...current, ...patch}))}
               errors={createValidation.errors} busy={creating}
-              endpoint={{label: "Ceph endpoint *", endpoints: adminCephEndpoints, loading: loadingEndpoints,
+              endpoint={{label: t(adminRgwCephEndpoint), endpoints: adminCephEndpoints, loading: loadingEndpoints,
                 operation: "users", permissionLoading: createPermissionLoading, permissionError: createPermissionError, canWrite: createEndpointCanWrite}}
               tags={{catalog: adminTagCatalog, loading: adminTagCatalogLoading, error: adminTagCatalogError}} />
             {createError && <UiInlineMessage tone="error" role="alert">{createError}</UiInlineMessage>}
@@ -915,16 +1046,36 @@ export default function S3UsersPage() {
       )}
 
       {showImportModal && (
-        <WorkflowPage title="Import RGW users" description="Import existing standalone RGW users from a Ceph endpoint." breadcrumbs={adminPageBreadcrumbs("rgw-users", {label: "Import"})} backLabel="Back to RGW users" backDisabled={importBusy} onBack={importCloseGuard.requestClose} contentVariant="plain" width="standard">
-          <SettingsForm label="Import RGW users" busy={importBusy} onSubmit={submitImport}
+        <WorkflowPage title={t(adminRgwImportRGWUsers)} description={t({
+          en: "Import existing standalone RGW users from a Ceph endpoint.",
+          fr: "Importez des utilisateurs RGW autonomes existants depuis un point de terminaison Ceph.",
+          de: "Vorhandene eigenständige RGW-Benutzer von einem Ceph-Endpunkt importieren.",
+          zh: "从 Ceph 端点导入已有的独立 RGW 用户。",
+        })} breadcrumbs={rgwBreadcrumbs({label: t(adminRgwImport)})} backLabel={t(adminRgwBackToRGWUsers)} backDisabled={importBusy} onBack={importCloseGuard.requestClose} contentVariant="plain" width="standard">
+          <SettingsForm label={t(adminRgwImportRGWUsers)} busy={importBusy} onSubmit={submitImport}
             submitDisabled={importPermissionLoading || !importEndpointCanWrite}
-            onCancel={importCloseGuard.requestClose} submitLabel="Import" busyLabel="Importing...">
+            onCancel={importCloseGuard.requestClose} submitLabel={t(adminRgwImport)} busyLabel={t({
+              en: "Importing...",
+              fr: "Importation…",
+              de: "Wird importiert…",
+              zh: "正在导入…",
+            })}>
             <div className="settings-fields settings-form">
-              <p className="settings-body text-[var(--ui-text-muted)]">Enter RGW user IDs, one per line. The platform will fetch or generate keys.</p>
-              <UiTextarea label="RGW user IDs" name="importText" rows={6} required value={importText}
+              <p className="settings-body text-[var(--ui-text-muted)]">{t({
+                en: "Enter RGW user IDs, one per line. The platform will fetch or generate keys.",
+                fr: "Saisissez les identifiants des utilisateurs RGW, un par ligne. La plateforme récupérera ou générera les clés.",
+                de: "Geben Sie eine RGW-Benutzer-ID pro Zeile ein. Die Plattform ruft Schlüssel ab oder erstellt sie.",
+                zh: "输入 RGW 用户 ID，每行一个。平台将获取或生成密钥。",
+              })}</p>
+              <UiTextarea label={t({
+                en: "RGW user IDs",
+                fr: "Identifiants des utilisateurs RGW",
+                de: "RGW-Benutzer-IDs",
+                zh: "RGW 用户 ID",
+              })} name="importText" rows={6} required value={importText}
                 error={importValidation.errors.importText} placeholder="user-alpha"
                 onChange={event => setImportText(event.target.value)} />
-              <AdminRgwEndpointField label="Ceph endpoint *" value={importEndpointId}
+              <AdminRgwEndpointField label={t(adminRgwCephEndpoint)} value={importEndpointId}
                 onChange={setImportEndpointId} endpoints={adminCephEndpoints}
                 error={importValidation.errors.storage_endpoint_id} loading={loadingEndpoints} operation="users"
                 permissionLoading={importPermissionLoading} permissionError={importPermissionError} canWrite={importEndpointCanWrite} />
@@ -938,10 +1089,20 @@ export default function S3UsersPage() {
 
       {editingUser && (
         <WorkflowPage
-          title={`Edit ${editingUser.name}`}
-          description="Manage quotas, UI associations, and privileged access for this RGW user."
-          breadcrumbs={adminPageBreadcrumbs("rgw-users", { label: "Edit" })}
-          backLabel="Back to RGW users"
+          title={t({
+            en: `Edit ${editingUser.name}`,
+            fr: `Modifier ${editingUser.name}`,
+            de: `${editingUser.name} bearbeiten`,
+            zh: `编辑 ${editingUser.name}`,
+          })}
+          description={t({
+            en: "Manage quotas, UI associations, and privileged access for this RGW user.",
+            fr: "Gérez les quotas, les associations à l’interface et les accès privilégiés de cet utilisateur RGW.",
+            de: "Kontingente, UI-Zuordnungen und privilegierten Zugriff dieses RGW-Benutzers verwalten.",
+            zh: "管理此 RGW 用户的配额、界面关联和特权访问。",
+          })}
+          breadcrumbs={rgwBreadcrumbs({ label: t(adminRgwEdit) })}
+          backLabel={t(adminRgwBackToRGWUsers)}
           onBack={editCloseGuard.requestClose}
           contentVariant="plain"
           width="wide"
@@ -953,7 +1114,7 @@ export default function S3UsersPage() {
                   value: editingUser.rgw_user_uid,
                 },
                 {
-                  label: "Endpoint",
+                  label: t(adminRgwEndpoint),
                   value: editingUser.storage_endpoint_name,
                   title: editingUser.storage_endpoint_url,
                 },
@@ -979,30 +1140,50 @@ export default function S3UsersPage() {
                 }
                 setEditTab(tab);
               }}
-              ariaLabel="RGW user configuration sections"
+              ariaLabel={t({
+                en: "RGW user configuration sections",
+                fr: "Sections de configuration de l’utilisateur RGW",
+                de: "Konfigurationsbereiche des RGW-Benutzers",
+                zh: "RGW 用户配置分区",
+              })}
               idPrefix="admin-rgw-user-edit"
               tabs={[
-                { id: "general", label: "General" },
-                { id: "users", label: "Linked UI users" },
-                { id: "groups", label: "Linked UI groups" },
-                { id: "privileged", label: "Privileged access", visible: canManagePrivilegedTargets },
+                { id: "general", label: t(messageGeneral) },
+                { id: "users", label: t(adminRgwLinkedUIUsers) },
+                { id: "groups", label: t(adminRgwLinkedUIGroups) },
+                { id: "privileged", label: t({
+                  en: "Privileged access",
+                  fr: "Accès privilégié",
+                  de: "Privilegierter Zugriff",
+                  zh: "特权访问",
+                }), visible: canManagePrivilegedTargets },
               ]}
             >
 
             {showEditGeneralTab && (
               <>
                 <WorkflowSection
-                  title="User details"
-                  description="Update the display information and administrative tags for this RGW user."
+                  title={t(adminRgwUserDetails)}
+                  description={t({
+                    en: "Update the display information and administrative tags for this RGW user.",
+                    fr: "Mettez à jour les informations affichées et les étiquettes administratives de cet utilisateur RGW.",
+                    de: "Anzeigeinformationen und Verwaltungstags dieses RGW-Benutzers aktualisieren.",
+                    zh: "更新此 RGW 用户的显示信息和管理标签。",
+                  })}
                 >
                   <div className="grid gap-4 md:grid-cols-2">
                     <UiInput
-                      label="Display name"
+                      label={t({
+                        en: "Display name",
+                        fr: "Nom affiché",
+                        de: "Anzeigename",
+                        zh: "显示名称",
+                      })}
                       value={editForm.name}
                       onChange={(e) => setEditForm((prev) => ({ ...prev, name: e.target.value }))}
                     />
                     <UiInput
-                      label="Email"
+                      label={t(adminRgwEmail)}
                       type="email"
                       value={editForm.email}
                       onChange={(e) => setEditForm((prev) => ({ ...prev, email: e.target.value }))}
@@ -1010,12 +1191,12 @@ export default function S3UsersPage() {
                     <div className="md:col-span-2">
                       {adminTagCatalogError && <PageBanner tone="warning">{adminTagCatalogError}</PageBanner>}
                       <UiTagEditor
-                        label="Tags"
+                        label={t(adminRgwTags)}
                         tags={editForm.tags}
                         catalog={adminTagCatalog}
                         onChange={(tags) => setEditForm((prev) => ({ ...prev, tags }))}
-                        placeholder="Add a tag for this RGW user"
-                        hint={adminTagCatalogLoading ? "Loading existing tag catalog..." : undefined}
+                        placeholder={t(adminRgwAddATagForThisRGWUser)}
+                        hint={adminTagCatalogLoading ? t(adminRgwLoadingExistingTagCatalog) : undefined}
                       />
                     </div>
                   </div>
@@ -1057,9 +1238,14 @@ export default function S3UsersPage() {
             {showEditUsersTab && (
               <div className="space-y-3">
                 <AdminAssociationSectionHeader
-                  title="Linked UI users"
-                  countLabel={`${editForm.user_links.length} linked`}
-                  actionLabel={showEditPortalUserPanel ? "Close" : "Add UI users"}
+                  title={t(adminRgwLinkedUIUsers)}
+                  countLabel={t({
+                    en: `${editForm.user_links.length} linked`,
+                    fr: `${editForm.user_links.length} associé(s)`,
+                    de: `${editForm.user_links.length} verknüpft`,
+                    zh: `已关联 ${editForm.user_links.length} 个`,
+                  })}
+                  actionLabel={showEditPortalUserPanel ? t(adminRgwClose) : t(adminRgwAddUIUsers)}
                   onAction={() => setShowEditPortalUserPanel((prev) => !prev)}
                 />
                 <div className={associationTableContainerClass}>
@@ -1067,29 +1253,41 @@ export default function S3UsersPage() {
                     <thead>
                       <tr>
                         <th className="text-left">
-                          User
-                        </th>
+                          {t(adminRgwUser)}</th>
                         <th className="w-px whitespace-nowrap text-right">
-                          Actions
-                        </th>
+                          {t(adminRgwActions)}</th>
                       </tr>
                     </thead>
                     <tbody>
                       {editForm.user_links.length === 0 ? (
                         <tr>
                           <td colSpan={2} className="ui-table-secondary">
-                            No linked users yet.
-                          </td>
+                            {t({
+                              en: "No linked users yet.",
+                              fr: "Aucun utilisateur associé.",
+                              de: "Noch keine verknüpften Benutzer.",
+                              zh: "尚未关联用户。",
+                            })}</td>
                         </tr>
                       ) : (
                         editForm.user_links.map((link) => (
                           <tr key={link.user_id}>
                             <td className="ui-table-primary">
-                              {portalUserLabelById.get(link.user_id) ?? `User #${link.user_id}`}
+                              {portalUserLabelById.get(link.user_id) ?? t({
+                                en: `User #${link.user_id}`,
+                                fr: `Utilisateur n° ${link.user_id}`,
+                                de: `Benutzer #${link.user_id}`,
+                                zh: `用户 #${link.user_id}`,
+                              })}
                             </td>
                             <td className="ui-table-actions-cell w-px text-right">
                               <AdminAssociationAdvancedSettings
-                                targetLabel={portalUserLabelById.get(link.user_id) ?? `User #${link.user_id}`}
+                                targetLabel={portalUserLabelById.get(link.user_id) ?? t({
+                                  en: `User #${link.user_id}`,
+                                  fr: `Utilisateur n° ${link.user_id}`,
+                                  de: `Benutzer #${link.user_id}`,
+                                  zh: `用户 #${link.user_id}`,
+                                })}
                                 associationKind="rgw_user"
                                 allowManagerBrowserDataAccess={Boolean(link.allow_manager_browser_data_access)}
                                 onApply={(allowed) =>
@@ -1113,8 +1311,7 @@ export default function S3UsersPage() {
                                 }
                                  variant="danger"
                               >
-                                Remove
-                              </ListActionButton>
+                                {t(adminRgwRemove)}</ListActionButton>
                             </td>
                           </tr>
                         ))
@@ -1124,16 +1321,31 @@ export default function S3UsersPage() {
                 </div>
                 {showEditPortalUserPanel && (
                   <AdminAssociationPickerPanel
-                    title="Add UI users"
-                    hint="(filter by email)"
+                    title={t(adminRgwAddUIUsers)}
+                    hint={t({
+                      en: "(filter by email)",
+                      fr: "(filtrer par e-mail)",
+                      de: "(nach E-Mail filtern)",
+                      zh: "（按邮箱筛选）",
+                    })}
                     search={portalUserSearch}
                     onSearchChange={setPortalUserSearch}
-                    searchAriaLabel="Search UI users"
+                    searchAriaLabel={t({
+                      en: "Search UI users",
+                      fr: "Rechercher des utilisateurs de l’interface",
+                      de: "UI-Benutzer suchen",
+                      zh: "搜索界面用户",
+                    })}
                     loading={false}
                     availableCount={availablePortalUsers.length}
                     maxVisibleOptions={MAX_LINK_OPTIONS}
                     selectedCount={editPortalUserSelections.length}
-                    loadingLabel="Loading UI users..."
+                    loadingLabel={t({
+                      en: "Loading UI users...",
+                      fr: "Chargement des utilisateurs de l’interface…",
+                      de: "UI-Benutzer werden geladen…",
+                      zh: "正在加载界面用户…",
+                    })}
                     onCancel={() => {
                       setShowEditPortalUserPanel(false);
                       setEditPortalUserSelections([]);
@@ -1171,9 +1383,14 @@ export default function S3UsersPage() {
             {showEditGroupsTab && (
               <div className="space-y-3">
                 <AdminAssociationSectionHeader
-                  title="Linked UI groups"
-                  countLabel={`${editForm.group_links.length} linked${uiGroupsLoading ? " · loading..." : ""}`}
-                  actionLabel={showEditGroupPanel ? "Close" : "Add UI groups"}
+                  title={t(adminRgwLinkedUIGroups)}
+                  countLabel={t({
+                    en: `${editForm.group_links.length} linked${uiGroupsLoading ? " · loading..." : ""}`,
+                    fr: `${editForm.group_links.length} associé(s)${uiGroupsLoading ? " · chargement…" : ""}`,
+                    de: `${editForm.group_links.length} verknüpft${uiGroupsLoading ? " · wird geladen…" : ""}`,
+                    zh: `已关联 ${editForm.group_links.length} 个${uiGroupsLoading ? " · 正在加载…" : ""}`,
+                  })}
+                  actionLabel={showEditGroupPanel ? t(adminRgwClose) : t(adminRgwAddUIGroups)}
                   onAction={() => {
                     if (!showEditGroupPanel) {
                       void loadGroupsIfNeeded();
@@ -1186,29 +1403,46 @@ export default function S3UsersPage() {
                     <thead>
                       <tr>
                         <th className="text-left">
-                          Group
-                        </th>
+                          {t({
+                            en: "Group",
+                            fr: "Groupe",
+                            de: "Gruppe",
+                            zh: "用户组",
+                          })}</th>
                         <th className="w-px whitespace-nowrap text-right">
-                          Actions
-                        </th>
+                          {t(adminRgwActions)}</th>
                       </tr>
                     </thead>
                     <tbody>
                       {editForm.group_links.length === 0 ? (
                         <tr>
                           <td colSpan={2} className="ui-table-secondary">
-                            No linked groups yet.
-                          </td>
+                            {t({
+                              en: "No linked groups yet.",
+                              fr: "Aucun groupe associé.",
+                              de: "Noch keine verknüpften Gruppen.",
+                              zh: "尚未关联用户组。",
+                            })}</td>
                         </tr>
                       ) : (
                         editForm.group_links.map((link) => (
                           <tr key={link.group_id}>
                             <td className="ui-table-primary">
-                              {groupLabelById.get(link.group_id) ?? `Group #${link.group_id}`}
+                              {groupLabelById.get(link.group_id) ?? t({
+                                en: `Group #${link.group_id}`,
+                                fr: `Groupe n° ${link.group_id}`,
+                                de: `Gruppe #${link.group_id}`,
+                                zh: `用户组 #${link.group_id}`,
+                              })}
                             </td>
                             <td className="ui-table-actions-cell w-px text-right">
                               <AdminAssociationAdvancedSettings
-                                targetLabel={groupLabelById.get(link.group_id) ?? `Group #${link.group_id}`}
+                                targetLabel={groupLabelById.get(link.group_id) ?? t({
+                                  en: `Group #${link.group_id}`,
+                                  fr: `Groupe n° ${link.group_id}`,
+                                  de: `Gruppe #${link.group_id}`,
+                                  zh: `用户组 #${link.group_id}`,
+                                })}
                                 associationKind="rgw_user"
                                 allowManagerBrowserDataAccess={Boolean(link.allow_manager_browser_data_access)}
                                 onApply={(allowed) =>
@@ -1232,8 +1466,7 @@ export default function S3UsersPage() {
                                 }
                                  variant="danger"
                               >
-                                Remove
-                              </ListActionButton>
+                                {t(adminRgwRemove)}</ListActionButton>
                             </td>
                           </tr>
                         ))
@@ -1243,16 +1476,31 @@ export default function S3UsersPage() {
                 </div>
                 {showEditGroupPanel && (
                   <AdminAssociationPickerPanel
-                    title="Add UI groups"
-                    hint="(filter by name)"
+                    title={t(adminRgwAddUIGroups)}
+                    hint={t({
+                      en: "(filter by name)",
+                      fr: "(filtrer par nom)",
+                      de: "(nach Namen filtern)",
+                      zh: "（按名称筛选）",
+                    })}
                     search={groupSearch}
                     onSearchChange={setGroupSearch}
-                    searchAriaLabel="Search UI groups"
+                    searchAriaLabel={t({
+                      en: "Search UI groups",
+                      fr: "Rechercher des groupes de l’interface",
+                      de: "UI-Gruppen suchen",
+                      zh: "搜索界面用户组",
+                    })}
                     loading={uiGroupsLoading}
                     availableCount={availableGroups.length}
                     maxVisibleOptions={MAX_LINK_OPTIONS}
                     selectedCount={editGroupSelections.length}
-                    loadingLabel="Loading UI groups..."
+                    loadingLabel={t({
+                      en: "Loading UI groups...",
+                      fr: "Chargement des groupes de l’interface…",
+                      de: "UI-Gruppen werden geladen…",
+                      zh: "正在加载界面用户组…",
+                    })}
                     onCancel={() => {
                       setShowEditGroupPanel(false);
                       setEditGroupSelections([]);
@@ -1289,15 +1537,35 @@ export default function S3UsersPage() {
 
             {showEditPrivilegedTab && (
               <AdminAccessToggleSection
-                title="Privileged Ceph access"
-                description="Ceph admin-API actions granted directly to this RGW user outside the Ceph Admin workspace."
+                title={t({
+                  en: "Privileged Ceph access",
+                  fr: "Accès Ceph privilégié",
+                  de: "Privilegierter Ceph-Zugriff",
+                  zh: "Ceph 特权访问",
+                })}
+                description={t({
+                  en: "Ceph admin-API actions granted directly to this RGW user outside the Ceph Admin workspace.",
+                  fr: "Actions de l’API d’administration Ceph accordées directement à cet utilisateur RGW en dehors de l’espace Ceph Admin.",
+                  de: "Ceph-Admin-API-Aktionen, die diesem RGW-Benutzer außerhalb des Ceph-Admin-Arbeitsbereichs direkt gewährt werden.",
+                  zh: "在 Ceph Admin 工作区之外，直接授予此 RGW 用户的 Ceph 管理 API 操作权限。",
+                })}
                 items={[
                   {
-                    title: "Bucket quota management",
+                    title: t(adminRgwBucketQuotaManagement),
                     description: editingEndpointCanWriteBuckets
-                      ? "Allow Ceph bucket quota updates for this RGW User in Manager."
-                      : "Requires buckets=write on the endpoint Admin Ops identity before this grant can be enabled.",
-                    ariaLabel: "Bucket quota management",
+                      ? t({
+                        en: "Allow Ceph bucket quota updates for this RGW User in Manager.",
+                        fr: "Autoriser cet utilisateur RGW à modifier les quotas de bucket Ceph dans le gestionnaire.",
+                        de: "Diesem RGW-Benutzer das Aktualisieren von Ceph-Bucket-Kontingenten in der Verwaltung erlauben.",
+                        zh: "允许此 RGW 用户在管理控制台中更新 Ceph 存储桶配额。",
+                      })
+                      : t({
+                        en: "Requires buckets=write on the endpoint Admin Ops identity before this grant can be enabled.",
+                        fr: "L’identité Admin Ops du point de terminaison doit disposer de buckets=write avant d’activer cette autorisation.",
+                        de: "Die Admin-Ops-Identität des Endpunkts benötigt buckets=write, bevor diese Berechtigung aktiviert werden kann.",
+                        zh: "启用此授权前，端点的 Admin Ops 身份必须具有 buckets=write 权限。",
+                      }),
+                    ariaLabel: t(adminRgwBucketQuotaManagement),
                     checked: editForm.allow_bucket_quota_management,
                     disabled: !editForm.allow_bucket_quota_management && !editingEndpointCanWriteBuckets,
                     onChange: (checked) =>
@@ -1307,9 +1575,14 @@ export default function S3UsersPage() {
                       })),
                   },
                   {
-                    title: "Ceph S3 User keys",
-                    description: "Allow access to Manager > Ceph > Access keys.",
-                    ariaLabel: "Ceph S3 User keys",
+                    title: t(adminRgwCephS3UserKeys),
+                    description: t({
+                      en: "Allow access to Manager > Ceph > Access keys.",
+                      fr: "Autoriser l’accès à Gestionnaire > Ceph > Clés d’accès.",
+                      de: "Zugriff auf Verwaltung > Ceph > Zugriffsschlüssel erlauben.",
+                      zh: "允许访问管理控制台 > Ceph > 访问密钥。",
+                    }),
+                    ariaLabel: t(adminRgwCephS3UserKeys),
                     checked: editForm.allow_access_key_management,
                     onChange: (checked) =>
                       setEditForm((prev) => ({
@@ -1318,9 +1591,14 @@ export default function S3UsersPage() {
                       })),
                   },
                   {
-                    title: "Managed private connection provisioning",
-                    description: "Allow Manager to provision a dedicated private Browser connection for this RGW User.",
-                    ariaLabel: "Managed private connection provisioning",
+                    title: t(adminRgwManagedPrivateConnectionProvisioning),
+                    description: t({
+                      en: "Allow Manager to provision a dedicated private Browser connection for this RGW User.",
+                      fr: "Autoriser le gestionnaire à créer une connexion privée dédiée à l’explorateur pour cet utilisateur RGW.",
+                      de: "Der Verwaltung erlauben, eine dedizierte private Browser-Verbindung für diesen RGW-Benutzer bereitzustellen.",
+                      zh: "允许管理控制台为此 RGW 用户配置专用的私有浏览器连接。",
+                    }),
+                    ariaLabel: t(adminRgwManagedPrivateConnectionProvisioning),
                     checked: editForm.allow_managed_private_connection_provisioning,
                     onChange: (checked) =>
                       setEditForm((prev) => ({
@@ -1335,13 +1613,17 @@ export default function S3UsersPage() {
 
             <WorkflowActions>
               <UiButton variant="secondary" onClick={editCloseGuard.requestClose}>
-                Cancel
-              </UiButton>
+                {t(adminRgwCancel)}</UiButton>
               <UiButton
                 type="submit"
                 disabled={editBusy}
               >
-                {editBusy ? "Saving..." : "Save changes"}
+                {editBusy ? t(adminRgwSaving) : t({
+                  en: "Save changes",
+                  fr: "Enregistrer les modifications",
+                  de: "Änderungen speichern",
+                  zh: "保存更改",
+                })}
               </UiButton>
             </WorkflowActions>
             {editCloseGuard.confirmationDialog}
@@ -1351,17 +1633,47 @@ export default function S3UsersPage() {
 
       {userToDelete && (
         <ConfirmActionDialog
-          title={`Delete ${userToDelete.name}`}
-          description="This removes the standalone RGW user from the UI and deletes the access key used by this interface. You can also delete the underlying RGW user once it no longer owns buckets."
-          confirmLabel="Delete user"
-          processingLabel="Deleting..."
+          title={t({
+            en: `Delete ${userToDelete.name}`,
+            fr: `Supprimer ${userToDelete.name}`,
+            de: `${userToDelete.name} löschen`,
+            zh: `删除 ${userToDelete.name}`,
+          })}
+          description={t({
+            en: "This removes the standalone RGW user from the UI and deletes the access key used by this interface. You can also delete the underlying RGW user once it no longer owns buckets.",
+            fr: "Cette action retire l’utilisateur RGW autonome de l’interface et supprime la clé d’accès utilisée par celle-ci. Vous pouvez aussi supprimer l’utilisateur RGW sous-jacent lorsqu’il ne possède plus de buckets.",
+            de: "Dadurch wird der eigenständige RGW-Benutzer aus der Oberfläche entfernt und deren Zugriffsschlüssel gelöscht. Der zugrunde liegende RGW-Benutzer kann ebenfalls gelöscht werden, sobald er keine Buckets mehr besitzt.",
+            zh: "这会从界面中移除独立 RGW 用户，并删除本界面使用的访问密钥。该用户不再拥有存储桶后，也可以删除底层 RGW 用户。",
+          })}
+          confirmLabel={t({
+            en: "Delete user",
+            fr: "Supprimer l’utilisateur",
+            de: "Benutzer löschen",
+            zh: "删除用户",
+          })}
+          processingLabel={t(adminRgwDeleting)}
           loading={deleteModalBusy}
           error={deleteModalError}
           warningTone="warning"
           warning={deleteModalHasResources && (
             <div className="space-y-2">
-              <p>This RGW user still has linked resources. Remove owned buckets before deleting it from RGW.</p>
-              <p className="settings-label">Buckets: {userToDelete.bucket_count ?? "unknown"}</p>
+              <p>{t({
+                en: "This RGW user still has linked resources. Remove owned buckets before deleting it from RGW.",
+                fr: "Cet utilisateur RGW possède encore des ressources associées. Supprimez ses buckets avant de le supprimer de RGW.",
+                de: "Dieser RGW-Benutzer hat noch verknüpfte Ressourcen. Entfernen Sie seine Buckets, bevor Sie ihn aus RGW löschen.",
+                zh: "此 RGW 用户仍有关联资源。从 RGW 中删除前，请先移除其拥有的存储桶。",
+              })}</p>
+              <p className="settings-label">{t({
+                en: "Buckets:",
+                fr: "Buckets :",
+                de: "Buckets:",
+                zh: "存储桶：",
+              })}{" "}{userToDelete.bucket_count ?? t({
+                en: "unknown",
+                fr: "inconnu",
+                de: "unbekannt",
+                zh: "未知",
+              })}</p>
             </div>
           )}
           options={
@@ -1371,7 +1683,12 @@ export default function S3UsersPage() {
               onChange={(event) => setDeleteFromRgw(event.target.checked)}
             >
               <span className="modal-option-copy">
-                Also delete RGW user <code className="break-all font-mono">{userToDelete.rgw_user_uid}</code>
+                {t({
+                  en: "Also delete RGW user",
+                  fr: "Supprimer également l’utilisateur RGW",
+                  de: "RGW-Benutzer ebenfalls löschen",
+                  zh: "同时删除 RGW 用户",
+                })}{" "}<code className="break-all font-mono">{userToDelete.rgw_user_uid}</code>
               </span>
             </UiCheckboxField>
           }

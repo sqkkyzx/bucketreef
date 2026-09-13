@@ -1,3 +1,10 @@
+import {
+  messageUpload,
+  messageUploadFiles,
+  messageUploadFolder,
+  messageColumns,
+  messageResetColumns,
+} from "../../uiMessages";
 import { useI18n } from "../../i18n";
 import type { RefObject } from "react";
 
@@ -48,12 +55,7 @@ export function BrowserUploadQuickMenu({
       <div
         ref={menuRef}
         role="menu"
-        aria-label={t({
-          en: "Upload",
-          fr: "Téléverser",
-          de: "Hochladen",
-          zh: "上传",
-        })}
+        aria-label={t(messageUpload)}
         className="max-h-[min(70vh,20rem)] overflow-y-auto"
       >
         <button
@@ -64,12 +66,7 @@ export function BrowserUploadQuickMenu({
           disabled={!canUploadFiles}
         >
           <UploadIcon className="h-3.5 w-3.5" />
-          {t({
-            en: "Upload files",
-            fr: "Téléverser des fichiers",
-            de: "Dateien hochladen",
-            zh: "上传文件",
-          })}</button>
+          {t(messageUploadFiles)}</button>
         <button
           type="button"
           role="menuitem"
@@ -78,12 +75,7 @@ export function BrowserUploadQuickMenu({
           disabled={!canUploadFolder}
         >
           <FolderIcon className="h-3.5 w-3.5" />
-          {t({
-            en: "Upload folder",
-            fr: "Téléverser un dossier",
-            de: "Ordner hochladen",
-            zh: "上传文件夹",
-          })}</button>
+          {t(messageUploadFolder)}</button>
       </div>
     </AnchoredPortalMenu>
   );
@@ -121,12 +113,7 @@ export function BrowserColumnsMenu({
       <div
         ref={menuRef}
         role="menu"
-        aria-label={t({
-          en: "Columns",
-          fr: "Colonnes",
-          de: "Spalten",
-          zh: "列",
-        })}
+        aria-label={t(messageColumns)}
         className="max-h-[min(70vh,24rem)] overflow-y-auto"
       >
         <div className="px-3 pb-2 pt-2">
@@ -175,12 +162,7 @@ export function BrowserColumnsMenu({
           onClick={onReset}
         >
           <SlidersIcon className="h-3.5 w-3.5" />
-          {t({
-            en: "Reset columns",
-            fr: "Réinitialiser les colonnes",
-            de: "Spalten zurücksetzen",
-            zh: "重置列",
-          })}</button>
+          {t(messageResetColumns)}</button>
       </div>
     </AnchoredPortalMenu>
   );

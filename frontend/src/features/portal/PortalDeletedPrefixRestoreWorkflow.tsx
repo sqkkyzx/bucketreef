@@ -2,6 +2,9 @@
  * Copyright (c) 2026 Laurent Barbe
  * Licensed under the Apache License, Version 2.0
  */
+import {
+  messageCancel,
+} from "../../uiMessages";
 import { useEffect, useRef, useState } from "react";
 import {
   streamPortalDeletedPrefixRestore,
@@ -334,7 +337,7 @@ export default function PortalDeletedPrefixRestoreWorkflow({
           ) : (
             <>
               <UiButton variant="secondary" onClick={close}>
-                {t({ en: "Cancel", fr: "Annuler", de: "Abbrechen", zh: "取消" })}
+                {t(messageCancel)}
               </UiButton>
               <UiButton onClick={() => void startRestore()}>
                 {t({

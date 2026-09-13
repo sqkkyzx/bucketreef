@@ -2,6 +2,11 @@
  * Copyright (c) 2026 Laurent Barbe
  * Licensed under the Apache License, Version 2.0
  */
+import {
+  messageUnknown,
+  messageClose,
+  messageCancel,
+} from "../../uiMessages";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import ActiveFiltersBar from "../../components/ActiveFiltersBar";
@@ -191,7 +196,7 @@ function serverLogIdentityKindLabel(kind: PortalServerAccessRequesterIdentity["k
     case "rgw_account":
       return t({ en: "Storage account", fr: "Compte stockage", de: "Speicherkonto", zh: "存储账户" });
     default:
-      return t({ en: "Unknown", fr: "Inconnu", de: "Unbekannt", zh: "未知" });
+      return t(messageUnknown);
   }
 }
 
@@ -876,7 +881,7 @@ export default function PortalHistoryPage() {
                       </div>
                     </div>
                     <UiButton variant="secondary" size="sm" onClick={serverLogAdvancedFilterCloseGuard.requestClose}>
-                      {t({ en: "Close", fr: "Fermer", de: "Schließen", zh: "关闭" })}
+                      {t(messageClose)}
                     </UiButton>
                   </div>
                 </div>
@@ -1040,7 +1045,7 @@ export default function PortalHistoryPage() {
       {rawLogsModalOpen ? (
         <Modal
           title={t({ en: "Export raw access logs", fr: "Exporter les logs d'accès bruts", de: "Rohe Zugriffslogs exportieren", zh: "导出原始访问日志" })}
-          closeLabel={t({ en: "Close", fr: "Fermer", de: "Schließen", zh: "关闭" })}
+          closeLabel={t(messageClose)}
           closeAriaLabel={t({ en: "Close export", fr: "Fermer l'export", de: "Export schließen", zh: "关闭导出" })}
           onClose={() => {
             if (!rawLogsLoading) setRawLogsModalOpen(false);
@@ -1084,7 +1089,7 @@ export default function PortalHistoryPage() {
             {rawLogsError ? <PageBanner tone="error">{rawLogsError}</PageBanner> : null}
             <ModalActions>
               <UiButton type="button" variant="secondary" onClick={() => setRawLogsModalOpen(false)} disabled={rawLogsLoading}>
-                {t({ en: "Cancel", fr: "Annuler", de: "Abbrechen", zh: "取消" })}
+                {t(messageCancel)}
               </UiButton>
               <UiButton type="submit" loading={rawLogsLoading}>
                 {rawLogsLoading

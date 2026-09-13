@@ -2,6 +2,7 @@
  * Copyright (c) 2025 Laurent Barbe
  * Licensed under the Apache License, Version 2.0
  */
+import { useI18n } from "../../i18n";
 import { isApiError } from "../../api/client";
 import { useCallback, useEffect, useState } from "react";
 import { fetchAdminS3UserStats, ManagerStats } from "../../api/stats";
@@ -18,6 +19,7 @@ export function useAdminS3UserStats(
   enabled: boolean = true,
   refreshKey?: string | null
 ): UseAdminS3UserStatsResult {
+  const { t } = useI18n();
   const [stats, setStats] = useState<ManagerStats | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -36,13 +38,23 @@ export function useAdminS3UserStats(
       setStats(data);
       setError(null);
     } catch (err) {
-      let message = "Unable to load storage stats.";
+      let message = t({
+        en: "Unable to load storage stats.",
+        fr: "Impossible de charger les statistiques de stockage.",
+        de: "Speicherstatistiken konnten nicht geladen werden.",
+        zh: "无法加载存储统计。",
+      });
       if (isApiError(err)) {
         const detail = err.response?.data?.detail;
         if (typeof detail === "string" && detail.trim()) {
           message = detail;
         } else if (err.response?.status === 403) {
-          message = "Storage metrics are not available for this user.";
+          message = t({
+            en: "Storage metrics are not available for this user.",
+            fr: "Les métriques de stockage ne sont pas disponibles pour cet utilisateur.",
+            de: "Für diesen Benutzer sind keine Speichermetriken verfügbar.",
+            zh: "此用户的存储指标不可用。",
+          });
         }
       }
       setError(message);
@@ -50,7 +62,7 @@ export function useAdminS3UserStats(
     } finally {
       setLoading(false);
     }
-  }, [userId, enabled]);
+  }, [userId, enabled, t]);
 
   useEffect(() => {
     void load();

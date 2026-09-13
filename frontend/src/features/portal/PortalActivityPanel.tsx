@@ -2,6 +2,9 @@
  * Copyright (c) 2026 Laurent Barbe
  * Licensed under the Apache License, Version 2.0
  */
+import {
+  messageActions,
+} from "../../uiMessages";
 import { ListActions, ListActionLink, ListActionButton } from "../../components/list/ListControls";
 import { useMemo, useState } from "react";
 
@@ -97,7 +100,7 @@ export default function PortalActivityPanel({ workspace }: PortalActivityPanelPr
       },
       {
         id: "details",
-        label: t({ en: "Actions", fr: "Actions", de: "Aktionen", zh: "操作" }),
+        label: t(messageActions),
         align: "right",
         mobileRole: "actions",
         render: (item) => {

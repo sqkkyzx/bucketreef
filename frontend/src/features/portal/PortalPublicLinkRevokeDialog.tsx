@@ -2,6 +2,10 @@
  * Copyright (c) 2026 Laurent Barbe
  * Licensed under the Apache License, Version 2.0
  */
+import {
+  messageCancel,
+  messageClose,
+} from "../../uiMessages";
 import type { PortalPublicLink } from "../../api/portalSharing";
 import ConfirmActionDialog from "../../components/ConfirmActionDialog";
 import { useI18n } from "../../i18n";
@@ -41,8 +45,8 @@ export default function PortalPublicLinkRevokeDialog({
         zh: "撤销链接",
       })}
       loading={loading}
-      cancelLabel={t({ en: "Cancel", fr: "Annuler", de: "Abbrechen", zh: "取消" })}
-      closeLabel={t({ en: "Close", fr: "Fermer", de: "Schließen", zh: "关闭" })}
+      cancelLabel={t(messageCancel)}
+      closeLabel={t(messageClose)}
       processingLabel={t({ en: "Revoking...", fr: "Révocation...", de: "Wird widerrufen...", zh: "正在撤销…" })}
       impactLabel={t({ en: "Impact", fr: "Conséquences", de: "Auswirkungen", zh: "影响" })}
       details={[

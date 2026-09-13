@@ -2,9 +2,16 @@
  * Copyright (c) 2025 Laurent Barbe
  * Licensed under the Apache License, Version 2.0
  */
+import {
+  messageRGWUsers,
+  messageGeneral,
+} from "./uiMessages";
+import { translate, useI18n } from "./i18n";
+import type { UiLanguage } from "./components/language";
 import { Suspense, lazy, useMemo } from "react";
 import { Navigate, Outlet, Route, RouterProvider, createBrowserRouter, createRoutesFromElements, useLocation } from "react-router-dom";
 import Layout from "./components/Layout";
+import { resolveSidebarLinkIconName } from "./components/Sidebar";
 import { useGeneralSettings } from "./components/GeneralSettingsContext";
 import FeatureDisabledPage from "./features/shared/FeatureDisabledPage";
 import RouteErrorPage from "./features/shared/RouteErrorPage";
@@ -143,44 +150,195 @@ export const buildAdminNav = (
   isSuperAdmin: boolean,
   settingsExpanded = false,
   pendingRequestCounts: AdminPendingRequestCounts | null = null,
+  locale: UiLanguage = "en",
 ) => {
+  const pageLabels = {
+    dashboard: translate({
+      en: "Dashboard",
+      fr: "Tableau de bord",
+      de: "Dashboard",
+      zh: "仪表盘",
+    }, locale),
+    metrics: translate({
+      en: "Usage & Metrics",
+      fr: "Utilisation et métriques",
+      de: "Nutzung und Metriken",
+      zh: "用量与指标",
+    }, locale),
+    users: translate({
+      en: "UI Users",
+      fr: "Utilisateurs de l’interface",
+      de: "UI-Benutzer",
+      zh: "界面用户",
+    }, locale),
+    groups: translate({
+      en: "UI Groups",
+      fr: "Groupes de l’interface",
+      de: "UI-Gruppen",
+      zh: "界面用户组",
+    }, locale),
+    "identity-security": translate({
+      en: "Identity Security",
+      fr: "Sécurité des identités",
+      de: "Identitätssicherheit",
+      zh: "身份安全",
+    }, locale),
+    accounts: translate({
+      en: "RGW Accounts",
+      fr: "Comptes RGW",
+      de: "RGW-Konten",
+      zh: "RGW 账户",
+    }, locale),
+    "rgw-users": translate(messageRGWUsers, locale),
+    "shared-connections": translate({
+      en: "Shared S3 Connections",
+      fr: "Connexions S3 partagées",
+      de: "Gemeinsame S3-Verbindungen",
+      zh: "共享 S3 连接",
+    }, locale),
+    "storage-endpoints": translate({
+      en: "S3 Endpoints",
+      fr: "Points de terminaison S3",
+      de: "S3-Endpunkte",
+      zh: "S3 端点",
+    }, locale),
+    "endpoint-status": translate({
+      en: "Endpoint Status",
+      fr: "État des points de terminaison",
+      de: "Endpunktstatus",
+      zh: "端点状态",
+    }, locale),
+    "portal-requests": translate({
+      en: "Portal Requests",
+      fr: "Demandes du portail",
+      de: "Portal-Anfragen",
+      zh: "门户请求",
+    }, locale),
+    billing: translate({
+      en: "Billing",
+      fr: "Facturation",
+      de: "Abrechnung",
+      zh: "计费",
+    }, locale),
+    "usage-history": translate({
+      en: "Usage History",
+      fr: "Historique d’utilisation",
+      de: "Nutzungsverlauf",
+      zh: "用量历史",
+    }, locale),
+    audit: translate({
+      en: "Audit trail",
+      fr: "Journal d’audit",
+      de: "Audit-Protokoll",
+      zh: "审计日志",
+    }, locale),
+    "general-settings": translate(messageGeneral, locale),
+    "authentication-settings": translate({
+      en: "Authentication",
+      fr: "Authentification",
+      de: "Authentifizierung",
+      zh: "身份认证",
+    }, locale),
+    "manager-settings": translate({
+      en: "Manager",
+      fr: "Gestionnaire",
+      de: "Verwaltung",
+      zh: "管理控制台",
+    }, locale),
+    "browser-settings": translate({
+      en: "Browser",
+      fr: "Explorateur",
+      de: "Objektbrowser",
+      zh: "对象浏览器",
+    }, locale),
+    "portal-settings": translate({
+      en: "Portal",
+      fr: "Portail",
+      de: "Portal",
+      zh: "自助门户",
+    }, locale),
+    "key-rotation": translate({
+      en: "Key Rotation",
+      fr: "Rotation des clés",
+      de: "Schlüsselrotation",
+      zh: "密钥轮换",
+    }, locale),
+    "api-tokens": translate({
+      en: "API tokens",
+      fr: "Jetons API",
+      de: "API-Token",
+      zh: "API 令牌",
+    }, locale),
+  };
+  const pageLink = (key: keyof typeof pageLabels) => ({
+    ...workspacePageLink(ADMIN_PAGE_CONTRACTS[key]),
+    label: pageLabels[key],
+    iconName: resolveSidebarLinkIconName(workspacePageLink(ADMIN_PAGE_CONTRACTS[key])),
+  });
   const identityRequestCount = pendingRequestCounts?.identity_link_requests ?? 0;
   const portalRequestCount = pendingRequestCounts?.portal_requests ?? 0;
   const settingsLinks = [
-    workspacePageLink(ADMIN_PAGE_CONTRACTS["general-settings"]),
-    workspacePageLink(ADMIN_PAGE_CONTRACTS["authentication-settings"]),
-    workspacePageLink(ADMIN_PAGE_CONTRACTS["manager-settings"]),
+    pageLink("general-settings"),
+    pageLink("authentication-settings"),
+    pageLink("manager-settings"),
     {
-      ...workspacePageLink(ADMIN_PAGE_CONTRACTS["browser-settings"]),
+      ...pageLink("browser-settings"),
       disabled: !browserEnabled,
-      disabledHint: !browserEnabled ? "Browser feature is disabled in General settings." : undefined,
+      disabledHint: !browserEnabled ? translate({
+        en: "Browser feature is disabled in General settings.",
+        fr: "L’explorateur est désactivé dans les paramètres généraux.",
+        de: "Der Objektbrowser ist in den allgemeinen Einstellungen deaktiviert.",
+        zh: "对象浏览器功能已在常规设置中禁用。",
+      }, locale) : undefined,
     },
     {
-      ...workspacePageLink(ADMIN_PAGE_CONTRACTS["portal-settings"]),
+      ...pageLink("portal-settings"),
       disabled: !portalEnabled,
-      disabledHint: !portalEnabled ? "Portal feature is disabled in General settings." : undefined,
+      disabledHint: !portalEnabled ? translate({
+        en: "Portal feature is disabled in General settings.",
+        fr: "Le portail est désactivé dans les paramètres généraux.",
+        de: "Das Portal ist in den allgemeinen Einstellungen deaktiviert.",
+        zh: "自助门户功能已在常规设置中禁用。",
+      }, locale) : undefined,
     },
-    workspacePageLink(ADMIN_PAGE_CONTRACTS["key-rotation"]),
-    workspacePageLink(ADMIN_PAGE_CONTRACTS["api-tokens"]),
+    pageLink("key-rotation"),
+    pageLink("api-tokens"),
   ];
 
   return [
     {
       label: "Overview",
-      links: [{ ...workspacePageLink(ADMIN_PAGE_CONTRACTS.dashboard), end: true }],
+      displayLabel: translate({
+        en: "Overview",
+        fr: "Vue d’ensemble",
+        de: "Übersicht",
+        zh: "概览",
+      }, locale),
+      links: [{ ...pageLink("dashboard"), end: true }],
     },
     {
       label: "Identity & Access",
+      displayLabel: translate({
+        en: "Identity & Access",
+        fr: "Identité et accès",
+        de: "Identität und Zugriff",
+        zh: "身份与访问",
+      }, locale),
       links: [
-        workspacePageLink(ADMIN_PAGE_CONTRACTS.users),
-        workspacePageLink(ADMIN_PAGE_CONTRACTS.groups),
+        pageLink("users"),
+        pageLink("groups"),
         {
-          ...workspacePageLink(ADMIN_PAGE_CONTRACTS["identity-security"]),
+          ...pageLink("identity-security"),
           iconName: "shield" as const,
           badge: identityRequestCount > 0 ? String(identityRequestCount) : undefined,
           badgeAriaLabel:
             identityRequestCount > 0
-              ? `${identityRequestCount} pending identity link request${identityRequestCount === 1 ? "" : "s"}`
+              ? translate({
+                en: `${identityRequestCount} pending identity link request${identityRequestCount === 1 ? "" : "s"}`,
+                fr: `${identityRequestCount} demande${identityRequestCount === 1 ? "" : "s"} de liaison d’identité en attente`,
+                de: `${identityRequestCount} ausstehende Identitätsverknüpfungsanfragen`,
+                zh: `${identityRequestCount} 条待处理身份关联请求`,
+              }, locale)
               : undefined,
           badgeTone: "attention" as const,
         },
@@ -188,48 +346,83 @@ export const buildAdminNav = (
     },
     {
       label: "Managed Tenants",
+      displayLabel: translate({
+        en: "Managed Tenants",
+        fr: "Locataires gérés",
+        de: "Verwaltete Mandanten",
+        zh: "托管租户",
+      }, locale),
       links: [
-        workspacePageLink(ADMIN_PAGE_CONTRACTS.accounts),
-        workspacePageLink(ADMIN_PAGE_CONTRACTS["rgw-users"]),
-        workspacePageLink(ADMIN_PAGE_CONTRACTS.metrics),
+        pageLink("accounts"),
+        pageLink("rgw-users"),
+        pageLink("metrics"),
       ],
     },
     {
       label: "Connections",
-      links: [workspacePageLink(ADMIN_PAGE_CONTRACTS["shared-connections"])],
+      displayLabel: translate({
+        en: "Connections",
+        fr: "Connexions",
+        de: "Verbindungen",
+        zh: "连接",
+      }, locale),
+      links: [pageLink("shared-connections")],
     },
     {
       label: "Storage Backends",
+      displayLabel: translate({
+        en: "Storage Backends",
+        fr: "Backends de stockage",
+        de: "Speicher-Backends",
+        zh: "存储后端",
+      }, locale),
       links: [
-        workspacePageLink(ADMIN_PAGE_CONTRACTS["storage-endpoints"]),
-        ...(endpointStatusEnabled ? [workspacePageLink(ADMIN_PAGE_CONTRACTS["endpoint-status"])] : []),
+        pageLink("storage-endpoints"),
+        ...(endpointStatusEnabled ? [pageLink("endpoint-status")] : []),
       ],
     },
     {
       label: "Audit & Reporting",
+      displayLabel: translate({
+        en: "Audit & Reporting",
+        fr: "Audit et rapports",
+        de: "Audit und Berichte",
+        zh: "审计与报表",
+      }, locale),
       links: [
         ...(portalEnabled
           ? [
               {
-                ...workspacePageLink(ADMIN_PAGE_CONTRACTS["portal-requests"]),
+                ...pageLink("portal-requests"),
                 badge: portalRequestCount > 0 ? String(portalRequestCount) : undefined,
                 badgeAriaLabel:
                   portalRequestCount > 0
-                    ? `${portalRequestCount} pending Portal request${portalRequestCount === 1 ? "" : "s"}`
+                    ? translate({
+                      en: `${portalRequestCount} pending Portal request${portalRequestCount === 1 ? "" : "s"}`,
+                      fr: `${portalRequestCount} demande${portalRequestCount === 1 ? "" : "s"} du portail en attente`,
+                      de: `${portalRequestCount} ausstehende Portal-Anfragen`,
+                      zh: `${portalRequestCount} 条待处理门户请求`,
+                    }, locale)
                     : undefined,
                 badgeTone: "attention" as const,
               },
             ]
           : []),
-        ...(billingEnabled ? [workspacePageLink(ADMIN_PAGE_CONTRACTS.billing)] : []),
-        ...(usageHistoryEnabled ? [workspacePageLink(ADMIN_PAGE_CONTRACTS["usage-history"])] : []),
-        workspacePageLink(ADMIN_PAGE_CONTRACTS.audit),
+        ...(billingEnabled ? [pageLink("billing")] : []),
+        ...(usageHistoryEnabled ? [pageLink("usage-history")] : []),
+        pageLink("audit"),
       ],
     },
     ...(isSuperAdmin
       ? [
           {
             label: "Settings",
+      displayLabel: translate({
+        en: "Settings",
+        fr: "Paramètres",
+        de: "Einstellungen",
+        zh: "设置",
+      }, locale),
             links: settingsLinks,
             collapsed: !settingsExpanded,
           },
@@ -239,6 +432,7 @@ export const buildAdminNav = (
 };
 
 function AdminLayoutShell() {
+  const { locale } = useI18n();
   const { generalSettings } = useGeneralSettings();
   const location = useLocation();
   const pendingRequestCounts = useAdminPendingRequestCounts();
@@ -253,6 +447,7 @@ function AdminLayoutShell() {
     canConfigureApp,
     isAdminSettingsPath(location.pathname),
     pendingRequestCounts,
+    locale,
   );
   return (
     <Layout

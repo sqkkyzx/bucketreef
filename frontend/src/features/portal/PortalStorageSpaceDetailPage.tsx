@@ -2,6 +2,9 @@
  * Copyright (c) 2026 Laurent Barbe
  * Licensed under the Apache License, Version 2.0
  */
+import {
+  messageCancel,
+} from "../../uiMessages";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import {
@@ -1322,7 +1325,7 @@ function StorageSpaceDetail() {
             de: "Datei wiederherstellen",
             zh: "恢复文件",
           })}
-          cancelLabel={t({ en: "Cancel", fr: "Annuler", de: "Abbrechen", zh: "取消" })}
+          cancelLabel={t(messageCancel)}
           tone="primary"
           loading={restoringTrashKey === trashRestoreTarget.key}
           details={[
@@ -1501,7 +1504,7 @@ function StorageSpaceDetail() {
                 disabled={accessBusy}
                 onClick={closeAccessPeopleDialog}
               >
-                {t({ en: "Cancel", fr: "Annuler", de: "Abbrechen", zh: "取消" })}
+                {t(messageCancel)}
               </UiButton>
               <UiButton
                 loading={accessBusy}
@@ -1525,7 +1528,7 @@ function StorageSpaceDetail() {
             zh: "确认要永久移除此空间中较早的文件历史记录。",
           })}
           confirmLabel={t({ en: "Start cleanup", fr: "Démarrer le nettoyage", de: "Bereinigung starten", zh: "开始清理" })}
-          cancelLabel={t({ en: "Cancel", fr: "Annuler", de: "Abbrechen", zh: "取消" })}
+          cancelLabel={t(messageCancel)}
           details={[
             { label: t({ en: "Space", fr: "Espace", de: "Bereich", zh: "空间" }), value: space.name },
             {
@@ -1787,7 +1790,7 @@ function StorageSpaceDetail() {
                 })
           }
           confirmLabel={t({ en: "Delete space", fr: "Supprimer l'espace", de: "Bereich löschen", zh: "删除空间" })}
-          cancelLabel={t({ en: "Cancel", fr: "Annuler", de: "Abbrechen", zh: "取消" })}
+          cancelLabel={t(messageCancel)}
           loading={deleteBusy}
           confirmDisabled={deletionStatsKnown && !storageSpaceIsEmpty}
           details={[

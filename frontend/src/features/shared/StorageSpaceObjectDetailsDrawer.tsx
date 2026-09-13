@@ -2,6 +2,11 @@
  * Copyright (c) 2026 Laurent Barbe
  * Licensed under the Apache License, Version 2.0
  */
+import {
+  messageMore,
+  messageDownload,
+  messageDelete,
+} from "../../uiMessages";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import type { S3AccountSelector } from "../../api/accountParams";
@@ -334,12 +339,12 @@ export default function StorageSpaceObjectDetailsDrawer({
         name={resolvedName}
         path={resolvedKey}
         copyPathLabel={t({ en: "Copy path", fr: "Copier le chemin", de: "Pfad kopieren", zh: "复制路径" })}
-        moreLabel={t({ en: "More", fr: "Plus", de: "Mehr", zh: "更多" })}
+        moreLabel={t(messageMore)}
         onCopyPath={() => void handleCopyPath()}
         primaryAction={
           !isDeleted
             ? {
-                label: t({ en: "Download", fr: "Télécharger", de: "Herunterladen", zh: "下载" }),
+                label: t(messageDownload),
                 loading: downloading,
                 onSelect: () => void handleDownload(),
               }
@@ -349,7 +354,7 @@ export default function StorageSpaceObjectDetailsDrawer({
           !isDeleted && canModify
             ? [{
                 id: "delete",
-                label: t({ en: "Delete", fr: "Supprimer", de: "Löschen", zh: "删除" }),
+                label: t(messageDelete),
                 tone: "danger",
                 onSelect: () => setPendingAction({ type: "delete" }),
               }]

@@ -2,6 +2,9 @@
  * Copyright (c) 2026 Laurent Barbe
  * Licensed under the Apache License, Version 2.0
  */
+import {
+  messageUnknown,
+} from "../../uiMessages";
 import { useMemo, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import type { HealthCheckStatus } from "../../api/healthchecks";
@@ -370,7 +373,7 @@ function AlertsCard({
                 ? t({ en: "Degraded", fr: "Dégradé", de: "Beeinträchtigt", zh: "性能下降" })
                 : healthStatus === "down"
                   ? t({ en: "Issue", fr: "Incident", de: "Problem", zh: "异常" })
-                  : t({ en: "Unknown", fr: "Inconnu", de: "Unbekannt", zh: "未知" })}
+                  : t(messageUnknown)}
           </UiBadge>
         </div>
       </div>

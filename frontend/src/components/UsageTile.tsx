@@ -2,6 +2,10 @@
  * Copyright (c) 2025 Laurent Barbe
  * Licensed under the Apache License, Version 2.0
  */
+import {
+  messageLoading,
+} from "../uiMessages";
+import { useI18n } from "../i18n";
 import { formatPercentage } from "../utils/format";
 import UiMeterBar from "./ui/UiMeterBar";
 import { cx, uiCardMutedClass, uiMutedTextClass, uiTitleTextClass } from "./ui/styles";
@@ -27,9 +31,10 @@ export default function UsageTile({
   unitHint,
   emptyHint,
 }: UsageTileProps) {
+  const { t } = useI18n();
   const hasUsage = typeof used === "number" && !Number.isNaN(used);
   const ratio = quota && quota > 0 && hasUsage ? Math.min(100, (used / quota) * 100) : null;
-  const usedDisplay = hasUsage ? formatter(used) : loading ? "Loading..." : "—";
+  const usedDisplay = hasUsage ? formatter(used) : loading ? t(messageLoading) : "—";
   const quotaDisplay = quota && quota > 0 ? (quotaFormatter ? quotaFormatter(quota) : formatter(quota)) : null;
   const ratioLabel = ratio !== null ? formatPercentage(ratio) : "—";
 
@@ -56,13 +61,18 @@ export default function UsageTile({
               {usedDisplay} / {quotaDisplay} · {ratioLabel}
             </p>
           ) : (
-            <p className={cx("ui-caption", uiMutedTextClass)}>{emptyHint ?? "No quota defined."}</p>
+            <p className={cx("ui-caption", uiMutedTextClass)}>{emptyHint ?? t({
+              en: "No quota defined.",
+              fr: "Aucun quota défini.",
+              de: "Kein Kontingent festgelegt.",
+              zh: "未设置配额。",
+            })}</p>
           )}
         </div>
       </div>
       <UiMeterBar
         value={ratio ?? 0}
-        label={`${label} quota usage`}
+        label={t({ en: `${label} quota usage`, fr: `Utilisation du quota : ${label}`, de: `${label}: Kontingentnutzung`, zh: `${label}配额用量` })}
         className="h-1 bg-[var(--ui-hover)]"
         barClassName={getBarColor(ratio ?? 0)}
       />
@@ -71,6 +81,7 @@ export default function UsageTile({
 }
 
 function UsageGauge({ ratio }: { ratio: number }) {
+  const { t } = useI18n();
   const clamped = Math.min(100, Math.max(0, ratio));
   const angle = (clamped / 100) * 360;
   const color = getAccentColor(clamped);
@@ -80,7 +91,7 @@ function UsageGauge({ ratio }: { ratio: number }) {
     <div
       className="relative h-16 w-16 rounded-full"
       role="img"
-      aria-label={`Usage at ${formatPercentage(clamped)}`}
+      aria-label={t({ en: `Usage at ${formatPercentage(clamped)}`, fr: `Utilisation à ${formatPercentage(clamped)}`, de: `Nutzung bei ${formatPercentage(clamped)}`, zh: `使用率 ${formatPercentage(clamped)}` })}
       style={{
         background: `conic-gradient(${color} ${angle}deg, ${track} ${angle}deg 360deg)`,
       }}

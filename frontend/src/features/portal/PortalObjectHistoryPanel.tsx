@@ -2,6 +2,9 @@
  * Copyright (c) 2026 Laurent Barbe
  * Licensed under the Apache License, Version 2.0
  */
+import {
+  messageRefresh,
+} from "../../uiMessages";
 import type {
   PortalStorageObjectVersion,
   PortalStorageObjectVersionsResponse,
@@ -50,7 +53,7 @@ export default function PortalObjectHistoryPanel({
       <UiCard
         actions={
           <UiButton size="xs" variant="secondary" onClick={onRetry} disabled={loading}>
-            {t({ en: "Refresh", fr: "Actualiser", de: "Aktualisieren", zh: "刷新" })}
+            {t(messageRefresh)}
           </UiButton>
         }
       >

@@ -2,6 +2,16 @@
  * Copyright (c) 2025 Laurent Barbe
  * Licensed under the Apache License, Version 2.0
  */
+import {
+  messageDirectory,
+  messageSignIn,
+  messagePassword,
+  messageSigningIn,
+  messageEmail,
+  messageAccessKey,
+  messageSecretKey,
+  messageEndpoint,
+} from "../../uiMessages";
 import { useI18n, type I18nMessage } from "../../i18n";
 import { FormEvent, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -406,12 +416,7 @@ export default function LoginPage() {
       de: "E-Mail und Passwort",
       zh: "邮箱和密码",
     }) },
-    ...(hasLdapProviders ? [{ value: "ldap" as const, label: t({
-      en: "Directory",
-      fr: "Annuaire",
-      de: "Verzeichnis",
-      zh: "目录服务",
-    }) }] : []),
+    ...(hasLdapProviders ? [{ value: "ldap" as const, label: t(messageDirectory) }] : []),
     ...(allowAccessKeys ? [{ value: "keys" as const, label: t({
       en: "S3 access keys",
       fr: "Clés d’accès S3",
@@ -634,12 +639,7 @@ export default function LoginPage() {
                 <BrandMark className="h-7 w-7" />
                 {PRODUCT_NAME}
               </div>
-              <h2 className="mt-3 text-2xl font-semibold text-slate-900">{t({
-                en: "Sign in",
-                fr: "Se connecter",
-                de: "Anmelden",
-                zh: "登录",
-              })}</h2>
+              <h2 className="mt-3 text-2xl font-semibold text-slate-900">{t(messageSignIn)}</h2>
               <p className="mt-1 ui-body text-slate-500">{t({
                 en: "Use your account credentials.",
                 fr: "Utilisez les identifiants de votre compte.",
@@ -671,12 +671,7 @@ export default function LoginPage() {
                 {ldapProviders.length > 1 && (
                   <div>
                     <label htmlFor="ldap-provider" className="ui-body font-medium text-slate-700">
-                      {t({
-                        en: "Directory",
-                        fr: "Annuaire",
-                        de: "Verzeichnis",
-                        zh: "目录服务",
-                      })}</label>
+                      {t(messageDirectory)}</label>
                     <select
                       id="ldap-provider"
                       value={selectedLdapProvider || ldapProviders[0]?.id || ""}
@@ -718,12 +713,7 @@ export default function LoginPage() {
                 </div>
                 <div>
                   <label htmlFor="ldap-password" className="ui-body font-medium text-slate-700">
-                    {t({
-                      en: "Password",
-                      fr: "Mot de passe",
-                      de: "Passwort",
-                      zh: "密码",
-                    })}</label>
+                    {t(messagePassword)}</label>
                   <input
                     id="ldap-password"
                     type="password"
@@ -738,12 +728,7 @@ export default function LoginPage() {
                   <UiInlineMessage tone="error">{t(error || ldapError || "")}</UiInlineMessage>
                 )}
                 <button type="submit" disabled={loading} className={buttonClasses}>
-                  {loading ? t({
-                    en: "Signing in...",
-                    fr: "Connexion…",
-                    de: "Anmeldung…",
-                    zh: "正在登录…",
-                  }) : t({
+                  {loading ? t(messageSigningIn) : t({
                     en: "Sign in with directory",
                     fr: "Se connecter via l’annuaire",
                     de: "Mit Verzeichnis anmelden",
@@ -754,12 +739,7 @@ export default function LoginPage() {
             ) : mode === "password" || !allowAccessKeys ? (
               <form onSubmit={handlePasswordLogin} className="space-y-4">
                 <div>
-                  <label htmlFor="login-email" className="ui-body font-medium text-slate-700">{t({
-                    en: "Email",
-                    fr: "E-mail",
-                    de: "E-Mail",
-                    zh: "邮箱",
-                  })}</label>
+                  <label htmlFor="login-email" className="ui-body font-medium text-slate-700">{t(messageEmail)}</label>
                   <input
                     id="login-email"
                     type="email"
@@ -771,12 +751,7 @@ export default function LoginPage() {
                   />
                 </div>
                 <div>
-                  <label htmlFor="login-password" className="ui-body font-medium text-slate-700">{t({
-                    en: "Password",
-                    fr: "Mot de passe",
-                    de: "Passwort",
-                    zh: "密码",
-                  })}</label>
+                  <label htmlFor="login-password" className="ui-body font-medium text-slate-700">{t(messagePassword)}</label>
                   <input
                     id="login-password"
                     type="password"
@@ -791,28 +766,13 @@ export default function LoginPage() {
                   <UiInlineMessage tone="error">{t(error)}</UiInlineMessage>
                 )}
                 <button type="submit" disabled={loading} className={buttonClasses}>
-                  {loading ? t({
-                    en: "Signing in...",
-                    fr: "Connexion…",
-                    de: "Anmeldung…",
-                    zh: "正在登录…",
-                  }) : t({
-                    en: "Sign in",
-                    fr: "Se connecter",
-                    de: "Anmelden",
-                    zh: "登录",
-                  })}
+                  {loading ? t(messageSigningIn) : t(messageSignIn)}
                 </button>
               </form>
             ) : (
               <form onSubmit={handleKeyLogin} className="space-y-4">
                 <div>
-                  <label htmlFor="login-access-key" className="ui-body font-medium text-slate-700">{t({
-                    en: "Access key",
-                    fr: "Clé d’accès",
-                    de: "Zugriffsschlüssel",
-                    zh: "访问密钥",
-                  })}</label>
+                  <label htmlFor="login-access-key" className="ui-body font-medium text-slate-700">{t(messageAccessKey)}</label>
                   <input
                     id="login-access-key"
                     type="text"
@@ -825,12 +785,7 @@ export default function LoginPage() {
                   />
                 </div>
                 <div>
-                  <label htmlFor="login-secret-key" className="ui-body font-medium text-slate-700">{t({
-                    en: "Secret key",
-                    fr: "Clé secrète",
-                    de: "Geheimer Schlüssel",
-                    zh: "秘密密钥",
-                  })}</label>
+                  <label htmlFor="login-secret-key" className="ui-body font-medium text-slate-700">{t(messageSecretKey)}</label>
                   <input
                     id="login-secret-key"
                     type="password"
@@ -845,12 +800,7 @@ export default function LoginPage() {
                   <div className="space-y-3">
                     {allowEndpointList && (
                       <div>
-                        <label htmlFor="login-endpoint" className="ui-body font-medium text-slate-700">{t({
-                          en: "Endpoint",
-                          fr: "Point de terminaison",
-                          de: "Endpunkt",
-                          zh: "端点",
-                        })}</label>
+                        <label htmlFor="login-endpoint" className="ui-body font-medium text-slate-700">{t(messageEndpoint)}</label>
                         <select
                           id="login-endpoint"
                           value={selectedEndpoint}

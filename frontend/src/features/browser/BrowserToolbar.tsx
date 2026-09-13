@@ -1,8 +1,28 @@
-import { useI18n } from "../../i18n";
 /*
  * Copyright (c) 2026 Laurent Barbe
  * Licensed under the Apache License, Version 2.0
  */
+import {
+  messageHideDeletedFiles,
+  messageShowDeletedFiles,
+  messageRestoreDeletedFilesInThisFolder,
+  messageUpload,
+  messageNewFolder,
+  messageRefresh,
+  messageMore,
+  messageOpen,
+  messageCopy,
+  messageDownload,
+  messageDelete,
+  messageSelection,
+  messageCurrentPath,
+  messageComfortable,
+  messageCompact,
+  messageStatus,
+  messageOperationsOverview,
+  messageColumns,
+} from "../../uiMessages";
+import { useI18n } from "../../i18n";
 import { ListActionButton, ListBadge } from "../../components/list/ListControls";
 import {
   useEffect,
@@ -280,52 +300,22 @@ export default function BrowserToolbar({
               aria-pressed={deletedObjects.showDeleted}
               aria-label={
                 deletedObjects.showDeleted
-                  ? t({
-                    en: "Hide deleted files",
-                    fr: "Masquer les fichiers supprimés",
-                    de: "Gelöschte Dateien ausblenden",
-                    zh: "隐藏已删除文件",
-                  })
-                  : t({
-                    en: "Show deleted files",
-                    fr: "Afficher les fichiers supprimés",
-                    de: "Gelöschte Dateien anzeigen",
-                    zh: "显示已删除文件",
-                  })
+                  ? t(messageHideDeletedFiles)
+                  : t(messageShowDeletedFiles)
               }
               onClick={() => onRunPathAction("toggleShowDeleted")}
               title={
                 deletedObjects.showDeleted
-                  ? t({
-                    en: "Hide deleted files",
-                    fr: "Masquer les fichiers supprimés",
-                    de: "Gelöschte Dateien ausblenden",
-                    zh: "隐藏已删除文件",
-                  })
-                  : t({
-                    en: "Show deleted files",
-                    fr: "Afficher les fichiers supprimés",
-                    de: "Gelöschte Dateien anzeigen",
-                    zh: "显示已删除文件",
-                  })
+                  ? t(messageHideDeletedFiles)
+                  : t(messageShowDeletedFiles)
               }
             >
               <TrashIcon className="h-3.5 w-3.5" />
               {!compactMode && (
                 <span>
                   {deletedObjects.showDeleted
-                    ? t({
-                      en: "Hide deleted files",
-                      fr: "Masquer les fichiers supprimés",
-                      de: "Gelöschte Dateien ausblenden",
-                      zh: "隐藏已删除文件",
-                    })
-                    : t({
-                      en: "Show deleted files",
-                      fr: "Afficher les fichiers supprimés",
-                      de: "Gelöschte Dateien anzeigen",
-                      zh: "显示已删除文件",
-                    })}
+                    ? t(messageHideDeletedFiles)
+                    : t(messageShowDeletedFiles)}
                 </span>
               )}
             </ListActionButton>
@@ -334,28 +324,13 @@ export default function BrowserToolbar({
             <ListActionButton iconOnly={compactMode} variant="secondary"
               type="button"
 
-              aria-label={t({
-                en: "Restore deleted files in this folder",
-                fr: "Restaurer les fichiers supprimés de ce dossier",
-                de: "Gelöschte Dateien in diesem Ordner wiederherstellen",
-                zh: "恢复此文件夹中已删除的文件",
-              })}
-              title={t({
-                en: "Restore deleted files in this folder",
-                fr: "Restaurer les fichiers supprimés de ce dossier",
-                de: "Gelöschte Dateien in diesem Ordner wiederherstellen",
-                zh: "恢复此文件夹中已删除的文件",
-              })}
+              aria-label={t(messageRestoreDeletedFilesInThisFolder)}
+              title={t(messageRestoreDeletedFilesInThisFolder)}
               onClick={() => onRunPathAction("restore")}
               disabled={!deletedObjects.restoreEnabled}
             >
               <HistoryIcon className="h-3.5 w-3.5" />
-              {!compactMode && <span>{t({
-                en: "Restore deleted files in this folder",
-                fr: "Restaurer les fichiers supprimés de ce dossier",
-                de: "Gelöschte Dateien in diesem Ordner wiederherstellen",
-                zh: "恢复此文件夹中已删除的文件",
-              })}</span>}
+              {!compactMode && <span>{t(messageRestoreDeletedFilesInThisFolder)}</span>}
             </ListActionButton>
           )}
           {contextActions.visible && (
@@ -378,26 +353,11 @@ export default function BrowserToolbar({
                     ? uploadMenuOpen
                     : undefined
                 }
-                aria-label={t({
-                  en: "Upload",
-                  fr: "Téléverser",
-                  de: "Hochladen",
-                  zh: "上传",
-                })}
-                title={t({
-                  en: "Upload",
-                  fr: "Téléverser",
-                  de: "Hochladen",
-                  zh: "上传",
-                })}
+                aria-label={t(messageUpload)}
+                title={t(messageUpload)}
               >
                 <UploadIcon className="h-3.5 w-3.5" />
-                {!compactMode && <span>{t({
-                  en: "Upload",
-                  fr: "Téléverser",
-                  de: "Hochladen",
-                  zh: "上传",
-                })}</span>}
+                {!compactMode && <span>{t(messageUpload)}</span>}
               </ListActionButton>
               <BrowserUploadQuickMenu
                 open={uploadMenuOpen}
@@ -412,51 +372,21 @@ export default function BrowserToolbar({
                 type="button"
                 onClick={() => onRunPathAction("newFolder")}
                 disabled={!contextActions.canCreateFolder}
-                aria-label={t({
-                  en: "New folder",
-                  fr: "Nouveau dossier",
-                  de: "Neuer Ordner",
-                  zh: "新建文件夹",
-                })}
-                title={t({
-                  en: "New folder",
-                  fr: "Nouveau dossier",
-                  de: "Neuer Ordner",
-                  zh: "新建文件夹",
-                })}
+                aria-label={t(messageNewFolder)}
+                title={t(messageNewFolder)}
               >
                 <FolderPlusIcon className="h-3.5 w-3.5" />
-                {!compactMode && <span>{t({
-                  en: "New folder",
-                  fr: "Nouveau dossier",
-                  de: "Neuer Ordner",
-                  zh: "新建文件夹",
-                })}</span>}
+                {!compactMode && <span>{t(messageNewFolder)}</span>}
               </ListActionButton>
               <ListActionButton iconOnly={compactMode} variant="secondary"
                 type="button"
                 onClick={() => onRunPathAction("refresh")}
                 disabled={!contextActions.canRefresh}
-                aria-label={t({
-                  en: "Refresh",
-                  fr: "Actualiser",
-                  de: "Aktualisieren",
-                  zh: "刷新",
-                })}
-                title={t({
-                  en: "Refresh",
-                  fr: "Actualiser",
-                  de: "Aktualisieren",
-                  zh: "刷新",
-                })}
+                aria-label={t(messageRefresh)}
+                title={t(messageRefresh)}
               >
                 <RefreshIcon className="h-3.5 w-3.5" />
-                {!compactMode && <span>{t({
-                  en: "Refresh",
-                  fr: "Actualiser",
-                  de: "Aktualisieren",
-                  zh: "刷新",
-                })}</span>}
+                {!compactMode && <span>{t(messageRefresh)}</span>}
               </ListActionButton>
               <ListActionButton iconOnly={compactMode} variant="secondary"
                 ref={moreButtonRef}
@@ -465,26 +395,11 @@ export default function BrowserToolbar({
                 disabled={!hasMoreMenu}
                 aria-haspopup={hasMoreMenu ? "menu" : undefined}
                 aria-expanded={hasMoreMenu ? moreMenuOpen : undefined}
-                aria-label={t({
-                  en: "More",
-                  fr: "Plus",
-                  de: "Mehr",
-                  zh: "更多",
-                })}
-                title={t({
-                  en: "More",
-                  fr: "Plus",
-                  de: "Mehr",
-                  zh: "更多",
-                })}
+                aria-label={t(messageMore)}
+                title={t(messageMore)}
               >
                 <MoreIcon className="h-3.5 w-3.5" />
-                {!compactMode && <span>{t({
-                  en: "More",
-                  fr: "Plus",
-                  de: "Mehr",
-                  zh: "更多",
-                })}</span>}
+                {!compactMode && <span>{t(messageMore)}</span>}
               </ListActionButton>
             </div>
           )}
@@ -501,101 +416,41 @@ export default function BrowserToolbar({
                 type="button"
                 onClick={() => onRunSelectionAction("open")}
                 disabled={!selectionActions.canOpen}
-                aria-label={t({
-                  en: "Open",
-                  fr: "Ouvrir",
-                  de: "Öffnen",
-                  zh: "打开",
-                })}
-                title={t({
-                  en: "Open",
-                  fr: "Ouvrir",
-                  de: "Öffnen",
-                  zh: "打开",
-                })}
+                aria-label={t(messageOpen)}
+                title={t(messageOpen)}
               >
                 <OpenIcon className="h-3.5 w-3.5" />
-                {!compactMode && <span>{t({
-                  en: "Open",
-                  fr: "Ouvrir",
-                  de: "Öffnen",
-                  zh: "打开",
-                })}</span>}
+                {!compactMode && <span>{t(messageOpen)}</span>}
               </ListActionButton>
               <ListActionButton iconOnly={compactMode} variant="secondary"
                 type="button"
                 onClick={() => onRunSelectionAction("copy")}
                 disabled={!selectionActions.canCopy}
-                aria-label={t({
-                  en: "Copy",
-                  fr: "Copier",
-                  de: "Kopieren",
-                  zh: "复制",
-                })}
-                title={t({
-                  en: "Copy",
-                  fr: "Copier",
-                  de: "Kopieren",
-                  zh: "复制",
-                })}
+                aria-label={t(messageCopy)}
+                title={t(messageCopy)}
               >
                 <CopyIcon className="h-3.5 w-3.5" />
-                {!compactMode && <span>{t({
-                  en: "Copy",
-                  fr: "Copier",
-                  de: "Kopieren",
-                  zh: "复制",
-                })}</span>}
+                {!compactMode && <span>{t(messageCopy)}</span>}
               </ListActionButton>
               <ListActionButton iconOnly={compactMode} variant="primary"
                 type="button"
                 onClick={() => onRunSelectionAction("download")}
                 disabled={!selectionActions.canDownload}
-                aria-label={t({
-                  en: "Download",
-                  fr: "Télécharger",
-                  de: "Herunterladen",
-                  zh: "下载",
-                })}
-                title={t({
-                  en: "Download",
-                  fr: "Télécharger",
-                  de: "Herunterladen",
-                  zh: "下载",
-                })}
+                aria-label={t(messageDownload)}
+                title={t(messageDownload)}
               >
                 <DownloadIcon className="h-3.5 w-3.5" />
-                {!compactMode && <span>{t({
-                  en: "Download",
-                  fr: "Télécharger",
-                  de: "Herunterladen",
-                  zh: "下载",
-                })}</span>}
+                {!compactMode && <span>{t(messageDownload)}</span>}
               </ListActionButton>
               <ListActionButton iconOnly={compactMode} variant="danger"
                 type="button"
                 onClick={() => onRunSelectionAction("delete")}
                 disabled={!selectionActions.canDelete}
-                aria-label={t({
-                  en: "Delete",
-                  fr: "Supprimer",
-                  de: "Löschen",
-                  zh: "删除",
-                })}
-                title={t({
-                  en: "Delete",
-                  fr: "Supprimer",
-                  de: "Löschen",
-                  zh: "删除",
-                })}
+                aria-label={t(messageDelete)}
+                title={t(messageDelete)}
               >
                 <TrashIcon className="h-3.5 w-3.5" />
-                {!compactMode && <span>{t({
-                  en: "Delete",
-                  fr: "Supprimer",
-                  de: "Löschen",
-                  zh: "删除",
-                })}</span>}
+                {!compactMode && <span>{t(messageDelete)}</span>}
               </ListActionButton>
               <ListActionButton iconOnly={compactMode} variant="secondary"
                 ref={moreButtonRef}
@@ -604,26 +459,11 @@ export default function BrowserToolbar({
                 disabled={!hasMoreMenu}
                 aria-haspopup={hasMoreMenu ? "menu" : undefined}
                 aria-expanded={hasMoreMenu ? moreMenuOpen : undefined}
-                aria-label={t({
-                  en: "More",
-                  fr: "Plus",
-                  de: "Mehr",
-                  zh: "更多",
-                })}
-                title={t({
-                  en: "More",
-                  fr: "Plus",
-                  de: "Mehr",
-                  zh: "更多",
-                })}
+                aria-label={t(messageMore)}
+                title={t(messageMore)}
               >
                 <MoreIcon className="h-3.5 w-3.5" />
-                {!compactMode && <span>{t({
-                  en: "More",
-                  fr: "Plus",
-                  de: "Mehr",
-                  zh: "更多",
-                })}</span>}
+                {!compactMode && <span>{t(messageMore)}</span>}
               </ListActionButton>
             </div>
           )}
@@ -642,22 +482,12 @@ export default function BrowserToolbar({
           <div
             ref={moreMenuRef}
             role="menu"
-            aria-label={t({
-              en: "More",
-              fr: "Plus",
-              de: "Mehr",
-              zh: "更多",
-            })}
+            aria-label={t(messageMore)}
             className="max-h-[min(76vh,36rem)] overflow-y-auto"
           >
             {hasPrioritizedSelectionActions && (
               <>
-                <p className={overflowSectionTitleClasses}>{t({
-                  en: "Selection",
-                  fr: "Sélection",
-                  de: "Auswahl",
-                  zh: "已选项目",
-                })}</p>
+                <p className={overflowSectionTitleClasses}>{t(messageSelection)}</p>
                 {moreMenu.selectionActions.map((action) => (
                   <BrowserToolbarActionMenuItem
                     key={action.id}
@@ -672,12 +502,7 @@ export default function BrowserToolbar({
 
             {hasCurrentPathActions && !hasPrioritizedSelectionActions && (
               <>
-                <p className={overflowSectionTitleClasses}>{t({
-                  en: "Current path",
-                  fr: "Chemin actuel",
-                  de: "Aktueller Pfad",
-                  zh: "当前路径",
-                })}</p>
+                <p className={overflowSectionTitleClasses}>{t(messageCurrentPath)}</p>
                 {currentPathMenuActions.map((action) => (
                   <BrowserToolbarActionMenuItem
                     key={action.id}
@@ -743,12 +568,7 @@ export default function BrowserToolbar({
                   }
                 >
                   <ListIcon className="h-3.5 w-3.5" />
-                  {t({
-                    en: "Comfortable",
-                    fr: "Confortable",
-                    de: "Komfortabel",
-                    zh: "宽松",
-                  })}{!moreMenu.view.compactMode && (
+                  {t(messageComfortable)}{!moreMenu.view.compactMode && (
                     <span
                       aria-hidden="true"
                       className="ml-auto text-primary-600 dark:text-primary-300"
@@ -769,12 +589,7 @@ export default function BrowserToolbar({
                   }
                 >
                   <CompactIcon className="h-3.5 w-3.5" />
-                  {t({
-                    en: "Compact",
-                    fr: "Compact",
-                    de: "Kompakt",
-                    zh: "紧凑",
-                  })}{moreMenu.view.compactMode && (
+                  {t(messageCompact)}{moreMenu.view.compactMode && (
                     <span
                       aria-hidden="true"
                       className="ml-auto text-primary-600 dark:text-primary-300"
@@ -791,12 +606,7 @@ export default function BrowserToolbar({
                 {hasViewSection && (
                   <div className={contextMenuSeparatorClasses} />
                 )}
-                <p className={overflowSectionTitleClasses}>{t({
-                  en: "Status",
-                  fr: "État",
-                  de: "Status",
-                  zh: "状态",
-                })}</p>
+                <p className={overflowSectionTitleClasses}>{t(messageStatus)}</p>
                 {moreMenu.status.accessBadge && (
                   <div
                     className={overflowStatusRowClasses}
@@ -828,12 +638,7 @@ export default function BrowserToolbar({
                   <button
                     type="button"
                     role="menuitem"
-                    aria-label={t({
-                      en: "Operations overview",
-                      fr: "Vue d’ensemble des opérations",
-                      de: "Vorgangsübersicht",
-                      zh: "操作概览",
-                    })}
+                    aria-label={t(messageOperationsOverview)}
                     className={contextMenuItemClasses}
                     onClick={() =>
                       runMoreAction(moreMenu.status.onOpenOperations)
@@ -841,12 +646,7 @@ export default function BrowserToolbar({
                   >
                     <ListIcon className="h-3.5 w-3.5" />
                     <span className="min-w-0 flex-1">
-                      <span className="block">{t({
-                        en: "Operations overview",
-                        fr: "Vue d’ensemble des opérations",
-                        de: "Vorgangsübersicht",
-                        zh: "操作概览",
-                      })}</span>
+                      <span className="block">{t(messageOperationsOverview)}</span>
                       <span
                         aria-hidden="true"
                         className="block text-[11px] font-medium leading-tight text-slate-400 dark:text-slate-500"
@@ -890,12 +690,7 @@ export default function BrowserToolbar({
                 {(hasViewSection || hasStatusSection || hasLayoutSection) && (
                   <div className={contextMenuSeparatorClasses} />
                 )}
-                <p className={overflowSectionTitleClasses}>{t({
-                  en: "Columns",
-                  fr: "Colonnes",
-                  de: "Spalten",
-                  zh: "列",
-                })}</p>
+                <p className={overflowSectionTitleClasses}>{t(messageColumns)}</p>
                 <button
                   ref={columnsButtonRef}
                   type="button"
@@ -907,12 +702,7 @@ export default function BrowserToolbar({
                 >
                   <SlidersIcon className="h-3.5 w-3.5" />
                   <span className="min-w-0 flex-1">
-                    <span className="block">{t({
-                      en: "Columns",
-                      fr: "Colonnes",
-                      de: "Spalten",
-                      zh: "列",
-                    })}</span>
+                    <span className="block">{t(messageColumns)}</span>
                     <span className="block text-[11px] font-medium leading-tight text-slate-400 dark:text-slate-500">
                       {moreMenu.columns.summary}
                     </span>
@@ -945,12 +735,7 @@ export default function BrowserToolbar({
                 )}
                 {hasSelectionActions && !hasPrioritizedSelectionActions && (
                   <>
-                    <p className={overflowSectionTitleClasses}>{t({
-                      en: "Selection",
-                      fr: "Sélection",
-                      de: "Auswahl",
-                      zh: "已选项目",
-                    })}</p>
+                    <p className={overflowSectionTitleClasses}>{t(messageSelection)}</p>
                     {moreMenu.selectionActions.map((action) => (
                       <BrowserToolbarActionMenuItem
                         key={action.id}

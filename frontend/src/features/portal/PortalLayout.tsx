@@ -2,6 +2,9 @@
  * Copyright (c) 2025 Laurent Barbe
  * Licensed under the Apache License, Version 2.0
  */
+import {
+  messageWorkspace,
+} from "../../uiMessages";
 import { useMemo, type ReactNode } from "react";
 import AccountControlIcon from "../../components/AccountControlIcon";
 import Layout from "../../components/Layout";
@@ -31,12 +34,7 @@ function usePortalNavSections(): SidebarSection[] {
   return useMemo(
     () => [
       {
-        label: t({
-          en: "Workspace",
-          fr: "Espace de travail",
-          de: "Arbeitsbereich",
-          zh: "工作区",
-        }),
+        label: t(messageWorkspace),
         links: [
           {
             to: "/portal",

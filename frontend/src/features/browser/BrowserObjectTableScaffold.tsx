@@ -1,3 +1,12 @@
+import {
+  messageParentFolder,
+} from "../../uiMessages";
+import {
+  browserSelectAll,
+  browserName,
+  browserActions,
+} from "./browserMessages";
+import { useI18n } from "../../i18n";
 import type {
   MouseEventHandler,
   PointerEventHandler,
@@ -61,6 +70,7 @@ export function BrowserObjectTableScaffold({
   onResetColumnWidth,
   onHeaderContextMenu,
 }: BrowserObjectTableScaffoldProps) {
+  const { t } = useI18n();
   return (
     <table
       className="ui-data-table ui-data-table-fixed ui-browser-table min-w-full border-separate border-spacing-0 divide-y divide-slate-200 dark:divide-slate-800"
@@ -86,25 +96,25 @@ export function BrowserObjectTableScaffold({
       >
         <tr>
           <th
-            aria-label="Select all"
+            aria-label={t(browserSelectAll)}
             className={` ${headerPaddingClasses} !align-middle text-left `}
           >
             <label className="ui-list-selection"><input
               type="checkbox"
               checked={allSelected}
               onChange={onToggleAll}
-              aria-label="Select all"
+              aria-label={t(browserSelectAll)}
               className={uiCheckboxClass}
               disabled={selectionDisabled}
             /></label>
           </th>
           <th
-            aria-label="Name"
+            aria-label={t(browserName)}
             className={`relative  ${headerPaddingClasses} !align-middle text-left `}
           >
             {nameHeader}
             <BrowserColumnResizeHandle
-              label="Name"
+              label={t(browserName)}
               active={activeResizeColumnId === "name"}
               onPointerDown={onStartResize("name")}
               onReset={() => onResetColumnWidth("name")}
@@ -139,10 +149,10 @@ export function BrowserObjectTableScaffold({
             </th>
           ))}
           <th
-            aria-label="Actions"
+            aria-label={t(browserActions)}
             className={` ${headerPaddingClasses} !align-middle text-right `}
           >
-            <span className="inline-flex h-6 items-center">Actions</span>
+            <span className="inline-flex h-6 items-center">{t(browserActions)}</span>
           </th>
         </tr>
       </thead>
@@ -170,6 +180,7 @@ export function BrowserParentFolderRow({
   iconBoxClasses,
   onGoUp,
 }: BrowserParentFolderRowProps) {
+  const { t } = useI18n();
   return (
     <tr
       className={`${rowHeightClasses} text-slate-600 transition-colors hover:bg-slate-50/70 dark:text-slate-300 dark:hover:bg-slate-800/40`}
@@ -189,7 +200,7 @@ export function BrowserParentFolderRow({
           >
             <UpIcon className="h-3.5 w-3.5" />
           </span>
-          <span className="truncate">Parent folder</span>
+          <span className="truncate">{t(messageParentFolder)}</span>
         </button>
       </td>
       {columns.map((column) => (
