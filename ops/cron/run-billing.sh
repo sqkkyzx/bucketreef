@@ -18,7 +18,9 @@ case "$day_offset" in
     ;;
 esac
 
-target_day="$(date -u -d "${day_offset} day ago" +%F)"
+current_epoch="$(date -u +%s)"
+target_epoch="$((current_epoch - day_offset * 86400))"
+target_day="$(date -u -D %s -d "${target_epoch}" +%F)"
 
 curl \
   --fail \

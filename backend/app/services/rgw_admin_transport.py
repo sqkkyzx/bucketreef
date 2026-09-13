@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from threading import Lock
 from time import perf_counter
 from typing import Any, Dict, Optional
+from urllib.parse import urlsplit
 
 import requests
 from requests_aws4auth import AWS4Auth
@@ -17,6 +18,12 @@ from app.core.sensitive_data import sanitize_error_detail, sanitized_error_log_d
 
 settings = get_settings()
 logger = logging.getLogger(__name__)
+
+
+class _RGWAdminAWS4Auth(AWS4Auth):
+    def __call__(self, request: Any) -> Any:
+        request.headers["Host"] = urlsplit(str(request.url)).netloc
+        return super().__call__(request)
 
 
 class RGWAdminError(RuntimeError):
@@ -53,7 +60,12 @@ class RGWAdminTransport:
         self.verify_tls = bool(verify_tls)
         if not self.access_key or not self.secret_key:
             raise RGWAdminError("RGW admin credentials are not configured")
-        self.auth = AWS4Auth(self.access_key, self.secret_key, self.region, "s3")
+        self.auth = _RGWAdminAWS4Auth(
+            self.access_key,
+            self.secret_key,
+            self.region,
+            "s3",
+        )
         self.session = requests.Session()
         self.request_timeout_seconds = (
             float(request_timeout_seconds)
