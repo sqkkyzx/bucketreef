@@ -94,3 +94,27 @@ Current budget calibration (2026-08-02):
 - `ui_user` -> `/manager` by default
 - `ui_user` with only portal rights -> `/portal`
 - `ui_none` or missing role -> `/unauthorized`
+
+## Simplified Chinese localization
+
+The existing `useI18n` message objects and `profileMessages` include `zh` for
+Simplified Chinese. Keep translations alongside `en`, `fr` and `de`; no separate
+translation service or dependency is required. Missing translations fall back
+to English. `UiLanguage` and backend user API validation both accept `zh`, and
+profile preferences persist it through the existing user settings API.
+
+Automatic browser detection recognizes `zh`, `zh-CN`, `zh-SG` and `zh-Hans`.
+Traditional Chinese locales continue to the next supported browser language.
+The document language is `zh-Hans`; Portal regional formatting uses `zh-CN`
+without changing the billing currency or timestamps.
+
+Validate coverage and profile behavior with `npm run check`. Browser smoke
+checks use isolated fixture API responses (no live storage credentials):
+
+```bash
+NO_PROXY=localhost,127.0.0.1 npx playwright test -c playwright.docs.config.ts chineseVisualQa.spec.ts
+```
+
+The browser check covers Portal routes, profile reload, the tool configuration
+dialog, desktop/mobile widths and light/dark themes. It does not test real S3
+operations. Existing English-only surfaces are outside this localization pass.

@@ -24,7 +24,7 @@ Use this page when you need to adjust personal UI preferences, manage your sign-
    The name and profile image each open a short **Edit** dialog. Image source
    and file selections stay in draft until **Save**. Unsaved edits are protected
    when closing dialogs, changing tabs, leaving the route or using browser history.
-   English, French and German are available; **Automatic (browser)** follows your
+   English, French, German and Simplified Chinese are available; **Automatic (browser)** follows your
    browser language. If saving server preferences fails, the choices remain in
    the form and local theme changes are not applied.
 
@@ -113,3 +113,8 @@ the account menu in the topbar.
   <img class="docs-themed-shot__image docs-themed-shot__image--light" data-docs-shot-variant="light" src="../../assets/screenshots/user/user-overview.light.png" alt="User profile with preferences and private S3 connections" loading="lazy">
   <img class="docs-themed-shot__image docs-themed-shot__image--dark" data-docs-shot-variant="dark" src="../../assets/screenshots/user/user-overview.dark.png" alt="User profile with preferences and private S3 connections" loading="lazy">
 </div>
+
+When your browser uses Traditional Chinese, automatic selection falls through
+to its next supported language. You can select **简体中文** explicitly to use
+Simplified Chinese. Translations cover the Portal and shared profile; existing
+English-only controls retain their current language.

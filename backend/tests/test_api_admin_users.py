@@ -538,14 +538,15 @@ PROFILE_PNG = base64.b64decode(
 )
 
 
-def test_admin_updates_account_preferences_without_changing_access_or_session_version(client, db_session, seed_user_account):
+@pytest.mark.parametrize("language", ["de", "zh"])
+def test_admin_updates_account_preferences_without_changing_access_or_session_version(client, db_session, seed_user_account, language):
     user, _ = seed_user_account
     version = user.auth_version
     response = client.put(f"/api/admin/users/{user.id}", json={
-        "ui_language": "de", "quota_alerts_enabled": False, "avatar_preference": "initials",
+        "ui_language": language, "quota_alerts_enabled": False, "avatar_preference": "initials",
     })
     assert response.status_code == 200, response.text
-    assert response.json()["ui_language"] == "de"
+    assert response.json()["ui_language"] == language
     assert response.json()["quota_alerts_enabled"] is False
     assert response.json()["avatar"]["source"] == "initials"
     db_session.refresh(user)
@@ -554,7 +555,7 @@ def test_admin_updates_account_preferences_without_changing_access_or_session_ve
     # An unrelated edit preserves preferences; explicit null restores automatic language.
     client.put(f"/api/admin/users/{user.id}", json={"full_name": "New name"})
     db_session.refresh(user)
-    assert user.ui_language == "de"
+    assert user.ui_language == language
     assert user.quota_alerts_enabled is False
     assert user.avatar_preference == "initials"
     cleared = client.put(f"/api/admin/users/{user.id}", json={"ui_language": None})

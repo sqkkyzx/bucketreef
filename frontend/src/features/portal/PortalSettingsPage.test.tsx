@@ -282,10 +282,11 @@ describe("Portal project settings", () => {
       "Ein Ursprung pro Zeile oder * für alle Ursprünge.",
       "Derzeit angewendet: 90 Tage",
     ],
+    ["zh", "设置", "自定义 — CORS 来源", "配置", "每行一个来源，或使用 * 表示所有来源。", "当前生效: 90天"],
   ])(
     "translates Portal and its dialog in %s",
     async (locale, title, customize, configure, help, days) => {
-      setSessionUserCache({ id: 1, ui_language: locale as "en" | "fr" | "de" });
+      setSessionUserCache({ id: 1, ui_language: locale as "en" | "fr" | "de" | "zh" });
       render(
         <LanguageProvider>
           <PortalSettingsPage />

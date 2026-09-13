@@ -13,6 +13,7 @@ const link = {
   created_at: "2026-09-10T10:00:00Z", expires_at: null, status: "Active",
 };
 const cases = [
+  { language: "zh", close: "关闭", cancel: "取消", progress: "正在撤销…", impact: "影响" },
   { language: "en", close: "Close", cancel: "Cancel", progress: "Revoking...", impact: "Impact" },
   { language: "fr", close: "Fermer", cancel: "Annuler", progress: "Révocation...", impact: "Conséquences" },
   { language: "de", close: "Schließen", cancel: "Abbrechen", progress: "Wird widerrufen...", impact: "Auswirkungen" },

@@ -30,7 +30,10 @@ describe("compact profile preferences", () => {
   });
   afterEach(() => { cleanup(); setSessionUserCache(null); });
 
-  it("applies local preferences only after the server commits, and translates the result", async () => {
+  it.each([
+    ["de", "Einstellungen gespeichert."],
+    ["zh", "偏好设置已保存。"],
+  ])("applies preferences only after the server commits (%s)", async (language, savedMessage) => {
     const user = userEvent.setup();
     let finish!: (value: unknown) => void;
     mocks.update.mockReturnValue(new Promise(resolve => { finish = resolve; }));
@@ -39,7 +42,7 @@ describe("compact profile preferences", () => {
     await screen.findByText("Test Person");
     expect(screen.queryByRole("button", { name: "Save preferences" })).not.toBeInTheDocument();
     await user.selectOptions(screen.getByRole("combobox", { name: "Theme" }), "dark");
-    await user.selectOptions(screen.getByRole("combobox", { name: "Language" }), "de");
+    await user.selectOptions(screen.getByRole("combobox", { name: "Language" }), language);
     const tagsInitially = readSelectorTagsPreference();
     await user.click(screen.getByRole("switch", { name: "Show selector tags" }));
     await user.click(screen.getByRole("switch", { name: "Quota alert emails" }));
@@ -48,12 +51,12 @@ describe("compact profile preferences", () => {
     await user.click(screen.getByRole("button", { name: "Save preferences" }));
     expect(mocks.theme).not.toHaveBeenCalled();
     expect(readSelectorTagsPreference()).toBe(tagsInitially);
-    expect(mocks.update).toHaveBeenCalledWith(expect.objectContaining({ quota_alerts_enabled: false }));
+    expect(mocks.update).toHaveBeenCalledWith(expect.objectContaining({ quota_alerts_enabled: false, ui_language: language }));
     expect(screen.getByRole("heading", { name: "Identity" })).toBeInTheDocument();
-    await act(async () => finish({ ...profile, ui_language: "de" }));
+    await act(async () => finish({ ...profile, ui_language: language }));
     expect(mocks.theme).toHaveBeenCalledWith("dark");
     expect(readSelectorTagsPreference()).toBe(!tagsInitially);
-    expect(await screen.findByText("Einstellungen gespeichert.")).toBeInTheDocument();
+    expect(await screen.findByText(savedMessage)).toBeInTheDocument();
     expect(dirty).toHaveBeenLastCalledWith(false);
   });
 
@@ -134,15 +137,15 @@ describe("compact profile preferences", () => {
     await waitFor(() => expect(screen.getByRole("combobox", { name: "Default workspace" })).toHaveValue("browser"));
   });
 
-  it.each(["en", "fr", "de"] as const)("has translated accessible controls and no a11y violations in %s", async language => {
+  it.each(["en", "fr", "de", "zh"] as const)("has translated accessible controls and no a11y violations in %s", async language => {
     mocks.fetch.mockResolvedValue({ ...profile, ui_language: language });
     setSessionUserCache({ role: "ui_admin", authType: "password", ui_language: language });
     const { container } = renderPage();
     await screen.findByText("Test Person");
-    const names = { en: "Language", fr: "Langue", de: "Sprache" };
+    const names = { en: "Language", fr: "Langue", de: "Sprache", zh: "语言" };
     expect(screen.getByRole("combobox", { name: names[language] })).toBeInTheDocument();
     expect(await axe(container)).toHaveNoViolations();
-    const edit = { en: "Edit name", fr: "Modifier le nom", de: "Namen bearbeiten" };
+    const edit = { en: "Edit name", fr: "Modifier le nom", de: "Namen bearbeiten", zh: "编辑姓名" };
     fireEvent.click(screen.getByRole("button", { name: edit[language] }));
     expect(within(screen.getByRole("dialog")).getByRole("textbox")).toHaveAccessibleName();
   });

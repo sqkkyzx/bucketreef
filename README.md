@@ -119,3 +119,43 @@ See the published documentation on GitHub Pages:
 ## License
 
 Apache-2.0 — see `LICENSE`.
+
+## Fork images (简体中文版本)
+
+This fork publishes its own images through **Publish fork images to GHCR** in
+GitHub Actions. The upstream `publish-ghcr.yml` remains a metadata-only workflow;
+upstream official releases continue to use GitLab CI.
+
+| Component | Fork image |
+| --- | --- |
+| Backend | `ghcr.io/sqkkyzx/bucketreef-backend:latest` |
+| Frontend | `ghcr.io/sqkkyzx/bucketreef-frontend:latest` |
+| Scheduler | `ghcr.io/sqkkyzx/bucketreef-scheduler:latest` |
+
+- Changes under `backend/`, `frontend/`, `scheduler/`, `ops/cron/`, or the image
+  workflow on `main` trigger all three builds after `npm run check` passes.
+  Each image supports `linux/amd64` and `linux/arm64`.
+- Main builds publish `main`, `latest`, and `sha-<full commit SHA>` tags.
+- Pushing a `v*` Git tag publishes that exact tag (for example `v0.2.4-zh.1`)
+  plus the SHA tag, without changing `latest`.
+- **Run workflow** builds the selected branch or tag. Only `main` updates
+  `latest`; other branches receive `branch-<sanitized branch name>` and the SHA
+  tag. Manually selecting a non-`v*` tag publishes only the SHA tag.
+- Authentication uses the repository's `GITHUB_TOKEN` with `packages: write`;
+  no additional PAT or registry secret is required. If fork workflows are
+  disabled, enable them in the repository's **Actions** tab first.
+- Newly created GHCR packages may be private. To allow unauthenticated pulls,
+  set each package's visibility to public in its package settings. If an image
+  name already exists, grant this repository Actions access to that package.
+
+Wait for all three publish jobs to succeed before deploying. Use matching SHA
+or release tags for a consistent set of images. The Chinese locale changes
+require both the fork frontend and backend. Build and publish does not update
+an existing deployment automatically.
+
+The workflow is restricted to `sqkkyzx/bucketreef`; change that guard when
+reusing it in another fork. To validate workflow syntax locally, run:
+
+```bash
+actionlint .github/workflows/publish-fork-images.yml
+```
