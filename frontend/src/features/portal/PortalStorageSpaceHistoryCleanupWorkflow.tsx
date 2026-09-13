@@ -2,6 +2,9 @@
  * Copyright (c) 2026 Laurent Barbe
  * Licensed under the Apache License, Version 2.0
  */
+import {
+  messageCancel,
+} from "../../uiMessages";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   portalStorageSpaceVersionCleanupConfirmationPhrase,
@@ -335,7 +338,7 @@ export default function PortalStorageSpaceHistoryCleanupWorkflow({
           >
             {result
               ? t({ en: "Done", fr: "Terminer", de: "Fertig", zh: "完成" })
-              : t({ en: "Cancel", fr: "Annuler", de: "Abbrechen", zh: "取消" })}
+              : t(messageCancel)}
           </UiButton>
           {running ? (
             <UiButton variant="danger" onClick={() => abortRef.current?.abort()}>

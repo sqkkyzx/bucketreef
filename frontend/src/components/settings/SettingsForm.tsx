@@ -1,4 +1,8 @@
 /* Copyright (c) 2026 Laurent Barbe; Licensed under the Apache License, Version 2.0 */
+import {
+  messageCancel,
+} from "../../uiMessages";
+import { useI18n } from "../../i18n";
 import type { FormEventHandler, ReactNode } from "react";
 import { SettingsActionBar, SettingsButton } from "./SettingsControls";
 import ModalActions from "../ModalActions";
@@ -21,6 +25,8 @@ type SettingsFormProps = {
 export default function SettingsForm({
   label, children, busy, disabled = false, submitDisabled = false, onSubmit, onCancel, submitLabel, busyLabel, actions, presentation = "page",
 }: SettingsFormProps) {
+  const { t } = useI18n();
+
   const Actions = presentation === "dialog" ? ModalActions : SettingsActionBar;
   return (
     <form aria-label={label} className={presentation === "dialog" ? "settings-stack settings-form" : undefined} noValidate onSubmit={(event) => {
@@ -30,7 +36,7 @@ export default function SettingsForm({
       <fieldset disabled={busy || disabled} className={presentation === "dialog" ? "settings-fields" : "min-w-0"}>{children}</fieldset>
       <Actions>
         {actions ?? <>
-          <SettingsButton variant="secondary" disabled={busy} onClick={onCancel}>Cancel</SettingsButton>
+          <SettingsButton variant="secondary" disabled={busy} onClick={onCancel}>{t(messageCancel)}</SettingsButton>
           <SettingsButton type="submit" disabled={busy || disabled || submitDisabled}>{busy ? busyLabel : submitLabel}</SettingsButton>
         </>}
       </Actions>

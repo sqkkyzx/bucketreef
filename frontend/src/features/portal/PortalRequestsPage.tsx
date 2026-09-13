@@ -2,6 +2,9 @@
  * Copyright (c) 2026 Laurent Barbe
  * Licensed under the Apache License, Version 2.0
  */
+import {
+  messageRefresh,
+} from "../../uiMessages";
 import { ListActionButton } from "../../components/list/ListControls";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
@@ -636,7 +639,7 @@ export default function PortalRequestsPage() {
               onClick={handleRefresh}
               loading={busy === "refresh"}
             >
-              {t({ en: "Refresh", fr: "Actualiser", de: "Aktualisieren", zh: "刷新" })}
+              {t(messageRefresh)}
             </ListActionButton>
           ) : null
         }

@@ -1,4 +1,12 @@
 /* Copyright (c) 2026 Laurent Barbe; Licensed under the Apache License, Version 2.0 */
+import {
+  adminRgwUserDetails,
+  adminRgwEmail,
+  adminRgwTags,
+  adminRgwAddATagForThisRGWUser,
+  adminRgwLoadingExistingTagCatalog,
+} from "./adminRgwMessages";
+import { useI18n } from "../../i18n";
 import type { ComponentProps } from "react";
 import UiInput from "../../components/ui/UiInput";
 import UiInlineMessage from "../../components/ui/UiInlineMessage";
@@ -20,23 +28,54 @@ export default function AdminRgwCreateFields({kind, value, onChange, errors, bus
   endpoint: Omit<ComponentProps<typeof AdminRgwEndpointField>, "value" | "onChange" | "error">;
   tags: { catalog: ComponentProps<typeof UiTagEditor>["catalog"]; loading: boolean; error: string | null };
 }) {
+  const { t } = useI18n();
   return <>
-    <SettingsSection presentation="compact" title={kind === "account" ? "Account details" : "User details"}>
+    <SettingsSection presentation="compact" title={kind === "account" ? t({
+      en: "Account details",
+      fr: "Détails du compte",
+      de: "Kontodetails",
+      zh: "账户详情",
+    }) : t(adminRgwUserDetails)}>
       <div className="settings-fields">
         <div className="grid gap-3 md:grid-cols-2">
-          <UiInput label={kind === "account" ? "Account name *" : "Display name *"} name="name" value={value.name}
+          <UiInput label={kind === "account" ? t({
+            en: "Account name *",
+            fr: "Nom du compte *",
+            de: "Kontoname *",
+            zh: "账户名称 *",
+          }) : t({
+            en: "Display name *",
+            fr: "Nom affiché *",
+            de: "Anzeigename *",
+            zh: "显示名称 *",
+          })} name="name" value={value.name}
             error={errors.name} required onChange={event => onChange({name: event.target.value})} />
-          {kind === "user" && <UiInput label="UID (optional)" name="uid" value={value.uid ?? ""} placeholder="user-123"
+          {kind === "user" && <UiInput label={t({
+            en: "UID (optional)",
+            fr: "UID (facultatif)",
+            de: "UID (optional)",
+            zh: "UID（可选）",
+          })} name="uid" value={value.uid ?? ""} placeholder="user-123"
             onChange={event => onChange({uid: event.target.value})} />}
-          <UiInput label={kind === "account" ? "Email contact" : "Email"} name="email" type="email" value={value.email}
+          <UiInput label={kind === "account" ? t({
+            en: "Email contact",
+            fr: "E-mail de contact",
+            de: "Kontakt-E-Mail",
+            zh: "联系邮箱",
+          }) : t(adminRgwEmail)} name="email" type="email" value={value.email}
             error={errors.email} placeholder="contact@example.com" onChange={event => onChange({email: event.target.value})} />
         </div>
         <AdminRgwEndpointField {...endpoint} value={value.storage_endpoint_id} error={errors.storage_endpoint_id}
           onChange={storage_endpoint_id => onChange({storage_endpoint_id})} />
         {tags.error && <UiInlineMessage tone="warning">{tags.error}</UiInlineMessage>}
-        <UiTagEditor label="Tags" tags={value.tags} catalog={tags.catalog} disabled={busy}
-          onChange={next => onChange({tags: next})} placeholder={kind === "account" ? "Add a tag for this account" : "Add a tag for this RGW user"}
-          hint={tags.loading ? "Loading existing tag catalog..." : undefined} />
+        <UiTagEditor label={t(adminRgwTags)} tags={value.tags} catalog={tags.catalog} disabled={busy}
+          onChange={next => onChange({tags: next})} placeholder={kind === "account" ? t({
+            en: "Add a tag for this account",
+            fr: "Ajouter une étiquette à ce compte",
+            de: "Tag für dieses Konto hinzufügen",
+            zh: "为此账户添加标签",
+          }) : t(adminRgwAddATagForThisRGWUser)}
+          hint={tags.loading ? t(adminRgwLoadingExistingTagCatalog) : undefined} />
       </div>
     </SettingsSection>
     <AdminQuotaFields compact errors={errors} storageValue={value.quota_max_size_gb} storageUnit={value.quota_max_size_unit}

@@ -2,6 +2,30 @@
  * Copyright (c) 2026 Laurent Barbe
  * Licensed under the Apache License, Version 2.0
  */
+import {
+  messageUploadFiles,
+  messageUploadFolder,
+  messageNewFolder,
+  messageRefresh,
+  messageHideDeletedFiles,
+  messageShowDeletedFiles,
+  messageRestoreDeletedFilesInThisFolder,
+  messageAdvanced,
+} from "../../uiMessages";
+import {
+  browserDownloadFolder,
+  browserDownload,
+  browserVersions,
+  browserRestoreToDate,
+  browserOpen,
+  browserCopyURL,
+  browserCopy,
+  browserCut,
+  browserBulkAttributes,
+  browserDelete,
+} from "./browserMessages";
+import { translate } from "../../i18n";
+import type { UiLanguage } from "../../components/language";
 import { getSelectionInfo } from "./browserUtils";
 import type { BrowserItem, ClipboardState } from "./browserTypes";
 import {
@@ -78,6 +102,7 @@ type BrowserItemPrimaryAction =
   | { kind: "none" };
 
 type ResolveBrowserActionsInput = {
+  locale?: UiLanguage;
   scope: BrowserActionScope;
   items?: BrowserItem[];
   bucketName: string;
@@ -257,19 +282,35 @@ export const getVisibleBrowserActions = (actions: BrowserActionMap, ids: readonl
 export function runBrowserAction(
   action: BrowserActionState,
   handlers: Partial<Record<BrowserActionId, BrowserActionHandler>>,
+  locale: UiLanguage = "en",
 ): BrowserActionDispatcherResult {
   if (!action.visible) {
-    return { executed: false, reason: "This action is not available in the current Browser profile." };
+    return { executed: false, reason: translate({
+      en: "This action is not available in the current Browser profile.",
+      fr: "Cette action n’est pas disponible dans le profil actuel de l’explorateur.",
+      de: "Diese Aktion ist im aktuellen Browserprofil nicht verfügbar.",
+      zh: "当前浏览器配置不支持此操作。",
+    }, locale) };
   }
   if (!action.enabled) {
     return {
       executed: false,
-      reason: action.disabledReason ?? "This action is temporarily unavailable.",
+      reason: action.disabledReason ?? translate({
+        en: "This action is temporarily unavailable.",
+        fr: "Cette action est temporairement indisponible.",
+        de: "Diese Aktion ist vorübergehend nicht verfügbar.",
+        zh: "此操作暂时不可用。",
+      }, locale),
     };
   }
   const handler = handlers[action.id];
   if (!handler) {
-    return { executed: false, reason: "This action is not supported from this surface." };
+    return { executed: false, reason: translate({
+      en: "This action is not supported from this surface.",
+      fr: "Cette action n’est pas prise en charge depuis cette interface.",
+      de: "Diese Aktion wird in dieser Oberfläche nicht unterstützt.",
+      zh: "当前界面不支持此操作。",
+    }, locale) };
   }
   void handler();
   return { executed: true };
@@ -385,6 +426,7 @@ export function resolveItemPrimaryAction(
 }
 
 export const resolveBrowserActions = ({
+  locale = "en",
   scope,
   items = [],
   bucketName,
@@ -421,15 +463,25 @@ export const resolveBrowserActions = ({
   const isPrimaryFile = primary?.type === "file";
   const isPrimaryFolder = primary?.type === "folder";
   const isPrimaryDeleted = Boolean(primary?.isDeleted);
-  const pasteLabel = clipboardMode === "move" ? "Paste (Move)" : "Paste";
+  const pasteLabel = clipboardMode === "move" ? translate({
+    en: "Paste (Move)",
+    fr: "Coller (déplacer)",
+    de: "Einfügen (verschieben)",
+    zh: "粘贴（移动）",
+  }, locale) : translate({
+    en: "Paste",
+    fr: "Coller",
+    de: "Einfügen",
+    zh: "粘贴",
+  }, locale);
   const downloadLabel =
     scope === "item"
       ? isPrimaryFolder
-        ? "Download folder"
-        : "Download"
+        ? translate(browserDownloadFolder, locale)
+        : translate(browserDownload, locale)
       : selectionInfo.canDownloadFolder
-        ? "Download folder"
-        : "Download";
+        ? translate(browserDownloadFolder, locale)
+        : translate(browserDownload, locale);
 
   const finalize = () => {
     const resolved = applyBrowserFunctionalPolicy(
@@ -446,7 +498,12 @@ export const resolveBrowserActions = ({
           ? {
               ...action,
               enabled: false,
-              disabledReason: "Wait for the current operation to finish.",
+              disabledReason: translate({
+                en: "Wait for the current operation to finish.",
+                fr: "Attendez la fin de l’opération en cours.",
+                de: "Warten Sie, bis der aktuelle Vorgang abgeschlossen ist.",
+                zh: "请等待当前操作完成。",
+              }, locale),
             }
           : action,
       ]),
@@ -460,22 +517,27 @@ export const resolveBrowserActions = ({
   if (scope === "path") {
     setState("details", {
       section: "path",
-      label: "Path details",
+      label: translate({
+        en: "Path details",
+        fr: "Détails du chemin",
+        de: "Pfaddetails",
+        zh: "路径详情",
+      }, locale),
       visible: functionalProfile === "advanced" && hasBucket,
       enabled: functionalProfile === "advanced" && canUseContextActions,
     });
     setState("uploadFiles", {
-      label: "Upload files",
+      label: translate(messageUploadFiles, locale),
       visible: true,
       enabled: canUseContextActions,
     });
     setState("uploadFolder", {
-      label: "Upload folder",
+      label: translate(messageUploadFolder, locale),
       visible: true,
       enabled: canUseContextActions,
     });
     setState("newFolder", {
-      label: "New folder",
+      label: translate(messageNewFolder, locale),
       visible: true,
       enabled: canUseContextActions,
     });
@@ -485,68 +547,123 @@ export const resolveBrowserActions = ({
       enabled: canPaste,
       disabledReason: canPaste
         ? undefined
-        : "Clipboard is empty or unavailable in this context.",
+        : translate({
+          en: "Clipboard is empty or unavailable in this context.",
+          fr: "Le presse-papiers est vide ou indisponible dans ce contexte.",
+          de: "Die Zwischenablage ist leer oder in diesem Kontext nicht verfügbar.",
+          zh: "剪贴板为空或在当前上下文中不可用。",
+        }, locale),
     });
     setState("copyPath", {
-      label: "Copy path",
+      label: translate({
+        en: "Copy path",
+        fr: "Copier le chemin",
+        de: "Pfad kopieren",
+        zh: "复制路径",
+      }, locale),
       visible: true,
       enabled: Boolean(currentPath),
     });
     setState("refresh", {
-      label: "Refresh",
+      label: translate(messageRefresh, locale),
       visible: true,
       enabled: canUseContextActions && !refreshPending,
       disabledReason: refreshPending
-        ? "Objects are already loading."
+        ? translate({
+          en: "Objects are already loading.",
+          fr: "Le chargement des objets est déjà en cours.",
+          de: "Objekte werden bereits geladen.",
+          zh: "对象正在加载中。",
+        }, locale)
         : undefined,
     });
     setState("multipartUploads", {
-      label: "Multipart uploads",
+      label: translate({
+        en: "Multipart uploads",
+        fr: "Téléversements multiparties",
+        de: "Mehrteilige Uploads",
+        zh: "分段上传",
+      }, locale),
       visible: multipartUploadsAvailable,
       enabled: multipartUploadsAvailable && canUseContextActions,
       disabledReason: canUseContextActions
         ? undefined
-        : "Select a bucket to inspect multipart uploads.",
+        : translate({
+          en: "Select a bucket to inspect multipart uploads.",
+          fr: "Sélectionnez un bucket pour consulter les téléversements multiparties.",
+          de: "Wählen Sie einen Bucket, um mehrteilige Uploads anzuzeigen.",
+          zh: "请选择存储桶以查看分段上传。",
+        }, locale),
     });
     setState("configureBucket", {
-      label: bucketConfigurationReadOnly ? "Bucket details" : "Bucket settings",
+      label: bucketConfigurationReadOnly ? translate({
+        en: "Bucket details",
+        fr: "Détails du bucket",
+        de: "Bucket-Details",
+        zh: "存储桶详情",
+      }, locale) : translate({
+        en: "Bucket settings",
+        fr: "Paramètres du bucket",
+        de: "Bucket-Einstellungen",
+        zh: "存储桶设置",
+      }, locale),
       visible: bucketConfigurationAvailable,
       enabled: bucketConfigurationAvailable && canUseContextActions,
       disabledReason: canUseContextActions
         ? undefined
-        : "Select a bucket to configure it.",
+        : translate({
+          en: "Select a bucket to configure it.",
+          fr: "Sélectionnez un bucket pour le configurer.",
+          de: "Wählen Sie einen Bucket zur Konfiguration.",
+          zh: "请选择要配置的存储桶。",
+        }, locale),
     });
     setState("toggleShowFolders", {
-      label: showFolderItems ? "Hide folders" : "Show folders",
+      label: showFolderItems ? translate({
+        en: "Hide folders",
+        fr: "Masquer les dossiers",
+        de: "Ordner ausblenden",
+        zh: "隐藏文件夹",
+      }, locale) : translate({
+        en: "Show folders",
+        fr: "Afficher les dossiers",
+        de: "Ordner anzeigen",
+        zh: "显示文件夹",
+      }, locale),
       visible: true,
       enabled: true,
     });
     if (versioningEnabled) {
       setState("versions", {
-        label: "Versions",
+        label: translate(browserVersions, locale),
         visible: true,
         enabled: canUseContextActions,
       });
       setState("restoreToDate", {
-        label: "Restore to date",
+        label: translate(browserRestoreToDate, locale),
         visible: true,
         enabled: canUseContextActions,
       });
       setState("cleanOldVersions", {
-        label: "Clean old versions",
+        label: translate({
+          en: "Clean old versions",
+          fr: "Nettoyer les anciennes versions",
+          de: "Alte Versionen bereinigen",
+          zh: "清理旧版本",
+        }, locale),
         visible: true,
         enabled: canUseContextActions,
       });
       setState("toggleShowDeleted", {
         label: showDeletedObjects
-          ? "Hide deleted files"
-          : "Show deleted files",
+          ? translate(messageHideDeletedFiles, locale)
+          : translate(messageShowDeletedFiles, locale),
         visible: true,
         enabled: true,
       });
       if (restoreAvailable && currentPath) {
         setState("restore", {
-          label: "Restore deleted files in this folder",
+          label: translate(messageRestoreDeletedFilesInThisFolder, locale),
           visible: true,
           enabled: canUseContextActions,
         });
@@ -557,7 +674,12 @@ export const resolveBrowserActions = ({
 
   if (scope === "item") {
     setState("details", {
-      label: "Details",
+      label: translate({
+        en: "Details",
+        fr: "Détails",
+        de: "Details",
+        zh: "详情",
+      }, locale),
       visible:
         isSingle &&
         Boolean(primary) &&
@@ -569,26 +691,36 @@ export const resolveBrowserActions = ({
     });
     if (isPrimaryFile && versioningEnabled) {
       setState("versions", {
-        label: "Versions",
+        label: translate(browserVersions, locale),
         visible: true,
         enabled: canUseContextActions,
       });
     }
     if (isPrimaryFolder) {
       setState("open", {
-        label: "Open",
+        label: translate(browserOpen, locale),
         visible: true,
         enabled: hasBucket && selectionInfo.canOpen,
       });
     }
     if (isPrimaryFile) {
       setState("preview", {
-        label: "Preview",
+        label: translate({
+          en: "Preview",
+          fr: "Aperçu",
+          de: "Vorschau",
+          zh: "预览",
+        }, locale),
         visible: previewAvailable,
         enabled: canUseContextActions && !isPrimaryDeleted,
       });
       setState("properties", {
-        label: "Properties",
+        label: translate({
+          en: "Properties",
+          fr: "Propriétés",
+          de: "Eigenschaften",
+          zh: "属性",
+        }, locale),
         visible: true,
         enabled: canUseContextActions && (!isPrimaryDeleted || versioningEnabled),
       });
@@ -603,13 +735,18 @@ export const resolveBrowserActions = ({
     if (isPrimaryFile && !isPrimaryDeleted) {
       if (publicLinkAvailable) {
         setState("createPublicLink", {
-          label: "Create public link",
+          label: translate({
+            en: "Create public link",
+            fr: "Créer un lien public",
+            de: "Öffentlichen Link erstellen",
+            zh: "创建公开链接",
+          }, locale),
           visible: true,
           enabled: canUseContextActions,
         });
       }
       setState("copyUrl", {
-        label: "Copy URL",
+        label: translate(browserCopyURL, locale),
         visible: true,
         enabled: canUseContextActions && !copyUrlDisabled,
         disabledReason: copyUrlDisabled ? copyUrlDisabledReason : undefined,
@@ -617,36 +754,41 @@ export const resolveBrowserActions = ({
     }
     if (isPrimaryFile && isPrimaryDeleted && versioningEnabled && restoreAvailable) {
       setState("restore", {
-        label: "Restore",
+        label: translate({
+          en: "Restore",
+          fr: "Restaurer",
+          de: "Wiederherstellen",
+          zh: "恢复",
+        }, locale),
         visible: true,
         enabled: canUseContextActions,
       });
     }
     if (selectionInfo.items.length > 0) {
       setState("copy", {
-        label: "Copy",
+        label: translate(browserCopy, locale),
         visible: true,
         enabled: hasBucket && selectionInfo.canCopyItems,
       });
       setState("cut", {
-        label: "Cut",
+        label: translate(browserCut, locale),
         visible: true,
         enabled: hasBucket && selectionInfo.canCutItems,
       });
       setState("bulkAttributes", {
-        label: "Bulk attributes",
+        label: translate(browserBulkAttributes, locale),
         visible: true,
         enabled: canUseContextActions && selectionInfo.canBulkAttributes,
       });
       setState("delete", {
-        label: "Delete",
+        label: translate(browserDelete, locale),
         visible: true,
         enabled: canUseContextActions && selectionInfo.canDelete,
       });
     }
     if (versioningEnabled) {
       setState("restoreToDate", {
-        label: "Restore to date",
+        label: translate(browserRestoreToDate, locale),
         visible: true,
         enabled: canUseContextActions,
       });
@@ -664,12 +806,17 @@ export const resolveBrowserActions = ({
     }
     if (isSingle && selectionInfo.primary) {
       setState("details", {
-        label: "Open full details",
+        label: translate({
+          en: "Open full details",
+          fr: "Ouvrir les détails complets",
+          de: "Vollständige Details öffnen",
+          zh: "打开完整详情",
+        }, locale),
         visible: true,
         enabled: canUseContextActions,
       });
       setState("open", {
-        label: "Open",
+        label: translate(browserOpen, locale),
         visible: true,
         enabled:
           hasBucket &&
@@ -679,42 +826,42 @@ export const resolveBrowserActions = ({
     }
     if (selectionInfo.canCopyUrl && selectionInfo.primary) {
       setState("copyUrl", {
-        label: "Copy URL",
+        label: translate(browserCopyURL, locale),
         visible: true,
         enabled: canUseContextActions && !copyUrlDisabled,
         disabledReason: copyUrlDisabled ? copyUrlDisabledReason : undefined,
       });
     }
     setState("copy", {
-      label: "Copy",
+      label: translate(browserCopy, locale),
       visible: true,
       enabled: hasBucket && selectionInfo.canCopyItems,
     });
     setState("cut", {
-      label: "Cut",
+      label: translate(browserCut, locale),
       visible: true,
       enabled: hasBucket && selectionInfo.canCutItems,
     });
     setState("bulkAttributes", {
-      label: "Bulk attributes",
+      label: translate(browserBulkAttributes, locale),
       visible: true,
       enabled: canUseContextActions && selectionInfo.canBulkAttributes,
     });
     if (selectionInfo.canAdvanced) {
       setState("advanced", {
-        label: "Advanced",
+        label: translate(messageAdvanced, locale),
         visible: true,
         enabled: canUseContextActions,
       });
     }
     setState("delete", {
-      label: "Delete",
+      label: translate(browserDelete, locale),
       visible: true,
       enabled: canUseContextActions && selectionInfo.canDelete,
     });
     if (versioningEnabled) {
       setState("restoreToDate", {
-        label: "Restore to date",
+        label: translate(browserRestoreToDate, locale),
         visible: true,
         enabled: canUseContextActions,
       });

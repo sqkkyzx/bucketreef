@@ -2,6 +2,9 @@
  * Copyright (c) 2026 Laurent Barbe
  * Licensed under the Apache License, Version 2.0
  */
+import {
+  messageCancel,
+} from "../../uiMessages";
 import { useEffect, useState } from "react";
 import {
   type PortalStorageSpaceCreate,
@@ -375,7 +378,7 @@ export function PortalShareCandidatePicker({
             />
             <div className="flex flex-wrap justify-end gap-2">
               <UiButton variant="secondary" onClick={closeRequestForm} disabled={requestBusy}>
-                {t({ en: "Cancel", fr: "Annuler", de: "Abbrechen", zh: "取消" })}
+                {t(messageCancel)}
               </UiButton>
               <UiButton disabled={!requestName.trim() || !requestEmail.trim() || requestBusy} loading={requestBusy} onClick={submitRequest}>
                 {requestBusy ? t({ en: "Sending...", fr: "Envoi...", de: "Wird gesendet...", zh: "正在发送…" }) : t({ en: "Send request", fr: "Envoyer la demande", de: "Anfrage senden", zh: "发送请求" })}

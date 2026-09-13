@@ -2,6 +2,11 @@
  * Copyright (c) 2026 Laurent Barbe
  * Licensed under the Apache License, Version 2.0
  */
+import {
+  messageCopy,
+  messageEmail,
+  messageCancel,
+} from "../../uiMessages";
 import { ListActionLink } from "../../components/list/ListControls";
 import {
   type FormEvent,
@@ -681,7 +686,7 @@ export default function PortalSharesPage() {
               showSpaceColumn
               showCopyForInactive
               expirationFormat="date"
-              copyLabel={t({ en: "Copy", fr: "Copier", de: "Kopieren", zh: "复制" })}
+              copyLabel={t(messageCopy)}
               onCopy={copyPublicLink}
               onRevoke={handleRevokePublicLink}
               emptyMessage={t({
@@ -718,7 +723,7 @@ export default function PortalSharesPage() {
               required
             />
             <UiInput
-              label={t({ en: "Email", fr: "E-mail", de: "E-Mail", zh: "邮箱" })}
+              label={t(messageEmail)}
               type="email"
               value={memberRequestEmail}
               onChange={(event) => setMemberRequestEmail(event.target.value)}
@@ -743,7 +748,7 @@ export default function PortalSharesPage() {
             </label>
             <div className="flex justify-end gap-2">
               <UiButton type="button" variant="secondary" onClick={closeMemberRequest} disabled={memberRequestBusy}>
-                {t({ en: "Cancel", fr: "Annuler", de: "Abbrechen", zh: "取消" })}
+                {t(messageCancel)}
               </UiButton>
               <UiButton
                 type="submit"

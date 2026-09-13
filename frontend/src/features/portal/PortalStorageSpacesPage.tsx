@@ -2,6 +2,10 @@
  * Copyright (c) 2026 Laurent Barbe
  * Licensed under the Apache License, Version 2.0
  */
+import {
+  messageOpen,
+  messageCancel,
+} from "../../uiMessages";
 import ListPageSection from "../../components/list/ListPageSection";
 import TableSortControls from "../../components/list/TableSortControls";
 import { ListActions, ListActionLink } from "../../components/list/ListControls";
@@ -347,7 +351,7 @@ export default function PortalStorageSpacesPage() {
 
               {...dataTableDefaultActionProps}
             >
-              {t({ en: "Open", fr: "Ouvrir", de: "Öffnen", zh: "打开" })}
+              {t(messageOpen)}
             </ListActionLink>
           </ListActions>
         ),
@@ -1237,7 +1241,7 @@ export default function PortalStorageSpacesPage() {
                 onClick={createCloseGuard.requestClose}
                 disabled={createBusy}
               >
-                {t({ en: "Cancel", fr: "Annuler", de: "Abbrechen", zh: "取消" })}
+                {t(messageCancel)}
               </UiButton>
               <UiButton
                 disabled={!newName.trim() || createBusy}
@@ -1368,7 +1372,7 @@ export default function PortalStorageSpacesPage() {
                 onClick={importCloseGuard.requestClose}
                 disabled={importBusy}
               >
-                {t({ en: "Cancel", fr: "Annuler", de: "Abbrechen", zh: "取消" })}
+                {t(messageCancel)}
               </UiButton>
               <UiButton
                 disabled={!importBucketName.trim() || importBusy}

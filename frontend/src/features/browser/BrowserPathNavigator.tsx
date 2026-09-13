@@ -1,3 +1,8 @@
+import {
+  messageRoot,
+  messageParentFolder,
+  messageCurrentPath,
+} from "../../uiMessages";
 import { useI18n } from "../../i18n";
 import type { KeyboardEvent, RefObject } from "react";
 
@@ -91,12 +96,7 @@ export default function BrowserPathNavigator({
             onChange={(event) => onChange(event.target.value)}
             onBlur={onBlur}
             onKeyDown={onKeyDown}
-            placeholder={t({
-              en: "root",
-              fr: "racine",
-              de: "Stammverzeichnis",
-              zh: "根目录",
-            })}
+            placeholder={t(messageRoot)}
             aria-label={t({
               en: "Path",
               fr: "Chemin",
@@ -200,28 +200,13 @@ export default function BrowserPathNavigator({
             }}
             className={breadcrumbIconButtonClasses}
             disabled={!canGoUp}
-            aria-label={t({
-              en: "Parent folder",
-              fr: "Dossier parent",
-              de: "Übergeordneter Ordner",
-              zh: "上级文件夹",
-            })}
-            title={t({
-              en: "Parent folder",
-              fr: "Dossier parent",
-              de: "Übergeordneter Ordner",
-              zh: "上级文件夹",
-            })}
+            aria-label={t(messageParentFolder)}
+            title={t(messageParentFolder)}
           >
             <UpIcon className="h-3.5 w-3.5" />
           </button>
           <nav
-            aria-label={t({
-              en: "Current path",
-              fr: "Chemin actuel",
-              de: "Aktueller Pfad",
-              zh: "当前路径",
-            })}
+            aria-label={t(messageCurrentPath)}
             className="browser-path-scroll min-w-0 flex flex-1 items-center gap-1 overflow-x-auto whitespace-nowrap py-0.5"
           >
             {breadcrumbs.length === 0 ? (
@@ -239,19 +224,9 @@ export default function BrowserPathNavigator({
                   onSelectPrefix("");
                 }}
                 className="shrink-0 rounded-md px-1.5 py-0.5 text-slate-600 transition hover:bg-slate-100 hover:text-slate-800 dark:text-slate-300 dark:hover:bg-slate-800"
-                title={t({
-                  en: "root",
-                  fr: "racine",
-                  de: "Stammverzeichnis",
-                  zh: "根目录",
-                })}
+                title={t(messageRoot)}
               >
-                {t({
-                  en: "root",
-                  fr: "racine",
-                  de: "Stammverzeichnis",
-                  zh: "根目录",
-                })}</button>
+                {t(messageRoot)}</button>
             )}
             {breadcrumbs.map((crumb) => (
               <span

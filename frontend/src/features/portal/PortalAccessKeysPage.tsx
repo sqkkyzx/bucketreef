@@ -2,6 +2,13 @@
  * Copyright (c) 2026 Laurent Barbe
  * Licensed under the Apache License, Version 2.0
  */
+import {
+  messageActions,
+  messageDelete,
+  messageClose,
+  messageCopy,
+  messageCancel,
+} from "../../uiMessages";
 import { ListActions, ListActionButton } from "../../components/list/ListControls";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
@@ -548,7 +555,7 @@ export default function PortalAccessKeysPage() {
     },
     {
       id: "actions",
-      label: t({ en: "Actions", fr: "Actions", de: "Aktionen", zh: "操作" }),
+      label: t(messageActions),
       align: "right",
       mobileRole: "actions",
       render: (key) => {
@@ -584,7 +591,7 @@ export default function PortalAccessKeysPage() {
                variant="danger"
               disabled={disabled}
             >
-              {busy === `delete:${key.access_key_id}` ? t({ en: "Deleting...", fr: "Suppression...", de: "Wird gelöscht...", zh: "正在删除…" }) : t({ en: "Delete", fr: "Supprimer", de: "Löschen", zh: "删除" })}
+              {busy === `delete:${key.access_key_id}` ? t({ en: "Deleting...", fr: "Suppression...", de: "Wird gelöscht...", zh: "正在删除…" }) : t(messageDelete)}
             </ListActionButton>
           </ListActions>
         );
@@ -710,7 +717,7 @@ export default function PortalAccessKeysPage() {
           titleAs="h2"
           onClose={closeConnectionDialog}
           maxWidthClass="max-w-4xl"
-          closeLabel={t({ en: "Close", fr: "Fermer", de: "Schließen", zh: "关闭" })}
+          closeLabel={t(messageClose)}
           closeAriaLabel={t({ en: "Close modal", fr: "Fermer la fenêtre", de: "Dialog schließen", zh: "关闭对话框" })}
         >
           <div className="space-y-5">
@@ -1003,9 +1010,9 @@ export default function PortalAccessKeysPage() {
                                   variant="ghost"
                                   className="mt-1"
                                   onClick={() => void handleCopyConnectionValue(item.value)}
-                                  aria-label={`${t({ en: "Copy", fr: "Copier", de: "Kopieren", zh: "复制" })} ${item.label}: ${item.value}`}
+                                  aria-label={`${t(messageCopy)} ${item.label}: ${item.value}`}
                                 >
-                                  {t({ en: "Copy", fr: "Copier", de: "Kopieren", zh: "复制" })}
+                                  {t(messageCopy)}
                                 </UiButton>
                               </div>
                             ))}
@@ -1217,7 +1224,7 @@ export default function PortalAccessKeysPage() {
 
             <WorkflowActions>
               <UiButton variant="secondary" onClick={closeCreateWizard} disabled={busy === "create"}>
-                {t({ en: "Cancel", fr: "Annuler", de: "Abbrechen", zh: "取消" })}
+                {t(messageCancel)}
               </UiButton>
               <UiButton onClick={handleCreateKey} loading={busy === "create"} disabled={createWizardSubmitDisabled}>
                 {busy === "create"

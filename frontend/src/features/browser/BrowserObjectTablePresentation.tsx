@@ -1,3 +1,4 @@
+import { useI18n } from "../../i18n";
 import type { PointerEventHandler, ReactNode } from "react";
 
 import { ChevronDownIcon } from "./browserIcons";
@@ -176,12 +177,23 @@ export function BrowserColumnResizeHandle({
   onPointerDown,
   onReset,
 }: BrowserColumnResizeHandleProps) {
+  const { t } = useI18n();
   return (
     <div
       role="separator"
       aria-orientation="vertical"
-      aria-label={`Resize ${label} column`}
-      title={`Resize ${label} column`}
+      aria-label={t({
+        en: `Resize ${label} column`,
+        fr: `Redimensionner la colonne ${label}`,
+        de: `Spaltenbreite für ${label} ändern`,
+        zh: `调整${label}列宽`,
+      })}
+      title={t({
+        en: `Resize ${label} column`,
+        fr: `Redimensionner la colonne ${label}`,
+        de: `Spaltenbreite für ${label} ändern`,
+        zh: `调整${label}列宽`,
+      })}
       className="absolute inset-y-0 right-0 z-10 translate-x-1/2 cursor-col-resize touch-none select-none"
       style={{ width: `${COLUMN_RESIZER_HITBOX_WIDTH_PX}px` }}
       onPointerDown={onPointerDown}

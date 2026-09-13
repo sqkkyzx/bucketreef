@@ -1,8 +1,12 @@
-import { useI18n, type I18nMessage } from "../../i18n";
 /*
  * Copyright (c) 2026 Laurent Barbe
  * Licensed under the Apache License, Version 2.0
  */
+import {
+  messageRefresh,
+  messageLoading,
+} from "../../uiMessages";
+import { useI18n, type I18nMessage } from "../../i18n";
 import type { Ref } from "react";
 import {
   toolbarCompactButtonClasses,
@@ -231,12 +235,7 @@ export default function BrowserWorkspaceSidebar({
               fr: "Actualisation",
               de: "Wird aktualisiert",
               zh: "正在刷新",
-            }) : t({
-              en: "Refresh",
-              fr: "Actualiser",
-              de: "Aktualisieren",
-              zh: "刷新",
-            })}
+            }) : t(messageRefresh)}
           >
             <RefreshIcon className={cx("h-3.5 w-3.5", loadingBuckets ? "animate-spin" : "")} />
           </button>
@@ -357,12 +356,7 @@ export default function BrowserWorkspaceSidebar({
             );
           })}
           {loadingBuckets && rows.length === 0 && !compact && (
-            <p className="px-2 py-2 ui-caption text-[var(--shell-muted-text)]">{t({
-              en: "Loading...",
-              fr: "Chargement…",
-              de: "Wird geladen…",
-              zh: "正在加载…",
-            })}</p>
+            <p className="px-2 py-2 ui-caption text-[var(--shell-muted-text)]">{t(messageLoading)}</p>
           )}
           {!loadingBuckets && rows.length === 0 && !compact && (
             <p className="px-2 py-2 ui-caption text-[var(--shell-muted-text)]">
@@ -376,12 +370,7 @@ export default function BrowserWorkspaceSidebar({
               onClick={onLoadMore}
               disabled={bucketMenuLoadingMore}
             >
-              {bucketMenuLoadingMore ? t({
-                en: "Loading...",
-                fr: "Chargement…",
-                de: "Wird geladen…",
-                zh: "正在加载…",
-              }) : t({
+              {bucketMenuLoadingMore ? t(messageLoading) : t({
                 en: "Load more",
                 fr: "Charger plus",
                 de: "Mehr laden",

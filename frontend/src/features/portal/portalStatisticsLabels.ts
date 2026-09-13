@@ -2,6 +2,9 @@
  * Copyright (c) 2026 Laurent Barbe
  * Licensed under the Apache License, Version 2.0
  */
+import {
+  messageActions,
+} from "../../uiMessages";
 import type { useI18n } from "../../i18n";
 import type { BucketUsageStatsCompositionLabels } from "../shared/BucketUsageStatsVisuals";
 
@@ -51,7 +54,7 @@ export function portalTrafficLabels(t: PortalTranslate) {
     successText: t({ en: "completed", fr: "réussies", de: "abgeschlossen", zh: "已完成" }),
     inboundLabel: t({ en: "Uploaded", fr: "Envoyé", de: "Hochgeladen", zh: "已上传" }),
     outboundLabel: t({ en: "Downloaded", fr: "Téléchargé", de: "Heruntergeladen", zh: "已下载" }),
-    callVolumeBarName: t({ en: "Actions", fr: "Actions", de: "Aktionen", zh: "操作" }),
+    callVolumeBarName: t(messageActions),
   };
 }
 

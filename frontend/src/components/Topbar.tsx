@@ -2,6 +2,19 @@
  * Copyright (c) 2025 Laurent Barbe
  * Licensed under the Apache License, Version 2.0
  */
+import {
+  messageUnknown,
+  messageAdmin,
+  messageUser,
+  messageWorkspace,
+  messageSwitchWorkspace,
+  messageDeleting,
+  messageDelete,
+  messageEndpoint,
+  messageStatus,
+  messageExpires,
+  messageNotifications,
+} from "../uiMessages";
 import { useI18n, type I18nMessage } from "../i18n";
 import { type KeyboardEvent as ReactKeyboardEvent, ReactNode, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import {
@@ -63,12 +76,7 @@ type StoredTopbarUser = {
 };
 
 function resolveUiRoleLabel(user: StoredTopbarUser | null, t: ReturnType<typeof useI18n>["t"]): string {
-  if (!user) return t({
-    en: "Unknown",
-    fr: "Inconnu",
-    de: "Unbekannt",
-    zh: "未知",
-  });
+  if (!user) return t(messageUnknown);
   if (user.authType === "s3_session") return t({
     en: "S3 Session",
     fr: "Session S3",
@@ -81,46 +89,21 @@ function resolveUiRoleLabel(user: StoredTopbarUser | null, t: ReturnType<typeof 
     de: "Superadministrator",
     zh: "超级管理员",
   });
-  if (user.role === "ui_admin") return t({
-    en: "Admin",
-    fr: "Administrateur",
-    de: "Administrator",
-    zh: "管理员",
-  });
-  if (user.role === "ui_user") return t({
-    en: "User",
-    fr: "Utilisateur",
-    de: "Benutzer",
-    zh: "用户",
-  });
+  if (user.role === "ui_admin") return t(messageAdmin);
+  if (user.role === "ui_user") return t(messageUser);
   if (user.role === "ui_none") return t({
     en: "No access",
     fr: "Aucun accès",
     de: "Kein Zugriff",
     zh: "无访问权限",
   });
-  return t({
-    en: "Unknown",
-    fr: "Inconnu",
-    de: "Unbekannt",
-    zh: "未知",
-  });
+  return t(messageUnknown);
 }
 
 function compactWorkspaceLabel(label: string | null | undefined, t: ReturnType<typeof useI18n>["t"]): string {
   const normalized = (label ?? "").replace(/\s*\([^)]*\)\s*$/, "").trim();
-  if (!normalized) return t({
-    en: "Workspace",
-    fr: "Espace de travail",
-    de: "Arbeitsbereich",
-    zh: "工作区",
-  });
-  if (normalized.toLowerCase() === "administration") return t({
-    en: "Admin",
-    fr: "Administrateur",
-    de: "Administrator",
-    zh: "管理员",
-  });
+  if (!normalized) return t(messageWorkspace);
+  if (normalized.toLowerCase() === "administration") return t(messageAdmin);
   return normalized;
 }
 
@@ -565,12 +548,7 @@ export default function Topbar({
             ref={workspaceTriggerRef}
             type="button"
             onClick={() => setWorkspaceMenuOpen((open) => !open)}
-            aria-label={t({
-              en: "Switch workspace",
-              fr: "Changer d’espace de travail",
-              de: "Arbeitsbereich wechseln",
-              zh: "切换工作区",
-            })}
+            aria-label={t(messageSwitchWorkspace)}
             aria-haspopup="listbox"
             aria-expanded={workspaceMenuOpen}
             aria-controls={workspaceMenuOpen ? workspaceListboxId : undefined}
@@ -586,12 +564,7 @@ export default function Topbar({
             } ${workspaceMenuOpen ? "shell-control-active" : ""}`}
           >
             <span className="min-w-0 flex-1 leading-tight">
-              <span className="shell-muted-text block truncate text-[10px] font-medium">{t({
-                en: "Workspace",
-                fr: "Espace de travail",
-                de: "Arbeitsbereich",
-                zh: "工作区",
-              })}</span>
+              <span className="shell-muted-text block truncate text-[10px] font-medium">{t(messageWorkspace)}</span>
               <span className="mt-0.5 block truncate text-[12px] font-semibold leading-4 text-[var(--shell-text)]">
                 {workspaceTriggerLabel}
               </span>
@@ -618,12 +591,7 @@ export default function Topbar({
                   className="max-h-72 overflow-y-auto focus:outline-none"
                   role="listbox"
                   tabIndex={0}
-                  aria-label={t({
-                    en: "Switch workspace",
-                    fr: "Changer d’espace de travail",
-                    de: "Arbeitsbereich wechseln",
-                    zh: "切换工作区",
-                  })}
+                  aria-label={t(messageSwitchWorkspace)}
                   aria-activedescendant={
                     workspaceActiveIndex >= 0 ? `${workspaceListboxId}-option-${workspaceActiveIndex}` : undefined
                   }
@@ -673,12 +641,7 @@ export default function Topbar({
     return (
       <div className={`shell-control flex min-w-0 items-center gap-2 rounded-lg border ${sidebarPlacement ? "h-10 px-3" : "h-10 w-[140px] px-3"}`}>
         <span className="min-w-0 leading-[1.05]">
-          <span className="shell-muted-text block truncate text-[10px] font-medium">{t({
-            en: "Workspace",
-            fr: "Espace de travail",
-            de: "Arbeitsbereich",
-            zh: "工作区",
-          })}</span>
+          <span className="shell-muted-text block truncate text-[10px] font-medium">{t(messageWorkspace)}</span>
           {workspaceTriggerLabel && (
             <span className="mt-0.5 block truncate text-[12px] font-semibold leading-4 text-[var(--shell-text)]">
               {workspaceTriggerLabel}
@@ -755,17 +718,7 @@ export default function Topbar({
               aria-label={t({ en: `Delete notification: ${item.title}`, fr: `Supprimer la notification : ${item.title}`, de: `Benachrichtigung löschen: ${item.title}`, zh: `删除通知：${item.title}` })}
               className="rounded-md px-1.5 py-0.5 text-[10px] font-semibold text-[var(--shell-muted)] transition hover:bg-[var(--shell-hover)] hover:text-[var(--shell-text)] disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {deletingNotification === item.id ? t({
-                en: "Deleting...",
-                fr: "Suppression…",
-                de: "Wird gelöscht…",
-                zh: "正在删除…",
-              }) : t({
-                en: "Delete",
-                fr: "Supprimer",
-                de: "Löschen",
-                zh: "删除",
-              })}
+              {deletingNotification === item.id ? t(messageDeleting) : t(messageDelete)}
             </button>
           </div>
         </div>
@@ -811,23 +764,13 @@ export default function Topbar({
           )}
           {endpointName && (
             <>
-              <dt>{t({
-                en: "Endpoint",
-                fr: "Point de terminaison",
-                de: "Endpunkt",
-                zh: "端点",
-              })}</dt>
+              <dt>{t(messageEndpoint)}</dt>
               <dd className="truncate text-right text-[var(--shell-text)]">{endpointName}</dd>
             </>
           )}
           {targetUserEmail && (
             <>
-              <dt>{t({
-                en: "User",
-                fr: "Utilisateur",
-                de: "Benutzer",
-                zh: "用户",
-              })}</dt>
+              <dt>{t(messageUser)}</dt>
               <dd className="truncate text-right text-[var(--shell-text)]">{targetUserEmail}</dd>
             </>
           )}
@@ -844,12 +787,7 @@ export default function Topbar({
           )}
           {currentStatus && (
             <>
-              <dt>{t({
-                en: "Status",
-                fr: "État",
-                de: "Status",
-                zh: "状态",
-              })}</dt>
+              <dt>{t(messageStatus)}</dt>
               <dd className="text-right font-semibold capitalize text-[var(--shell-text)]">{currentStatus}</dd>
             </>
           )}
@@ -877,12 +815,7 @@ export default function Topbar({
           )}
           {expiresAt && (
             <>
-              <dt>{t({
-                en: "Expires",
-                fr: "Expiration",
-                de: "Läuft ab",
-                zh: "到期时间",
-              })}</dt>
+              <dt>{t(messageExpires)}</dt>
               <dd className="text-right text-[var(--shell-text)]">{expiresAt}</dd>
             </>
           )}
@@ -966,12 +899,7 @@ export default function Topbar({
                   ref={notificationsTriggerRef}
                   type="button"
                   onClick={() => setNotificationsOpen((open) => !open)}
-                  aria-label={t({
-                    en: "Notifications",
-                    fr: "Notifications",
-                    de: "Benachrichtigungen",
-                    zh: "通知",
-                  })}
+                  aria-label={t(messageNotifications)}
                   aria-haspopup="menu"
                   aria-expanded={notificationsOpen}
                   aria-controls={notificationsOpen ? notificationsMenuId : undefined}
@@ -999,22 +927,12 @@ export default function Topbar({
                       id={notificationsMenuId}
                       ref={notificationsSurfaceRef}
                       role="menu"
-                      aria-label={t({
-                        en: "Notifications",
-                        fr: "Notifications",
-                        de: "Benachrichtigungen",
-                        zh: "通知",
-                      })}
+                      aria-label={t(messageNotifications)}
                       className="overflow-hidden"
                     >
                       <div className="flex items-center justify-between gap-3 border-b border-[color:var(--shell-border-soft)] px-3 py-2">
                         <div>
-                          <p className="ui-caption font-semibold text-[var(--shell-text)]">{t({
-                            en: "Notifications",
-                            fr: "Notifications",
-                            de: "Benachrichtigungen",
-                            zh: "通知",
-                          })}</p>
+                          <p className="ui-caption font-semibold text-[var(--shell-text)]">{t(messageNotifications)}</p>
                           <p className="shell-muted-text ui-caption">{t({ en: `${unreadNotificationsCount} unread`, fr: `${unreadNotificationsCount} non lues`, de: `${unreadNotificationsCount} ungelesen`, zh: `${unreadNotificationsCount} 条未读` })}</p>
                         </div>
                         <div className="flex items-center gap-1">

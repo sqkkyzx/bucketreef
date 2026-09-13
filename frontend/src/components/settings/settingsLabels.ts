@@ -1,11 +1,15 @@
 /* Copyright (c) 2026 Laurent Barbe; Licensed under the Apache License, Version 2.0 */
+import {
+  messageCancel,
+  messageClose,
+} from "../../uiMessages";
 import { translate, type I18nMessage } from "../../i18n";
 
 export function settingsLabels(t: (message: I18nMessage) => string = translate) {
   return {
     apply: t({ en: "Apply", fr: "Appliquer", de: "Übernehmen", zh: "应用" }),
-    cancel: t({ en: "Cancel", fr: "Annuler", de: "Abbrechen", zh: "取消" }),
-    close: t({ en: "Close", fr: "Fermer", de: "Schließen", zh: "关闭" }),
+    cancel: t(messageCancel),
+    close: t(messageClose),
     discardTitle: t({
       en: "Discard changes?",
       fr: "Abandonner les modifications ?",

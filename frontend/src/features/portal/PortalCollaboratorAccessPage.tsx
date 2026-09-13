@@ -2,6 +2,10 @@
  * Copyright (c) 2026 Laurent Barbe
  * Licensed under the Apache License, Version 2.0
  */
+import {
+  messageOpen,
+  messageEmail,
+} from "../../uiMessages";
 import { ListActions, ListActionLink, ListActionButton } from "../../components/list/ListControls";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
@@ -193,7 +197,7 @@ export default function PortalCollaboratorAccessPage() {
 
               {...dataTableDefaultActionProps}
             >
-              {t({ en: "Open", fr: "Ouvrir", de: "Öffnen", zh: "打开" })}
+              {t(messageOpen)}
             </ListActionLink>
             {access.can_revoke ? (
               <ListActionButton
@@ -502,7 +506,7 @@ export default function PortalCollaboratorAccessPage() {
           loading={busy}
           details={[
             { label: t({ en: "Person", fr: "Personne", de: "Person", zh: "人员" }), value: title },
-            { label: t({ en: "Email", fr: "E-mail", de: "E-Mail", zh: "邮箱" }), value: collaborator.email },
+            { label: t(messageEmail), value: collaborator.email },
           ]}
           impacts={[
             t({

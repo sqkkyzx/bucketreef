@@ -2,6 +2,10 @@
  * Copyright (c) 2026 Laurent Barbe
  * Licensed under the Apache License, Version 2.0
  */
+import {
+  messageClose,
+  messageCancel,
+} from "../../uiMessages";
 import ModalActions from "../../components/ModalActions";
 import type { PortalPublicLink } from "../../api/portalSharing";
 import Modal from "../../components/Modal";
@@ -52,8 +56,8 @@ export default function PortalPublicLinkCreateDialog({
         zh: "创建公开链接",
       })}
       onClose={onClose}
-      closeLabel={t({ en: "Close", fr: "Fermer", de: "Schließen", zh: "关闭" })}
-      closeAriaLabel={t({ en: "Close", fr: "Fermer", de: "Schließen", zh: "关闭" })}
+      closeLabel={t(messageClose)}
+      closeAriaLabel={t(messageClose)}
       closeOnBackdropClick={!busy}
       closeOnEscape={!busy}
     >
@@ -116,7 +120,7 @@ export default function PortalPublicLinkCreateDialog({
           <UiButton variant="secondary" onClick={onClose} disabled={busy}>
             {createdLink
               ? t({ en: "Done", fr: "Terminer", de: "Fertig", zh: "完成" })
-              : t({ en: "Cancel", fr: "Annuler", de: "Abbrechen", zh: "取消" })}
+              : t(messageCancel)}
           </UiButton>
           <UiButton
             onClick={onCreate}

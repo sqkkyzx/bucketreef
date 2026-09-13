@@ -2,6 +2,10 @@
  * Copyright (c) 2026 Laurent Barbe
  * Licensed under the Apache License, Version 2.0
  */
+import {
+  adminRgwCancel,
+} from "./adminRgwMessages";
+import { useI18n } from "../../i18n";
 import ListToolbar from "../../components/ListToolbar";
 import ToolbarSearchInput from "../../components/ToolbarSearchInput";
 import { ListActionButton } from "../../components/list/ListControls";
@@ -219,14 +223,37 @@ export function AdminAssociationPickerPanel({
   addDisabled,
   loadingLabel,
   searchAriaLabel,
-  emptyLabel = "No results.",
-  addLabel = "Add selected",
+  emptyLabel: emptyLabelOverride,
+  addLabel: addLabelOverride,
   children,
 }: AdminAssociationPickerPanelProps) {
+  const { t } = useI18n();
+  const emptyLabel = emptyLabelOverride ?? t({
+    en: "No results.",
+    fr: "Aucun résultat.",
+    de: "Keine Ergebnisse.",
+    zh: "没有结果。",
+  });
+  const addLabel = addLabelOverride ?? t({
+    en: "Add selected",
+    fr: "Ajouter la sélection",
+    de: "Auswahl hinzufügen",
+    zh: "添加所选项",
+  });
   return (
     <div className={adminAssociationAddPanelClass}>
       <ListToolbar variant="section" title={title} description={hint}
-        search={<ToolbarSearchInput label={searchAriaLabel ?? "Search"} value={search} onChange={onSearchChange} placeholder="Search..." />}
+        search={<ToolbarSearchInput label={searchAriaLabel ?? t({
+          en: "Search",
+          fr: "Rechercher",
+          de: "Suchen",
+          zh: "搜索",
+        })} value={search} onChange={onSearchChange} placeholder={t({
+          en: "Search...",
+          fr: "Rechercher…",
+          de: "Suchen…",
+          zh: "搜索…",
+        })} />}
       />
       <div className="max-h-48 space-y-1 overflow-y-auto pr-1">
         {loading ? <p className={cx("ui-caption", uiMutedTextClass)}>{loadingLabel}</p> : null}
@@ -234,16 +261,25 @@ export function AdminAssociationPickerPanel({
         {children}
         {availableCount > maxVisibleOptions ? (
           <p className={cx("ui-caption", uiMutedTextClass)}>
-            Showing first {maxVisibleOptions} matches. Use the search box to narrow down the list.
+            {t({
+              en: `Showing first ${maxVisibleOptions} matches. Use the search box to narrow down the list.`,
+              fr: `Les ${maxVisibleOptions} premiers résultats sont affichés. Utilisez la recherche pour affiner la liste.`,
+              de: `Die ersten ${maxVisibleOptions} Treffer werden angezeigt. Grenzen Sie die Liste mit der Suche ein.`,
+              zh: `显示前 ${maxVisibleOptions} 个匹配项，请使用搜索缩小范围。`,
+            })}
           </p>
         ) : null}
       </div>
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <span className={cx("ui-caption", uiMutedTextClass)}>{selectedCount} selected</span>
+        <span className={cx("ui-caption", uiMutedTextClass)}>{t({
+          en: `${selectedCount} selected`,
+          fr: `${selectedCount} sélectionné(s)`,
+          de: `${selectedCount} ausgewählt`,
+          zh: `已选 ${selectedCount} 项`,
+        })}</span>
         <div className="flex items-center gap-2">
           <UiButton variant="secondary" size="xs" onClick={onCancel}>
-            Cancel
-          </UiButton>
+            {t(adminRgwCancel)}</UiButton>
           <UiButton size="xs" disabled={addDisabled} onClick={onAdd}>
             {addLabel}
           </UiButton>

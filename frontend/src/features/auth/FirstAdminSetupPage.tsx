@@ -2,6 +2,10 @@
  * Copyright (c) 2026 Laurent Barbe
  * Licensed under the Apache License, Version 2.0
  */
+import {
+  messageEmail,
+  messagePassword,
+} from "../../uiMessages";
 import { useI18n, type I18nMessage } from "../../i18n";
 import { FormEvent, useEffect, useLayoutEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
@@ -205,12 +209,7 @@ export default function FirstAdminSetupPage() {
               className="block ui-body font-medium"
               htmlFor="bootstrap-email"
             >
-              {t({
-                en: "Email",
-                fr: "E-mail",
-                de: "E-Mail",
-                zh: "邮箱",
-              })}<input
+              {t(messageEmail)}<input
                 id="bootstrap-email"
                 className={inputClasses}
                 type="email"
@@ -225,12 +224,7 @@ export default function FirstAdminSetupPage() {
                 className="block ui-body font-medium"
                 htmlFor="bootstrap-password"
               >
-                {t({
-                  en: "Password",
-                  fr: "Mot de passe",
-                  de: "Passwort",
-                  zh: "密码",
-                })}</label>
+                {t(messagePassword)}</label>
               <input
                 id="bootstrap-password"
                 className={inputClasses}
