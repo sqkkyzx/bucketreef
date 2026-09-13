@@ -24,9 +24,11 @@ import {
 import UiBadge from "../../../components/ui/UiBadge";
 import UiInlineMessage from "../../../components/ui/UiInlineMessage";
 import { extractApiError } from "../../../utils/apiError";
+import { useAdminControlText } from "../adminControlMessages";
 
 type Provider = OidcProviderAdminItem | LdapProviderAdminItem;
 export default function AuthProviderList({ kind }: { kind: "oidc" | "ldap" }) {
+  const { locale, t } = useAdminControlText();
   const navigate = useNavigate();
   const [providers, setProviders] = useState<Provider[]>([]);
   const [loading, setLoading] = useState(true);
@@ -51,7 +53,7 @@ export default function AuthProviderList({ kind }: { kind: "oidc" | "ldap" }) {
       })
       .catch((err) => {
         if (active)
-          setError(extractApiError(err, `Unable to load ${name} providers.`));
+          setError(extractApiError(err, locale === "zh" ? `无法加载 ${name} 提供商。` : `Unable to load ${name} providers.`));
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -59,7 +61,7 @@ export default function AuthProviderList({ kind }: { kind: "oidc" | "ldap" }) {
     return () => {
       active = false;
     };
-  }, [fetchProviders, name]);
+  }, [fetchProviders, locale, name]);
   const remove = async () => {
     if (!selected?.editable || pending.current) return;
     pending.current = true;
@@ -78,10 +80,10 @@ export default function AuthProviderList({ kind }: { kind: "oidc" | "ldap" }) {
         ),
       );
       setSelected(null);
-      setMessage(`${name} provider deleted.`);
+      setMessage(locale === "zh" ? `${name} 提供商已删除。` : `${name} provider deleted.`);
     } catch (err) {
       if (!isRecentWebAuthnVerificationCancelled(err))
-        setError(extractApiError(err, `Unable to delete ${name} provider.`));
+        setError(extractApiError(err, locale === "zh" ? `无法删除 ${name} 提供商。` : `Unable to delete ${name} provider.`));
     } finally {
       pending.current = false;
       setBusy(false);
@@ -90,8 +92,8 @@ export default function AuthProviderList({ kind }: { kind: "oidc" | "ldap" }) {
   return (
     <SettingsSection
       presentation="compact"
-      title={`${name} providers`}
-      description="Login providers. Environment-managed settings remain locked."
+      title={locale === "zh" ? `${name} 提供商` : `${name} providers`}
+      description={t("Login providers. Environment-managed settings remain locked.")}
     >
       <div className="mb-2 flex justify-end">
         <SettingsButton
@@ -99,17 +101,17 @@ export default function AuthProviderList({ kind }: { kind: "oidc" | "ldap" }) {
           disabled={busy}
           onClick={() => navigate(`${path}/new`)}
         >
-          Add {name} provider
+          {locale === "zh" ? `添加 ${name} 提供商` : `Add ${name} provider`}
         </SettingsButton>
       </div>
       {error && <UiInlineMessage tone="error">{error}</UiInlineMessage>}
       {message && <p role="status">{message}</p>}
       {loading ? (
-        <p role="status">Loading {name} providers...</p>
+        <p role="status">{locale === "zh" ? `正在加载 ${name} 提供商…` : `Loading ${name} providers...`}</p>
       ) : (
         providers.length === 0 && (
           <p className="py-3 settings-readonly">
-            No {name} providers configured.
+            {locale === "zh" ? `尚未配置 ${name} 提供商。` : `No ${name} providers configured.`}
           </p>
         )
       )}
@@ -122,10 +124,10 @@ export default function AuthProviderList({ kind }: { kind: "oidc" | "ldap" }) {
           status={
             <>
               <UiBadge tone={provider.enabled ? "success" : "neutral"}>
-                {provider.enabled ? "Enabled" : "Disabled"}
+                {provider.enabled ? t("Enabled") : t("Disabled")}
               </UiBadge>
               <UiBadge tone="neutral">
-                {provider.source === "environment" ? "Environment" : "UI"}
+                {provider.source === "environment" ? t("Environment") : t("UI")}
               </UiBadge>
             </>
           }
@@ -134,23 +136,23 @@ export default function AuthProviderList({ kind }: { kind: "oidc" | "ldap" }) {
               <SettingsButton
                 variant="secondary"
                 disabled={busy}
-                aria-label={`${provider.editable ? "Edit" : "View"} ${name} provider ${provider.provider_id}`}
+                aria-label={locale === "zh" ? `${provider.editable ? t("Edit") : t("View")} ${name} 提供商 ${provider.provider_id}` : `${provider.editable ? t("Edit") : t("View")} ${name} provider ${provider.provider_id}`}
                 onClick={() =>
                   navigate(
                     `${path}/providers/${encodeURIComponent(provider.provider_id)}`,
                   )
                 }
               >
-                {provider.editable ? "Edit" : "View"}
+                {provider.editable ? t("Edit") : t("View")}
               </SettingsButton>
               {provider.editable && (
                 <SettingsButton
                   variant="ghost"
                   disabled={busy}
-                  aria-label={`Delete ${name} provider ${provider.provider_id}`}
+                  aria-label={locale === "zh" ? `删除 ${name} 提供商 ${provider.provider_id}` : `Delete ${name} provider ${provider.provider_id}`}
                   onClick={() => setSelected(provider)}
                 >
-                  Delete
+                  {t("Delete")}
                 </SettingsButton>
               )}
             </div>
@@ -159,13 +161,13 @@ export default function AuthProviderList({ kind }: { kind: "oidc" | "ldap" }) {
       ))}
       {selected && (
         <ConfirmActionDialog
-          title={`Delete ${name} provider?`}
-          description={`Remove ${selected.display_name} (${selected.provider_id}) from sign-in options.`}
-          confirmLabel="Delete provider"
+          title={locale === "zh" ? `删除 ${name} 提供商？` : `Delete ${name} provider?`}
+          description={locale === "zh" ? `从登录选项中移除 ${selected.display_name}（${selected.provider_id}）。` : `Remove ${selected.display_name} (${selected.provider_id}) from sign-in options.`}
+          confirmLabel={t("Delete provider")}
           loading={busy}
           warning={error ? <span role="alert">{error}</span> : undefined}
           impacts={[
-            "Users will no longer be able to sign in through this provider.",
+            t("Users will no longer be able to sign in through this provider."),
           ]}
           onCancel={() => {
             if (!busy) setSelected(null);

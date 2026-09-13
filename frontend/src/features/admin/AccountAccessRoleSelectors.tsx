@@ -9,6 +9,7 @@ import {
   type AccountAccessGrant,
 } from "../../api/accountAccess";
 import UiSelect from "../../components/ui/UiSelect";
+import { useAdminControlText } from "./adminControlMessages";
 
 const activeManagerRoleClass =
   "border-amber-300 bg-amber-50 font-semibold text-amber-900 dark:border-amber-800 dark:bg-amber-950/60 dark:text-amber-100";
@@ -53,17 +54,18 @@ export function ManagerAccountRoleSelect({
   describedBy,
   error,
 }: ManagerAccountRoleSelectProps) {
+  const { locale, t } = useAdminControlText();
   return (
     <UiSelect
-      label={showLabel ? "Manager" : undefined}
+      label={showLabel ? t("Manager") : undefined}
       error={error}
-      aria-label={`Manager role for ${label}`}
+      aria-label={locale === "zh" ? `${label} 的管理控制台角色` : `Manager role for ${label}`}
       {...(invalid ? { "aria-invalid": true } : {})}
       {...(describedBy ? { "aria-describedby": describedBy } : {})}
       size="compact"
       fieldClassName={fieldClassName}
       className={value.manager_role ? activeManagerRoleClass : undefined}
-      title={!portalEnabled ? "A Manager role is required while Portal is off." : undefined}
+      title={!portalEnabled ? t("A Manager role is required while Portal is off.") : undefined}
       value={value.manager_role ?? ""}
       onChange={(event) => {
         const managerRole = parseManagerAccountRole(event.target.value);
@@ -82,7 +84,7 @@ export function ManagerAccountRoleSelect({
           value={option.value}
           disabled={!portalEnabled && option.value === ""}
         >
-          {option.label}
+          {t(option.label)}
         </option>
       ))}
     </UiSelect>
@@ -103,14 +105,15 @@ export function PortalAccountRoleSelect({
   invalid = false,
   describedBy,
 }: PortalAccountRoleSelectProps) {
+  const { locale, t } = useAdminControlText();
   return (
     <UiSelect
-      label={showLabel ? (portalEnabled ? "Portal" : "Portal · read-only") : undefined}
-      hint={showLabel && !portalEnabled ? "Portal is off; existing roles are preserved." : undefined}
-      aria-label={`Portal role for ${label}`}
+      label={showLabel ? (portalEnabled ? t("Portal") : t("Portal · read-only")) : undefined}
+      hint={showLabel && !portalEnabled ? t("Portal is off; existing roles are preserved.") : undefined}
+      aria-label={locale === "zh" ? `${label} 的门户角色` : `Portal role for ${label}`}
       {...(invalid ? { "aria-invalid": true } : {})}
       {...(describedBy ? { "aria-describedby": describedBy } : {})}
-      title={!portalEnabled ? "Portal is off; existing roles are preserved." : undefined}
+      title={!portalEnabled ? t("Portal is off; existing roles are preserved.") : undefined}
       size="compact"
       fieldClassName={fieldClassName}
       className={value.portal_role ? activePortalRoleClass : undefined}
@@ -125,7 +128,7 @@ export function PortalAccountRoleSelect({
     >
       {PORTAL_ACCOUNT_ROLE_OPTIONS.map((option) => (
         <option key={option.value || "none"} value={option.value}>
-          {option.label}
+          {t(option.label)}
         </option>
       ))}
     </UiSelect>
@@ -143,11 +146,12 @@ export function AccountAccessRoleValidationMessage({
   value,
   portalEnabled,
 }: AccountAccessRoleValidationMessageProps) {
+  const { t } = useAdminControlText();
   if (hasAccountAccessRole(value)) return null;
 
   return (
     <p id={id} role="alert" className="mt-1 max-w-56 ui-caption font-semibold text-rose-600 dark:text-rose-300">
-      {getAccountAccessRequiredMessage(portalEnabled)}
+      {t(getAccountAccessRequiredMessage(portalEnabled))}
     </p>
   );
 }
@@ -165,6 +169,7 @@ export default function AccountAccessRoleSelectors({
   portalEnabled,
   label,
 }: AccountAccessRoleSelectorsProps) {
+  const { t } = useAdminControlText();
   const missingRole = !hasAccountAccessRole(value);
 
   return (
@@ -174,7 +179,7 @@ export default function AccountAccessRoleSelectors({
         portalEnabled={portalEnabled}
         value={value}
         onChange={onChange}
-        error={missingRole ? getAccountAccessRequiredMessage(portalEnabled) : undefined}
+        error={missingRole ? t(getAccountAccessRequiredMessage(portalEnabled)) : undefined}
       />
       <PortalAccountRoleSelect
         label={label}

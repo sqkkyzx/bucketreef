@@ -399,10 +399,10 @@ export default function ProjectSettingsEditor({
           }}
         >
           <fieldset disabled={saving} className="min-w-0">
-            {admin && <SettingsSection presentation="compact" title="Delegation">
-              <SettingsItem compact title="Project settings access"
-                description="Allow this project's Portal managers to edit the same settings from Portal."
-                action={<SettingsSwitch ariaLabel="Delegate Portal overrides to Portal managers"
+            {admin && <SettingsSection presentation="compact" title={t("Delegation")}>
+              <SettingsItem compact title={t("Project settings access")}
+                description={t("Allow this project's Portal managers to edit the same settings from Portal.")}
+                action={<SettingsSwitch ariaLabel={t("Delegate Portal overrides to Portal managers")}
                   checked={draft.delegatedToPortalManagers}
                   onChange={(value) => update("delegatedToPortalManagers", value)} />} />
             </SettingsSection>}

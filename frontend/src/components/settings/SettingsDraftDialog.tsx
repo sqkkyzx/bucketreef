@@ -14,6 +14,7 @@ import {
   useSettingsCloseGuard,
 } from "./SettingsControls";
 import { useSettingsDraft } from "./useSettingsDraft";
+import { useI18n } from "../../i18n";
 
 export default function SettingsDraftDialog<T>({
   title,
@@ -49,6 +50,7 @@ export default function SettingsDraftDialog<T>({
   };
   maxWidthClass?: string;
 }) {
+  const { t } = useI18n();
   const initialFocus = useRef<HTMLElement | null>(null);
   const { draft, setDraft, dirty } = useSettingsDraft(initialValue);
   const [errors, setErrors] = useState<Record<string, string | undefined>>({});
@@ -112,10 +114,10 @@ export default function SettingsDraftDialog<T>({
           </div>
           <ModalActions>
             <SettingsButton variant="secondary" onClick={guard.requestClose}>
-              {labels?.cancel ?? "Cancel"}
+              {labels?.cancel ?? t({ en: "Cancel", zh: "取消" })}
             </SettingsButton>
             <SettingsButton onClick={apply}>
-              {labels?.apply ?? "Apply"}
+              {labels?.apply ?? t({ en: "Apply", zh: "应用" })}
             </SettingsButton>
           </ModalActions>
         </form>

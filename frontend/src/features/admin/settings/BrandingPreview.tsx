@@ -4,8 +4,10 @@ import { useTheme } from "../../../components/theme";
 import { generatePrimaryScale } from "../../../components/ui/brandingRuntime";
 import UiBadge from "../../../components/ui/UiBadge";
 import { SettingsButton } from "../../../components/settings/SettingsControls";
+import { useAdminControlText } from "../adminControlMessages";
 
 export default function BrandingPreview({ color }: { color: string }) {
+  const { t } = useAdminControlText();
   const { theme } = useTheme();
   if (!/^#[0-9a-f]{6}$/i.test(color)) return null;
   const scale = generatePrimaryScale(color, theme);
@@ -17,7 +19,7 @@ export default function BrandingPreview({ color }: { color: string }) {
   );
   return (
     <div
-      aria-label="Branding preview"
+      aria-label={t("Branding preview")}
       style={
         {
           ...variables,
@@ -26,12 +28,12 @@ export default function BrandingPreview({ color }: { color: string }) {
       }
       className="rounded border border-[var(--ui-border)] bg-[var(--ui-surface)] p-3"
     >
-      <p className="mb-2 text-xs text-[var(--ui-text-muted)]">Preview</p>
+      <p className="mb-2 text-xs text-[var(--ui-text-muted)]">{t("Preview")}</p>
       <div className="flex flex-wrap items-center gap-2">
         <SettingsButton tabIndex={-1} onClick={() => {}}>
-          Primary action
+          {t("Primary action")}
         </SettingsButton>
-        <UiBadge tone="primary">Selected</UiBadge>
+        <UiBadge tone="primary">{t("Selected")}</UiBadge>
       </div>
     </div>
   );

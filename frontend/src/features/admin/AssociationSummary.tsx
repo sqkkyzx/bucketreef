@@ -11,6 +11,7 @@ import GroupAvatar from "../../components/GroupAvatar";
 import UserAvatar from "../../components/UserAvatar";
 import AnchoredPortalMenu from "../../components/ui/AnchoredPortalMenu";
 import { buildAdminPrincipalEditHref } from "./adminPrincipalEditLink";
+import { useAdminControlText } from "./adminControlMessages";
 
 export type AssociationChipItem = {
   id: number | string;
@@ -100,6 +101,7 @@ export function AssociationRoleTooltip({
   focusable?: boolean;
   children: ReactNode;
 }) {
+  const { locale, t } = useAdminControlText();
   const [open, setOpen] = useState(false);
   const anchorRef = useRef<HTMLSpanElement | null>(null);
   const closeTimerRef = useRef<number | null>(null);
@@ -165,7 +167,7 @@ export function AssociationRoleTooltip({
           <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-1 dark:border-slate-800">
             <p className="text-[11px] font-semibold leading-4 text-slate-900 dark:text-slate-100">{label}</p>
             <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400">
-              {entries.length} total
+              {locale === "zh" ? `共 ${entries.length} 个` : `${entries.length} total`}
             </span>
           </div>
           <div className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -174,7 +176,7 @@ export function AssociationRoleTooltip({
                 <div className="flex min-w-0 flex-1 items-baseline gap-1">
                   {entry.kindLabel ? (
                     <span className="shrink-0 text-[9px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
-                      {entry.kindLabel}
+                      {t(entry.kindLabel)}
                     </span>
                   ) : null}
                   <span className="min-w-0 truncate text-[11px] font-medium leading-4 text-slate-800 dark:text-slate-100">
@@ -188,7 +190,7 @@ export function AssociationRoleTooltip({
                         key={`${entry.key}:${role}`}
                         tone={roleBadgeTone(role)}
                       >
-                        {role}
+                        {t(role)}
                       </ListBadge>
                     ))}
                   </div>
@@ -198,7 +200,7 @@ export function AssociationRoleTooltip({
           </div>
           {remaining > 0 ? (
             <p className="border-t border-slate-100 pt-1 text-[10px] font-medium leading-4 text-slate-500 dark:border-slate-800 dark:text-slate-400">
-              +{remaining} more {remaining === 1 ? "entry" : "entries"}
+              {locale === "zh" ? `另有 ${remaining} 个` : `+${remaining} more ${remaining === 1 ? "entry" : "entries"}`}
             </p>
           ) : null}
         </div>
@@ -234,26 +236,27 @@ export function CompactAssociationSummary({
   categories: CompactAssociationCategory[];
   tooltipLimit?: number;
 }) {
+  const { locale, t } = useAdminControlText();
   const visibleCategories = categories.filter((category) => category.items.length > 0);
   if (visibleCategories.length === 0) {
-    return <span className="ui-caption text-slate-500 dark:text-slate-400">None</span>;
+    return <span className="ui-caption text-slate-500 dark:text-slate-400">{t("None")}</span>;
   }
   const total = visibleCategories.reduce((sum, category) => sum + category.items.length, 0);
   const entries = visibleCategories.flatMap((category) =>
     category.items.map((item) => ({
       key: `${category.id}:${item.id}`,
-      kindLabel: category.itemLabel,
-      descriptionKindLabel: category.itemLabel,
+      kindLabel: t(category.itemLabel),
+      descriptionKindLabel: t(category.itemLabel),
       identity: item.label,
       roles: (item.role_labels ?? []).filter((role) => !isAccessProvenanceLabel(role)),
     })),
   );
   return (
     <AssociationRoleTooltip
-      label="Linked associations"
+      label={t("Linked associations")}
       entries={entries}
       tooltipLimit={tooltipLimit}
-      ariaLabel={`${total} linked association${total === 1 ? "" : "s"}`}
+      ariaLabel={locale === "zh" ? `${total} 个关联关系` : `${total} linked association${total === 1 ? "" : "s"}`}
       focusable
     >
       <span className="inline-flex max-w-full flex-wrap items-center gap-1.5">
@@ -262,7 +265,7 @@ export function CompactAssociationSummary({
             key={category.id}
             disableToneStyles className={`gap-1 ui-list-association-${category.id}`}
           >
-            <span>{category.label}</span>
+            <span>{t(category.label)}</span>
             <span aria-label={`${category.items.length} ${category.label.toLowerCase()}`}>{category.items.length}</span>
           </ListBadge>
         ))}
@@ -298,16 +301,17 @@ export function AssociationPrincipalStack({
   maxVisible?: number;
   tooltipLimit?: number;
 }) {
-  if (items.length === 0) return <span className="ui-caption text-slate-500 dark:text-slate-400">None</span>;
+  const { locale, t } = useAdminControlText();
+  if (items.length === 0) return <span className="ui-caption text-slate-500 dark:text-slate-400">{t("None")}</span>;
   const visible = items.slice(0, maxVisible);
   const remaining = items.length - visible.length;
   const entries = items.map(principalTooltipEntry);
   return (
     <AssociationRoleTooltip
-      label="Linked principals"
+      label={t("Linked principals")}
       entries={entries}
       tooltipLimit={tooltipLimit}
-      ariaLabel={`${items.length} linked principal${items.length === 1 ? "" : "s"}`}
+      ariaLabel={locale === "zh" ? `${items.length} 个关联主体` : `${items.length} linked principal${items.length === 1 ? "" : "s"}`}
     >
       <span className="inline-flex items-center -space-x-1.5">{visible.map((item) => {
         const principalType = item.kind === "group" ? "UI group" : "UI user";
@@ -320,7 +324,7 @@ export function AssociationPrincipalStack({
           <a
             key={`${item.kind}-${item.id}`}
             href={href}
-            aria-label={`Edit ${principalType} ${item.label}`}
+            aria-label={locale === "zh" ? `编辑${t(principalType)} ${item.label}` : `Edit ${principalType} ${item.label}`}
             className={`group relative inline-flex shrink-0 transition-transform hover:z-20 hover:-translate-y-0.5 focus:z-20 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--ui-surface)] ${
               item.kind === "group" ? "rounded-lg" : "rounded-full"
             }`}

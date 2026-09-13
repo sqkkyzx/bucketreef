@@ -9,8 +9,9 @@ import {
   useSettingsCloseGuard,
 } from "../../../components/settings/SettingsControls";
 import SettingsNavigationGuard from "../../../components/settings/SettingsNavigationGuard";
-import { adminPageBreadcrumbs } from "../adminBreadcrumbs";
+import { adminPageBreadcrumbs, localizedAdminPageBreadcrumbs } from "../adminBreadcrumbs";
 import type { useAppSettingsDraft } from "./useAppSettingsDraft";
+import { useAdminControlText } from "../adminControlMessages";
 
 export default function AdminSettingsFrame({
   title,
@@ -33,18 +34,19 @@ export default function AdminSettingsFrame({
   additionalContent?: ReactNode;
   dialogDirty?: boolean;
 }) {
+  const { locale, t } = useAdminControlText();
   const [reset, setReset] = useState(false);
   const cancelGuard = useSettingsCloseGuard({
     hasUnsavedChanges: form.dirty,
     disabled: form.busy,
     onClose: form.cancel,
-    description: "Your changes have not been saved.",
+    description: t("Your changes have not been saved."),
   });
   return (
     <PageShell
       title={title}
       description={description}
-      breadcrumbs={adminPageBreadcrumbs(page)}
+      breadcrumbs={localizedAdminPageBreadcrumbs(page, locale)}
       rightContent={
         <div>
           <SettingsButton
@@ -52,7 +54,7 @@ export default function AdminSettingsFrame({
             disabled={!form.settings || form.busy}
             onClick={() => setReset(true)}
           >
-            Reset to defaults
+            {t("Reset to defaults")}
           </SettingsButton>
         </div>
       }
@@ -70,7 +72,7 @@ export default function AdminSettingsFrame({
         )}
         {!form.settings ? (
           <p role="status">
-            {form.error ? "Settings are unavailable." : "Loading settings..."}
+            {form.error ? t("Settings are unavailable.") : t("Loading settings...")}
           </p>
         ) : (
           <form
@@ -91,6 +93,9 @@ export default function AdminSettingsFrame({
           busy={form.busy}
           onSave={() => void form.save()}
           onCancel={cancelGuard.requestClose}
+          saveLabel={t("Save changes")}
+          cancelLabel={t("Cancel")}
+          savingLabel={t("Saving...")}
         />
       </div>
       <SettingsNavigationGuard dirty={form.dirty || dialogDirty} />
@@ -100,10 +105,10 @@ export default function AdminSettingsFrame({
       {reset && (
         <ConfirmActionDialog
           title={resetTitle}
-          description="Replace this page's draft with application defaults."
-          confirmLabel="Load defaults"
+          description={t("Replace this page's draft with application defaults.")}
+          confirmLabel={t("Load defaults")}
           tone="primary"
-          warning="Defaults are loaded into this form only. Review them, then use Save changes to apply them."
+          warning={t("Defaults are loaded into this form only. Review them, then use Save changes to apply them.")}
           onCancel={() => setReset(false)}
           onConfirm={async () => {
             await form.loadDefaults();
