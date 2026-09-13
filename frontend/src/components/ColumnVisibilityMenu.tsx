@@ -8,9 +8,11 @@ import { ListActionButton } from "./list/ListControls";
 import AnchoredPortalMenu from "./ui/AnchoredPortalMenu";
 import { cx, uiMenuClass } from "./ui/styles";
 import { useDismissibleLayer } from "./ui/useDismissibleLayer";
+import { useI18n } from "../i18n";
 import "./columnVisibilityMenu.css";
 
 export default function ColumnVisibilityMenu<Id extends string>(props: Omit<ColumnVisibilityPickerProps<Id>, "onClose">) {
+  const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const anchorRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -47,14 +49,14 @@ export default function ColumnVisibilityMenu<Id extends string>(props: Omit<Colu
         aria-haspopup="dialog"
         aria-controls={open ? panelId : undefined}
       >
-        Columns
+        {t({ en: "Columns", zh: "列" })}
       </ListActionButton>
       <AnchoredPortalMenu open={open} anchorRef={anchorRef} placement="bottom-end" minWidth={0}>
         <div
           ref={panelRef}
           id={panelId}
           role="dialog"
-          aria-label={props.title ?? "Visible columns"}
+          aria-label={props.title ?? t({ en: "Visible columns", zh: "显示列" })}
           tabIndex={-1}
           className={cx(uiMenuClass, "ui-column-menu")}
         >

@@ -12,6 +12,7 @@ type WorkflowPageProps = {
   title: string;
   description?: ReactNode;
   breadcrumbs?: PageBreadcrumb[];
+  breadcrumbLabel?: string;
   inlineContent?: ReactNode;
   metaContent?: ReactNode;
   rightContent?: ReactNode;
@@ -42,6 +43,7 @@ export default function WorkflowPage({
   title,
   description,
   breadcrumbs = [],
+  breadcrumbLabel,
   inlineContent,
   metaContent,
   rightContent,
@@ -93,6 +95,7 @@ export default function WorkflowPage({
         title={title}
         description={description}
         breadcrumbs={safeBreadcrumbs}
+        breadcrumbLabel={breadcrumbLabel}
         inlineContent={inlineContent}
         metaContent={metaContent}
         rightContent={rightContent}

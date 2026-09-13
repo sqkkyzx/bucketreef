@@ -7,6 +7,7 @@ import type { ReactNode, RefObject } from "react";
 import PropertySummaryChip from "../../components/PropertySummaryChip";
 import type { PropertySummaryTone } from "../../components/PropertySummaryChip";
 import AnchoredPortalMenu from "../../components/ui/AnchoredPortalMenu";
+import { useI18n } from "../../i18n";
 
 export type BucketFeatureTooltipState =
   | { status: "loading" }
@@ -36,7 +37,7 @@ export function BucketSummaryTooltip({
   onClose,
   cacheKey,
   children,
-  loadingLabel = "Loading configuration...",
+  loadingLabel,
   buttonClassName = "inline-flex cursor-default",
 }: {
   label: string;
@@ -49,7 +50,12 @@ export function BucketSummaryTooltip({
   loadingLabel?: string;
   buttonClassName?: string;
 }) {
+  const { locale, t } = useI18n();
   const anchorRef = useRef<HTMLButtonElement | null>(null);
+  const resolvedLoadingLabel = loadingLabel ?? t({
+    en: "Loading configuration...",
+    zh: "正在加载配置…",
+  });
   return (
     <div className="relative inline-flex max-w-full" onMouseEnter={onOpen} onMouseLeave={onClose}>
       <button
@@ -58,7 +64,7 @@ export function BucketSummaryTooltip({
         className={buttonClassName}
         onFocus={onOpen}
         onBlur={onClose}
-        aria-label={`${label} details`}
+        aria-label={locale === "zh" ? `${label}详情` : `${label} details`}
       >
         {children}
       </button>
@@ -75,7 +81,7 @@ export function BucketSummaryTooltip({
           {(!tooltip || tooltip.status === "loading") && (
             <div className="mt-1.5 inline-flex items-center gap-1.5 ui-caption text-slate-500 dark:text-slate-300">
               <BucketTooltipSpinnerIcon />
-              {loadingLabel}
+              {resolvedLoadingLabel}
             </div>
           )}
           {tooltip?.status === "error" && (
@@ -115,6 +121,18 @@ export function BucketFeatureSummaryChip({
   onClose: () => void;
   cacheKey: string;
 }) {
+  const { locale } = useI18n();
+  const stateLabels: Record<string, string> = {
+    Enabled: "已启用",
+    Disabled: "已禁用",
+    Suspended: "已暂停",
+    Configured: "已配置",
+    "Not set": "未设置",
+    Partial: "部分启用",
+    Unavailable: "不可用",
+    Unknown: "未知",
+  };
+  const displayState = locale === "zh" ? stateLabels[state] ?? state : state;
   return (
     <BucketSummaryTooltip
       label={label}
@@ -124,7 +142,7 @@ export function BucketFeatureSummaryChip({
       onClose={onClose}
       cacheKey={cacheKey}
     >
-      <PropertySummaryChip compact state={state} tone={tone} />
+      <PropertySummaryChip compact state={displayState} tone={tone} />
     </BucketSummaryTooltip>
   );
 }

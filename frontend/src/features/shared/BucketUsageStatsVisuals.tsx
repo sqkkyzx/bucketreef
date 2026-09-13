@@ -173,7 +173,11 @@ export function BucketUsageStatsDataTypesCard({
   const entries = topEntries(rawEntries, rawEntries.length);
   const topDataTypes = entries.slice(0, 4);
   const hasSnapshot = Boolean(aggregate && aggregate.buckets_with_snapshot > 0);
-  const coverage = aggregate ? `${aggregate.buckets_with_snapshot} / ${aggregate.bucket_count} buckets covered` : "";
+  const coverage = aggregate
+    ? locale === "zh"
+      ? `${aggregate.buckets_with_snapshot} / ${aggregate.bucket_count} 个存储桶已覆盖`
+      : `${aggregate.buckets_with_snapshot} / ${aggregate.bucket_count} buckets covered`
+    : "";
   const latest = aggregate?.newest_snapshot_at ? formatLocalDateTime(aggregate.newest_snapshot_at) : null;
 
   return (

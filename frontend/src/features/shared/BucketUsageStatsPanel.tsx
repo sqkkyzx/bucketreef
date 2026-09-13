@@ -6,6 +6,7 @@ import type { BucketUsageStatsSnapshot } from "../../api/bucketUsageStats";
 import { MetricsCard, MetricsEmptyState } from "../../components/MetricsCard";
 import PageBanner from "../../components/PageBanner";
 import { cx, uiButtonBaseClass, uiButtonVariants } from "../../components/ui/styles";
+import { useManagerBucketDetailText } from "../manager/managerBucketDetailMessages";
 import { formatCompactNumber } from "../../utils/format";
 import { formatLocalDateTime } from "../../utils/dateTime";
 import { BucketUsageStatsCompositionVisuals } from "./BucketUsageStatsVisuals";
@@ -27,10 +28,12 @@ export default function BucketUsageStatsPanel({
   onRefresh,
   onRecalculate,
 }: BucketUsageStatsPanelProps) {
+  const { t } = useManagerBucketDetailText();
+
   return (
     <MetricsCard
-      title="Usage stats"
-      description="Latest persisted calculation from object listings. Space ratios use logical object-version bytes."
+      title={t("Usage stats")}
+      description={t("Latest persisted calculation from object listings. Space ratios use logical object-version bytes.")}
       actions={
         <>
           {onRefresh && (
@@ -40,7 +43,7 @@ export default function BucketUsageStatsPanel({
               disabled={loading || recalculating}
               className={cx(uiButtonBaseClass, uiButtonVariants.secondary)}
             >
-              {loading ? "Loading..." : "Refresh"}
+              {loading ? t("Loading...") : t("Refresh")}
             </button>
           )}
           {onRecalculate && (
@@ -50,16 +53,16 @@ export default function BucketUsageStatsPanel({
               disabled={recalculating}
               className={cx(uiButtonBaseClass, uiButtonVariants.primary)}
             >
-              {recalculating ? "Calculating..." : "Recalculate"}
+              {recalculating ? t("Calculating...") : t("Recalculate")}
             </button>
           )}
         </>
       }
     >
 
-      {error && <PageBanner tone="error">{error}</PageBanner>}
+      {error && <PageBanner tone="error">{t(error)}</PageBanner>}
       {snapshot?.warnings?.map((warning) => (
-        <PageBanner key={warning} tone="warning">{warning}</PageBanner>
+        <PageBanner key={warning} tone="warning">{t(warning)}</PageBanner>
       ))}
 
       {loading && !snapshot ? (
@@ -70,16 +73,19 @@ export default function BucketUsageStatsPanel({
         </div>
       ) : !snapshot ? (
         <MetricsEmptyState>
-          <span className="block font-semibold text-[var(--ui-text)]">No usage stats calculated yet.</span>
-          <span className="block ui-caption">Run a calculation to persist the latest bucket snapshot.</span>
+          <span className="block font-semibold text-[var(--ui-text)]">{t("No usage stats calculated yet.")}</span>
+          <span className="block ui-caption">{t("Run a calculation to persist the latest bucket snapshot.")}</span>
         </MetricsEmptyState>
       ) : (
         <BucketUsageStatsCompositionVisuals
           stats={snapshot}
           finalMetric={{
-            label: "Delete markers",
+            label: t("Delete markers"),
             value: formatCompactNumber(snapshot.delete_marker_count),
-            hint: `Calculated ${formatLocalDateTime(snapshot.calculated_at)}`,
+            hint: t({
+              en: `Calculated ${formatLocalDateTime(snapshot.calculated_at)}`,
+              zh: `计算时间：${formatLocalDateTime(snapshot.calculated_at)}`,
+            }),
           }}
           showVersionListingWarning={!snapshot.version_listing_available}
         />

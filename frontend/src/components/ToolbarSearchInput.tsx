@@ -6,6 +6,7 @@ import { ListActionButton } from "./list/ListControls";
 import type { ReactNode } from "react";
 import UiField from "./ui/UiField";
 import { cx, uiInputClass } from "./ui/styles";
+import { useI18n } from "../i18n";
 
 type ToolbarSearchMatchMode = "contains" | "exact";
 
@@ -27,7 +28,7 @@ export default function ToolbarSearchInput({
   value,
   onChange,
   placeholder,
-  label = "Search",
+  label,
   className = "w-full sm:w-72",
   active = false,
   inputClassName,
@@ -36,14 +37,19 @@ export default function ToolbarSearchInput({
   onToggleMatchMode,
   trailingControl,
 }: ToolbarSearchInputProps) {
+  const { locale, t } = useI18n();
+  const resolvedLabel = label ?? t({ en: "Search", zh: "搜索" });
+  const matchModeLabel = matchMode === "contains"
+    ? t({ en: "contains", zh: "包含" })
+    : t({ en: "exact", zh: "精确匹配" });
   const matchModeControl =
     matchMode && onToggleMatchMode ? (
       <ListActionButton iconOnly
         type="button"
         onClick={onToggleMatchMode}
         className="ui-list-search-mode"
-        title={`Filter mode: ${matchMode === "contains" ? "contains" : "exact"}`}
-        aria-label="Toggle filter match mode"
+        title={locale === "zh" ? `筛选模式：${matchModeLabel}` : `Filter mode: ${matchModeLabel}`}
+        aria-label={t({ en: "Toggle filter match mode", zh: "切换筛选匹配模式" })}
       >
         {matchMode === "contains" ? "~" : "="}
       </ListActionButton>
@@ -69,7 +75,7 @@ export default function ToolbarSearchInput({
   );
 
   return (
-    <UiField label={label} className={className}>
+    <UiField label={resolvedLabel} className={className}>
       {(fieldProps) =>
         resolvedTrailingControl ? (
           <div className={cx("relative", inputWrapperClassName)}>

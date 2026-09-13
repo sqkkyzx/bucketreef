@@ -5,6 +5,7 @@
 import { ReactNode } from "react";
 
 import UiButton from "../../../components/ui/UiButton";
+import { useManagerBucketDetailText } from "../managerBucketDetailMessages";
 
 type BucketFeatureJsonExampleProps = {
   show: boolean;
@@ -23,6 +24,8 @@ export default function BucketFeatureJsonExample({
   helperText,
   disabled = false,
 }: BucketFeatureJsonExampleProps) {
+  const { t } = useManagerBucketDetailText();
+
   return (
     <div className="rounded-md border border-[color:var(--ui-border)] bg-[var(--ui-surface-muted)] px-3 py-2 ui-caption text-[var(--ui-text-muted)]">
       <div className="flex flex-wrap items-center gap-2">
@@ -34,7 +37,7 @@ export default function BucketFeatureJsonExample({
           size="xs"
           className="h-auto px-1.5 py-0.5"
         >
-          {show ? "Hide example" : "Show example"}
+          {show ? t("Hide example") : t("Show example")}
         </UiButton>
         {onUseExample && (
           <UiButton
@@ -45,7 +48,7 @@ export default function BucketFeatureJsonExample({
             size="xs"
             className="h-auto rounded-full px-2 py-0.5"
           >
-            Use example
+            {t("Use example")}
           </UiButton>
         )}
         {helperText}

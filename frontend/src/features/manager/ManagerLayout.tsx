@@ -27,6 +27,8 @@ import {
   MANAGER_PAGE_CONTRACTS,
   workspacePageLink,
 } from "../../navigation/workspacePages";
+import { useManagerText } from "./managerI18n";
+import { managerShellZhMessages } from "./managerShellMessages";
 
 type SessionCapabilities = {
   can_manage_iam?: boolean;
@@ -35,6 +37,7 @@ type SessionCapabilities = {
 };
 
 function ManagerShell() {
+  const { locale, t } = useManagerText(managerShellZhMessages);
   const {
     accounts,
     selectedS3AccountId,
@@ -97,27 +100,27 @@ function ManagerShell() {
     canViewUsageStatsMenu || (Boolean(managerStatsEnabled) && (usageFeatureEnabled || metricsFeatureEnabled));
   const managerMetricsDisabledHint =
     managerStatsEnabled === null
-      ? "Metrics availability is loading for this context."
+      ? t("Metrics availability is loading for this context.")
       : managerStatsEnabled === false
         ? managerStatsMessage && managerStatsMessage.trim()
-          ? managerStatsMessage
-          : "Metrics are disabled for this context."
+          ? t(managerStatsMessage)
+          : t("Metrics are disabled for this context.")
         : !usageFeatureEnabled && !metricsFeatureEnabled
-          ? "Metrics are unavailable for this endpoint capabilities."
+          ? t("Metrics are unavailable for this endpoint capabilities.")
           : undefined;
   const managerBrowserAvailable = managerBrowserEnabled === true;
-  const modeVisual = getContextAccessModeVisual(accessMode);
+  const modeVisual = getContextAccessModeVisual(accessMode, locale);
   const identityLabel = iamIdentity
     ? accessMode === "connection"
-      ? `S3 Identity: ${iamIdentity}`
-      : `IAM Identity: ${iamIdentity}`
+      ? t({ en: `S3 Identity: ${iamIdentity}`, zh: `S3 身份：${iamIdentity}` })
+      : t({ en: `IAM Identity: ${iamIdentity}`, zh: `IAM 身份：${iamIdentity}` })
     : selectedS3AccountType === "s3_user" && sessionS3AccountName
-      ? `S3 user account: ${sessionS3AccountName}`
+      ? t({ en: `S3 user account: ${sessionS3AccountName}`, zh: `S3 用户账户：${sessionS3AccountName}` })
       : null;
 
   const selectedLabel = selected
-    ? formatAccountLabel(selected)
-    : "No account selected";
+    ? formatAccountLabel(selected, true, locale)
+    : t("No account selected");
 
   const handleS3AccountChange = (selectedValue: string) => {
     const value = selectedValue || null;
@@ -137,7 +140,7 @@ function ManagerShell() {
       return (
         <button
           type="button"
-          aria-label={`Account context ${selectedLabel}`}
+          aria-label={t({ en: `Account context ${selectedLabel}`, zh: `账户上下文：${selectedLabel}` })}
           title={identityLabel ?? selectedLabel}
           className={`shell-control inline-flex h-9 ${TOPBAR_CONTEXT_SELECTOR_ICON_WIDTH_CLASS} items-center justify-center rounded-lg border text-left`}
         >
@@ -150,7 +153,7 @@ function ManagerShell() {
       <div className={`shell-control inline-flex h-10 ${TOPBAR_CONTEXT_SELECTOR_WIDTH_CLASS} items-center gap-2.5 rounded-lg border px-3 text-left`}>
         <span className="min-w-0 flex-1 leading-tight">
           <span className="shell-muted-text block truncate text-[10px] font-medium">
-            Account
+            {t("Account")}
           </span>
           <span className={`mt-0.5 block ${TOPBAR_CONTEXT_SELECTOR_VALUE_WIDTH_CLASS} truncate text-[12px] font-semibold leading-4 text-[var(--shell-text)]`}>
             {selectedLabel}
@@ -190,13 +193,19 @@ function ManagerShell() {
     },
   ];
 
+  const managerPageLink = (pageId: keyof typeof MANAGER_PAGE_CONTRACTS) => ({
+    ...workspacePageLink(MANAGER_PAGE_CONTRACTS[pageId]),
+    label: t(MANAGER_PAGE_CONTRACTS[pageId].label),
+  });
+
   const navSections: SidebarSection[] = [
     {
       label: "Overview",
+      displayLabel: t("Overview"),
       links: [
-        { ...workspacePageLink(MANAGER_PAGE_CONTRACTS.dashboard), end: true },
+        { ...managerPageLink("dashboard"), end: true },
         {
-          ...workspacePageLink(MANAGER_PAGE_CONTRACTS.metrics),
+          ...managerPageLink("metrics"),
           disabled: !canViewMetricsMenu,
           disabledHint: !canViewMetricsMenu ? managerMetricsDisabledHint : undefined,
         },
@@ -207,17 +216,19 @@ function ManagerShell() {
   if (canManageBuckets) {
     navSections.push({
       label: "Storage",
+      displayLabel: t("Storage"),
       links: [
-        workspacePageLink(MANAGER_PAGE_CONTRACTS.buckets),
+        managerPageLink("buckets"),
         ...(generalSettings.browser_enabled && generalSettings.browser_manager_enabled && managerBrowserAvailable
-          ? [workspacePageLink(MANAGER_PAGE_CONTRACTS.browser)]
+          ? [managerPageLink("browser")]
           : []),
       ],
     });
     if (snsFeatureEnabled) {
       navSections.push({
         label: "Events",
-        links: [workspacePageLink(MANAGER_PAGE_CONTRACTS.topics)],
+        displayLabel: t("Events"),
+        links: [managerPageLink("topics")],
       });
     }
   }
@@ -226,10 +237,10 @@ function ManagerShell() {
     navSections.push({
       label: "IAM",
       links: [
-        workspacePageLink(MANAGER_PAGE_CONTRACTS.users),
-        workspacePageLink(MANAGER_PAGE_CONTRACTS.groups),
-        workspacePageLink(MANAGER_PAGE_CONTRACTS.roles),
-        workspacePageLink(MANAGER_PAGE_CONTRACTS.policies),
+        managerPageLink("users"),
+        managerPageLink("groups"),
+        managerPageLink("roles"),
+        managerPageLink("policies"),
       ],
     });
   }
@@ -237,30 +248,31 @@ function ManagerShell() {
   if (isS3User && (managerCephKeysEnabled || managerPrivateAccessEnabled)) {
     navSections.push({
       label: "Ceph",
-      links: [workspacePageLink(MANAGER_PAGE_CONTRACTS["ceph-keys"])],
+      links: [managerPageLink("ceph-keys")],
     });
   }
 
   if (canManageBuckets) {
     const toolsLinks: SidebarSection["links"] = [];
     if (canAccessFeatureRulesForUser) {
-      toolsLinks.push({ ...workspacePageLink(MANAGER_PAGE_CONTRACTS["feature-rules"]), iconName: "rules" });
+      toolsLinks.push({ ...managerPageLink("feature-rules"), iconName: "rules" });
     }
     if (canShowBucketCompare) {
-      toolsLinks.push({ ...workspacePageLink(MANAGER_PAGE_CONTRACTS.compare), iconName: "compare" });
+      toolsLinks.push({ ...managerPageLink("compare"), iconName: "compare" });
     }
     if (canShowBucketIntegrity) {
-      toolsLinks.push({ ...workspacePageLink(MANAGER_PAGE_CONTRACTS.integrity), iconName: "integrity" });
+      toolsLinks.push({ ...managerPageLink("integrity"), iconName: "integrity" });
     }
     if (canShowBucketPurge) {
-      toolsLinks.push({ ...workspacePageLink(MANAGER_PAGE_CONTRACTS.purge), iconName: "purge" });
+      toolsLinks.push({ ...managerPageLink("purge"), iconName: "purge" });
     }
     if (canAccessMigration) {
-      toolsLinks.push({ ...workspacePageLink(MANAGER_PAGE_CONTRACTS.migration), iconName: "migration" });
+      toolsLinks.push({ ...managerPageLink("migration"), iconName: "migration" });
     }
     if (toolsLinks.length > 0) {
       navSections.push({
         label: "Tools",
+        displayLabel: t("Tools"),
         links: toolsLinks,
       });
     }
@@ -269,15 +281,15 @@ function ManagerShell() {
   return (
     <Layout
       navSections={navSections}
-      headerTitle="Manager"
+      headerTitle={t("Manager")}
       hideHeader
-      sidebarTitle="MANAGER"
+      sidebarTitle={t({ en: "MANAGER", zh: "管理控制台" })}
       topbarControlDescriptors={topbarControlDescriptors}
     >
       <>
         {accessError && (
           <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 ui-body text-amber-800 shadow-sm dark:border-amber-900/40 dark:bg-amber-900/30 dark:text-amber-100">
-            Access denied for /manager. Check your account permissions or contact an administrator.
+            {t("Access denied for /manager. Check your account permissions or contact an administrator.")}
           </div>
         )}
         <Outlet key={`${selectedS3AccountId ?? "session"}:${accessMode ?? "default"}`} />

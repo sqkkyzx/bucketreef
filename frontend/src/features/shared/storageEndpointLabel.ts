@@ -3,6 +3,7 @@
  * Licensed under the Apache License, Version 2.0
  */
 import { ExecutionContext } from "../../api/executionContexts";
+import type { UiLanguage } from "../../components/language";
 
 type StoredAccount = {
   name: string;
@@ -24,29 +25,30 @@ function isDefaultStorageEndpoint(context: AccountLike): boolean {
     : context.storage_endpoint_is_default;
 }
 
-function getStorageSuffix(context: AccountLike): string {
+function getStorageSuffix(context: AccountLike, locale: UiLanguage): string {
   if (isDefaultStorageEndpoint(context)) return "";
   const endpointName = isExecutionContext(context)
     ? context.endpoint_name
     : context.storage_endpoint_name;
-  const label = endpointName || "Custom endpoint";
+  const label = endpointName || (locale === "zh" ? "自定义端点" : "Custom endpoint");
   return ` (${label})`;
 }
 
 export function formatAccountLabel(
   context: AccountLike,
-  includeContextBadge = true
+  includeContextBadge = true,
+  locale: UiLanguage = "en",
 ): string {
   const isS3User = isExecutionContext(context) && context.kind === "s3_user";
   const isConnection = isExecutionContext(context) && context.kind === "connection";
   const badge = includeContextBadge
     ? isConnection
-      ? " · Connection"
+      ? locale === "zh" ? " · 连接" : " · Connection"
       : isS3User
-        ? " · S3 user"
+        ? locale === "zh" ? " · S3 用户" : " · S3 user"
         : ""
     : "";
   const displayName = isExecutionContext(context) ? context.display_name : context.name;
   const base = `${displayName}${badge}`;
-  return `${base}${getStorageSuffix(context)}`;
+  return `${base}${getStorageSuffix(context, locale)}`;
 }
