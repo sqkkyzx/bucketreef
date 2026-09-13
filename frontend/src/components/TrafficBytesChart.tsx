@@ -2,6 +2,8 @@
  * Copyright (c) 2025 Laurent Barbe
  * Licensed under the Apache License, Version 2.0
  */
+import { translate, useI18n } from "../i18n";
+import { infrastructureMessages } from "../infrastructureMessages";
 import { useMemo } from "react";
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { TrafficSeriesPoint, TrafficWindow } from "../api/stats";
@@ -168,9 +170,12 @@ export default function TrafficBytesChart({
   end,
   height = 280,
   chartKey,
-  ingressLabel = "Ingress",
-  egressLabel = "Egress",
+  ingressLabel: ingressLabelOverride,
+  egressLabel: egressLabelOverride,
 }: TrafficBytesChartProps) {
+  const { locale } = useI18n();
+  const egressLabel = egressLabelOverride ?? translate(infrastructureMessages.egress, locale);
+  const ingressLabel = ingressLabelOverride ?? translate(infrastructureMessages.ingress, locale);
   const chartData = useMemo(() => buildChartData(window, series, start, end), [end, series, start, window]);
   const domain = useMemo(() => {
     if (!chartData.length) {

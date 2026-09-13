@@ -1,8 +1,11 @@
-import AdminDashboardMap, { type AdminDashboardMapMarker } from "./components/AdminDashboardMap";
 /*
  * Copyright (c) 2025 Laurent Barbe
  * Licensed under the Apache License, Version 2.0
  */
+import { translate, useI18n } from "../../i18n";
+import type { UiLanguage } from "../../components/language";
+import { infrastructureMessages } from "../../infrastructureMessages";
+import AdminDashboardMap, { type AdminDashboardMapMarker } from "./components/AdminDashboardMap";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { listAuditLogs, type AuditLogEntry } from "../../api/audit";
@@ -28,7 +31,7 @@ import {
 import { useGeneralSettings } from "../../components/GeneralSettingsContext";
 import PageBanner from "../../components/PageBanner";
 import PageHeader from "../../components/PageHeader";
-import { adminPageBreadcrumbs } from "./adminBreadcrumbs";
+import { localizedAdminPageBreadcrumbs as adminPageBreadcrumbs } from "./adminBreadcrumbs";
 import {
   type WorkspaceDashboardFeature,
   type WorkspaceDashboardFeatureGroup,
@@ -75,17 +78,17 @@ function parseBackendIsoDate(value?: string | null): Date | null {
   return parsed;
 }
 
-function formatRelativeTime(value?: string | null, now = Date.now()): string {
+function formatRelativeTime(value?: string | null, now = Date.now(), locale: UiLanguage = "en"): string {
   const parsed = parseBackendIsoDate(value);
-  if (!parsed) return "Date unavailable";
+  if (!parsed) return translate(infrastructureMessages.dateUnavailable, locale);
   const diffMs = Math.max(0, now - parsed.getTime());
   const minutes = Math.floor(diffMs / 60000);
-  if (minutes < 1) return "just now";
-  if (minutes < 60) return `${minutes}m ago`;
+  if (minutes < 1) return translate(infrastructureMessages.justNow, locale);
+  if (minutes < 60) return translate({ en: `${minutes}m ago`, zh: `${minutes} 分钟前` }, locale);
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
+  if (hours < 24) return translate({ en: `${hours}h ago`, zh: `${hours} 小时前` }, locale);
   const days = Math.floor(hours / 24);
-  return `${days}d ago`;
+  return translate({ en: `${days}d ago`, zh: `${days} 天前` }, locale);
 }
 
 function isEndpointCheckStale(value?: string | null, now = Date.now()): boolean {
@@ -93,8 +96,9 @@ function isEndpointCheckStale(value?: string | null, now = Date.now()): boolean 
   return !parsed || now - parsed.getTime() > ENDPOINT_STATUS_MAX_AGE_MS;
 }
 
-function formatEndpointFreshnessWarning(noChecksCount: number, staleCount: number, totalCount: number): string {
+function formatEndpointFreshnessWarning(noChecksCount: number, staleCount: number, totalCount: number, locale: UiLanguage = "en"): string {
   const issueCount = noChecksCount + staleCount;
+  if (locale === "zh") return `端点状态使用已保存的健康检查采样；${issueCount}/${totalCount} 个端点需要重新检查（${noChecksCount} 个尚无检查，${staleCount} 个检查早于 ${ENDPOINT_STATUS_MAX_AGE_HOURS} 小时前）。仪表板状态可能不代表当前可用性。`;
   const details = [
     noChecksCount > 0 ? `${noChecksCount} without checks` : null,
     staleCount > 0 ? `${staleCount} older than ${ENDPOINT_STATUS_MAX_AGE_HOURS}h` : null,
@@ -123,12 +127,19 @@ function computeMeanAvailability(data?: EndpointHealthOverviewResponse | null): 
   return Math.round(totalAvailability / availabilityValues.length);
 }
 
-function formatAuditAction(log: AuditLogEntry): string {
-  const action = log.action.replace(/[._-]+/g, " ").trim();
-  if (log.action.includes("login")) return `User ${log.user_email} logged in`;
-  if (log.entity_type === "bucket" && log.entity_id) return `Bucket "${log.entity_id}" ${action}`;
-  if (log.entity_type === "endpoint" && log.entity_id) return `Endpoint ${log.entity_id} ${action}`;
-  if (log.entity_id) return `${log.entity_type ?? "Entity"} ${log.entity_id} ${action}`;
+function formatAuditAction(log: AuditLogEntry, locale: UiLanguage = "en"): string {
+  const rawAction = log.action.replace(/[._-]+/g, " ").trim();
+  const actions: Record<string, string> = {
+    storage_endpoint_create: "创建存储端点", storage_endpoint_update: "更新存储端点", storage_endpoint_delete: "删除存储端点",
+    account_create: "创建账户", account_update: "更新账户", account_delete: "删除账户", account_link_user: "关联用户",
+    bucket_list_objects: "列出对象", user_create: "创建用户", user_update: "更新用户", user_delete: "删除用户",
+  };
+  const action = locale === "zh" ? actions[log.action] ?? rawAction : rawAction;
+  const entityLabels: Record<string, string> = { account: "账户", user: "用户", bucket: "存储桶", endpoint: "端点", connection: "连接" };
+  if (log.action.includes("login")) return translate({ en: `User ${log.user_email} logged in`, zh: `用户 ${log.user_email} 已登录` }, locale);
+  if (log.entity_type === "bucket" && log.entity_id) return translate({ en: `Bucket "${log.entity_id}" ${action}`, zh: `存储桶“${log.entity_id}” ${action}` }, locale);
+  if (log.entity_type === "endpoint" && log.entity_id) return translate({ en: `Endpoint ${log.entity_id} ${action}`, zh: `端点 ${log.entity_id} ${action}` }, locale);
+  if (log.entity_id) return `${(locale === "zh" ? entityLabels[log.entity_type ?? ""] : undefined) ?? log.entity_type ?? translate(infrastructureMessages.entity, locale)} ${log.entity_id} ${action}`;
   return action.charAt(0).toUpperCase() + action.slice(1);
 }
 
@@ -155,6 +166,7 @@ function OnboardingPanel({
   dismissBusy: boolean;
   onDismiss: () => void;
 }) {
+  const { locale } = useI18n();
   const [reviewOpen, setReviewOpen] = useState(!onboarding.complete);
 
   if (!reviewOpen) {
@@ -162,22 +174,20 @@ function OnboardingPanel({
       <section className={cx(uiCardClass, "flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between")}>
         <div className="min-w-0">
           <h2 className="ui-body font-semibold text-[var(--ui-text)]">
-            {onboarding.complete ? "Storage setup complete" : "BucketReef is ready"}
+            {onboarding.complete ? translate(infrastructureMessages.storageSetupComplete, locale) : translate(infrastructureMessages.bucketReefIsReady, locale)}
           </h2>
           <p className={cx("mt-0.5 ui-caption", uiMutedTextClass)}>
             {onboarding.complete
-              ? "A storage endpoint and an active storage access context are configured."
-              : "Administrator access is secured. Connect storage when you are ready."}
+              ? translate(infrastructureMessages.aStorageEndpointAndAnActiveStorageAccessContextAre, locale)
+              : translate(infrastructureMessages.administratorAccessIsSecuredConnectStorageWhenYouAreReady, locale)}
           </p>
           {error ? <p className="mt-2 ui-caption font-semibold text-rose-600 dark:text-rose-300">{error}</p> : null}
         </div>
         <div className="flex shrink-0 flex-wrap items-center gap-2">
           <WorkspaceDashboardAction variant="secondary" size="sm" onClick={() => setReviewOpen(true)}>
-            Review
-          </WorkspaceDashboardAction>
+            {translate(infrastructureMessages.review, locale)}</WorkspaceDashboardAction>
           <WorkspaceDashboardAction variant="ghost" size="sm" onClick={onDismiss} disabled={dismissBusy} loading={dismissBusy}>
-            Dismiss
-          </WorkspaceDashboardAction>
+            {translate(infrastructureMessages.dismiss, locale)}</WorkspaceDashboardAction>
         </div>
       </section>
     );
@@ -196,41 +206,36 @@ function OnboardingPanel({
             <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
               <div className="min-w-0">
                 <h2 className="ui-dashboard-title">
-                  Connect your storage when you&apos;re ready.
-                </h2>
+                  {translate(infrastructureMessages.connectYourStorageWhenYouaposreReady, locale)}</h2>
                 <p className={cx("mt-1 ui-body", uiMutedTextClass)}>
-                  BucketReef is ready. These optional steps enable storage administration and browsing.
-                </p>
+                  {translate(infrastructureMessages.bucketReefIsReadyTheseOptionalStepsEnableStorageAdministrationAnd, locale)}</p>
               </div>
             </div>
             {error && <p className="mt-3 ui-caption font-semibold text-rose-600 dark:text-rose-300">{error}</p>}
             <div className="mt-4 grid min-w-0 gap-3 xl:grid-cols-2 2xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_220px]">
               <SetupStep
                 index={1}
-                title="Configure a storage endpoint"
-                description="Add the S3 or Ceph endpoint that BucketReef should manage."
+                title={translate(infrastructureMessages.configureAStorageEndpoint, locale)}
+                description={translate(infrastructureMessages.addTheS3OrCephEndpointThatBucketReefShouldManage, locale)}
                 done={onboarding.endpoint_configured}
-                action={{ label: "Configure endpoints", to: "/admin/storage-endpoints" }}
+                action={{ label: translate(infrastructureMessages.configureEndpoints, locale), to: "/admin/storage-endpoints" }}
               />
               <SetupStep
                 index={2}
-                title="Configure storage access"
-                description="Create an S3 account or an active connection for storage operations."
+                title={translate(infrastructureMessages.configureStorageAccess, locale)}
+                description={translate(infrastructureMessages.createAnS3AccountOrAnActiveConnectionForStorage, locale)}
                 done={onboarding.storage_access_configured}
-                action={{ label: "Configure connections", to: "/admin/s3-connections" }}
+                action={{ label: translate(infrastructureMessages.configureConnections, locale), to: "/admin/s3-connections" }}
               />
               <div className={cx(uiCardMutedClass, "px-4 py-3 xl:col-span-2 2xl:col-span-1")}>
-                <p className="ui-body font-semibold text-[var(--ui-text)]">Next steps</p>
+                <p className="ui-body font-semibold text-[var(--ui-text)]">{translate(infrastructureMessages.nextSteps, locale)}</p>
                 <div className="mt-3 space-y-2">
                   <Link to="/admin/users" className="flex items-center gap-2 ui-caption font-medium text-primary">
-                    <OpenIcon className="h-3.5 w-3.5" /> Add UI user
-                  </Link>
+                    <OpenIcon className="h-3.5 w-3.5" /> {translate(infrastructureMessages.addUIUser, locale)}</Link>
                   <Link to="/admin/s3-accounts" className="flex items-center gap-2 ui-caption font-medium text-primary">
-                    <OpenIcon className="h-3.5 w-3.5" /> Create account
-                  </Link>
+                    <OpenIcon className="h-3.5 w-3.5" /> {translate(infrastructureMessages.createAccount, locale)}</Link>
                   <Link to="/admin/audit" className="flex items-center gap-2 ui-caption font-medium text-primary">
-                    <OpenIcon className="h-3.5 w-3.5" /> View audit trail
-                  </Link>
+                    <OpenIcon className="h-3.5 w-3.5" /> {translate(infrastructureMessages.viewAuditTrail, locale)}</Link>
                 </div>
               </div>
             </div>
@@ -243,15 +248,14 @@ function OnboardingPanel({
               onClick={() => setReviewOpen(false)}
               variant="secondary"
             >
-              Collapse checklist
-            </WorkspaceDashboardAction>
+              {translate(infrastructureMessages.collapseChecklist, locale)}</WorkspaceDashboardAction>
             <WorkspaceDashboardAction
               type="button"
               onClick={onDismiss}
               disabled={dismissBusy}
               variant="ghost"
             >
-              {dismissBusy ? "Dismissing..." : "Dismiss checklist"}
+              {dismissBusy ? translate(infrastructureMessages.dismissing, locale) : translate(infrastructureMessages.dismissChecklist, locale)}
             </WorkspaceDashboardAction>
           </div>
         </div>
@@ -273,6 +277,7 @@ function SetupStep({
   done: boolean;
   action: { label: string; to: string };
 }) {
+  const { locale } = useI18n();
   return (
     <div className={cx(uiCardMutedClass, "flex min-h-[112px] min-w-0 flex-col justify-between gap-3 px-4 py-3")}>
       <div className="flex items-start justify-between gap-3">
@@ -292,7 +297,7 @@ function SetupStep({
             <span className={cx("mt-1 block ui-caption", uiMutedTextClass)}>{description}</span>
           </span>
         </div>
-        <UiBadge tone={done ? "success" : "warning"} className="shrink-0">{done ? "Done" : "Pending"}</UiBadge>
+        <UiBadge tone={done ? "success" : "warning"} className="shrink-0">{done ? translate(infrastructureMessages.done, locale) : translate(infrastructureMessages.pending, locale)}</UiBadge>
       </div>
       <WorkspaceDashboardActionLink to={action.to} className="w-fit">
         {action.label}
@@ -308,28 +313,29 @@ function EndpointHealthSection({ data, loading, unavailableReason, freshnessWarn
   unavailableReason?: string | null;
   freshnessWarning: string | null;
 }) {
+  const { locale } = useI18n();
   const endpoints = unavailableReason ? [] : data?.endpoints.slice(0, MAX_ENDPOINT_ROWS) ?? [];
   return (
     <div className="ui-dashboard-operational-grid">
       <WorkspaceDashboardCard
-        title="Endpoint Health"
+        title={translate(infrastructureMessages.endpointHealth, locale)}
         presentation="compact"
-        action={<WorkspaceDashboardActionLink to="/admin/endpoint-status">Open Endpoint Status</WorkspaceDashboardActionLink>}
+        action={<WorkspaceDashboardActionLink to="/admin/endpoint-status">{translate(infrastructureMessages.openEndpointStatus, locale)}</WorkspaceDashboardActionLink>}
       >
-        <p className="ui-dashboard-note">Stored healthcheck samples and latency.{data && <> Data refreshed {formatLocalDateTime(data.generated_at)}.</>}</p>
+        <p className="ui-dashboard-note">{translate(infrastructureMessages.storedHealthcheckSamplesAndLatency, locale)}{data && <> {" "}{translate(infrastructureMessages.dataRefreshed, locale)}{" "}{formatLocalDateTime(data.generated_at)}.</>}</p>
         {freshnessWarning && !unavailableReason && <div className="mt-2"><PageBanner tone="warning">{freshnessWarning}</PageBanner></div>}
-        {loading ? <p role="status" className="ui-dashboard-note mt-2">Loading endpoint health…</p> : unavailableReason ? <p role="status" className="ui-dashboard-note mt-2">{unavailableReason}</p> : (
+        {loading ? <p role="status" className="ui-dashboard-note mt-2">{translate(infrastructureMessages.loadingEndpointHealth, locale)}</p> : unavailableReason ? <p role="status" className="ui-dashboard-note mt-2">{unavailableReason}</p> : (
           <>
             <div className="ui-dashboard-badges mt-2">
-              <WorkspaceStatusCounter presentation="compact" label="Up" value={data?.up_count} status="up" />
-              <WorkspaceStatusCounter presentation="compact" label="Degraded" value={data?.degraded_count} status="degraded" />
-              <WorkspaceStatusCounter presentation="compact" label="Down" value={data?.down_count} status="down" />
-              <WorkspaceStatusCounter presentation="compact" label="Unknown" value={data?.unknown_count} status="unknown" />
+              <WorkspaceStatusCounter presentation="compact" label={translate({ en: "Up", zh: "正常" }, locale)} value={data?.up_count} status="up" />
+              <WorkspaceStatusCounter presentation="compact" label={translate(infrastructureMessages.degraded, locale)} value={data?.degraded_count} status="degraded" />
+              <WorkspaceStatusCounter presentation="compact" label={translate(infrastructureMessages.down, locale)} value={data?.down_count} status="down" />
+              <WorkspaceStatusCounter presentation="compact" label={translate(infrastructureMessages.unknown, locale)} value={data?.unknown_count} status="unknown" />
             </div>
-            <ul className="ui-dashboard-endpoint-list" aria-label="Endpoint health samples">
+            <ul className="ui-dashboard-endpoint-list" aria-label={translate(infrastructureMessages.endpointHealthSamples, locale)}>
               {endpoints.map((endpoint) => <EndpointRow key={endpoint.endpoint_id} endpoint={endpoint} />)}
             </ul>
-            {(data?.endpoints.length ?? 0) > MAX_ENDPOINT_ROWS && <p className="ui-dashboard-note">+ {(data?.endpoints.length ?? 0) - MAX_ENDPOINT_ROWS} more endpoint(s)</p>}
+            {(data?.endpoints.length ?? 0) > MAX_ENDPOINT_ROWS && <p className="ui-dashboard-note">+ {(data?.endpoints.length ?? 0) - MAX_ENDPOINT_ROWS} {" "}{translate(infrastructureMessages.moreEndpoints, locale)}</p>}
           </>
         )}
       </WorkspaceDashboardCard>
@@ -339,7 +345,7 @@ function EndpointHealthSection({ data, loading, unavailableReason, freshnessWarn
         loading={loading}
         unavailableReason={unavailableReason}
         incidentHighlightMinutes={data?.incident_highlight_minutes}
-        action={{ to: "/admin/endpoint-status", label: "View all incidents" }}
+        action={{ to: "/admin/endpoint-status", label: translate(infrastructureMessages.viewAllIncidents, locale) }}
         showEmptyState
       />
     </div>
@@ -347,8 +353,9 @@ function EndpointHealthSection({ data, loading, unavailableReason, freshnessWarn
 }
 
 function EndpointRow({ endpoint }: { endpoint: WorkspaceEndpointHealthEntry }) {
+  const { locale } = useI18n();
   const stale = isEndpointCheckStale(endpoint.checked_at);
-  const checkedAtLabel = endpoint.checked_at ? `Checked ${formatRelativeTime(endpoint.checked_at)}` : "No healthcheck yet";
+  const checkedAtLabel = endpoint.checked_at ? translate({ en: `Checked ${formatRelativeTime(endpoint.checked_at, undefined, locale)}`, zh: `检查于 ${formatRelativeTime(endpoint.checked_at, undefined, locale)}` }, locale) : translate(infrastructureMessages.noHealthcheckYet, locale);
   return (
     <li className="ui-dashboard-endpoint-row">
       <span className="ui-dashboard-endpoint-name">
@@ -361,7 +368,7 @@ function EndpointRow({ endpoint }: { endpoint: WorkspaceEndpointHealthEntry }) {
       </span>
       <span className="ui-dashboard-endpoint-check" data-stale={stale} title={formatLocalDateTime(endpoint.checked_at)}>{checkedAtLabel}</span>
       <UiBadge tone={endpoint.status === "up" ? "success" : endpoint.status === "degraded" ? "warning" : endpoint.status === "down" ? "danger" : "neutral"} className="ui-dashboard-badge ui-dashboard-endpoint-state">
-        {endpoint.status === "up" ? "Up" : endpoint.status === "degraded" ? "Degraded" : endpoint.status === "down" ? "Down" : "Unknown"}
+        {endpoint.status === "up" ? translate({ en: "Up", zh: "正常" }, locale) : endpoint.status === "degraded" ? translate(infrastructureMessages.degraded, locale) : endpoint.status === "down" ? translate(infrastructureMessages.down, locale) : translate(infrastructureMessages.unknown, locale)}
       </UiBadge>
     </li>
   );
@@ -388,31 +395,32 @@ function StorageTrafficSummary({
   healthScoreLoading: boolean;
   healthScoreUnavailableReason?: string | null;
 }) {
+  const { locale } = useI18n();
   const storageTotals = storage?.storage_totals;
   const requestsSeries = trafficOpsSeries(traffic);
-  const storageReason = storageError || (!storageLoading && !storage ? "Storage metrics are not available." : undefined);
-  const trafficReason = trafficError || (!trafficLoading && !traffic ? "Usage logs are not available." : undefined);
+  const storageReason = storageError || (!storageLoading && !storage ? translate(infrastructureMessages.storageMetricsAreNotAvailable, locale) : undefined);
+  const trafficReason = trafficError || (!trafficLoading && !traffic ? translate(infrastructureMessages.usageLogsAreNotAvailable, locale) : undefined);
   const metrics: WorkspacePlatformMetric[] = [
     {
-      label: "Buckets",
+      label: translate(infrastructureMessages.buckets, locale),
       value: storageLoading ? "..." : formatOptionalCompactNumber(storageReason ? null : storageTotals?.bucket_count ?? storage?.total_buckets ?? null),
       tone: "blue",
 
     },
     {
-      label: "Objects",
+      label: translate(infrastructureMessages.objects, locale),
       value: storageLoading ? "..." : formatOptionalCompactNumber(storageReason ? null : storageTotals?.object_count ?? null),
       tone: "violet",
 
     },
     {
-      label: "Stored data",
+      label: translate(infrastructureMessages.storedData, locale),
       value: storageLoading ? "..." : formatOptionalBytes(storageReason ? null : storageTotals?.used_bytes ?? null),
       tone: "emerald",
 
     },
     {
-      label: "Requests (24h)",
+      label: translate(infrastructureMessages.requests24h, locale),
       value: trafficLoading ? "..." : formatOptionalCompactNumber(trafficReason ? null : traffic?.totals.ops ?? null),
       delta: trafficReason ? undefined : traffic?.totals.success_rate != null ? `${formatPercentage(traffic.totals.success_rate * 100)} success` : undefined,
       series: !trafficReason && requestsSeries.length > 0 ? requestsSeries : undefined,
@@ -422,13 +430,13 @@ function StorageTrafficSummary({
   ];
 
   return (
-    <WorkspaceDashboardCard title="Storage & traffic" presentation="compact">
+    <WorkspaceDashboardCard title={translate(infrastructureMessages.storageTraffic, locale)} presentation="compact">
       <div className="ui-dashboard-metrics">
         {metrics.map((metric) => <WorkspacePlatformMetricCard key={metric.label} metric={metric} />)}
         <WorkspaceAvailabilityMetric score={healthScore} loading={healthScoreLoading} unavailableReason={healthScoreUnavailableReason} />
       </div>
-      {storageReason && <p role="status" className="ui-dashboard-note mt-2">Storage: {storageReason}</p>}
-      {trafficReason && <p role="status" className="ui-dashboard-note mt-2">Traffic: {trafficReason}</p>}
+      {storageReason && <p role="status" className="ui-dashboard-note mt-2">{translate(infrastructureMessages.storage, locale)}{" "}{storageReason}</p>}
+      {trafficReason && <p role="status" className="ui-dashboard-note mt-2">{translate(infrastructureMessages.traffic, locale)}{" "}{trafficReason}</p>}
     </WorkspaceDashboardCard>
   );
 }
@@ -438,26 +446,28 @@ function RecentActivityCard({ logs, loading, unavailableReason }: {
   loading: boolean;
   unavailableReason?: string | null;
 }) {
+  const { locale } = useI18n();
   return (
-    <WorkspaceDashboardCard title="Recent activity" presentation="compact">
-      {loading ? <p role="status" className="ui-dashboard-note">Loading activity…</p> : unavailableReason ? <p role="status" className="ui-dashboard-note">{unavailableReason}</p> : logs.length === 0 ? <p className="ui-dashboard-note">No recent audit activity.</p> : (
+    <WorkspaceDashboardCard title={translate(infrastructureMessages.recentActivity, locale)} presentation="compact">
+      {loading ? <p role="status" className="ui-dashboard-note">{translate(infrastructureMessages.loadingActivity, locale)}</p> : unavailableReason ? <p role="status" className="ui-dashboard-note">{unavailableReason}</p> : logs.length === 0 ? <p className="ui-dashboard-note">{translate(infrastructureMessages.noRecentAuditActivity, locale)}</p> : (
         <ul className="ui-dashboard-activity">
           {logs.slice(0, 3).map((log) => (
             <li key={log.id}>
-              <span className="ui-dashboard-note ui-dashboard-activity-text">{formatAuditAction(log)}</span>
-              <span className="ui-dashboard-note" title={formatLocalDateTime(log.created_at)}>{formatRelativeTime(log.created_at)}</span>
+              <span className="ui-dashboard-note ui-dashboard-activity-text">{formatAuditAction(log, locale)}</span>
+              <span className="ui-dashboard-note" title={formatLocalDateTime(log.created_at)}>{formatRelativeTime(log.created_at, undefined, locale)}</span>
             </li>
           ))}
         </ul>
       )}
       <div className="ui-dashboard-panel-footer">
-        <WorkspaceDashboardActionLink to="/admin/audit">View audit logs<OpenIcon className="h-3.5 w-3.5" /></WorkspaceDashboardActionLink>
+        <WorkspaceDashboardActionLink to="/admin/audit">{translate(infrastructureMessages.viewAuditLogs, locale)}<OpenIcon className="h-3.5 w-3.5" /></WorkspaceDashboardActionLink>
       </div>
     </WorkspaceDashboardCard>
   );
 }
 
 export default function AdminDashboard() {
+  const { locale } = useI18n();
   const [summary, setSummary] = useState<AdminSummary | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(true);
   const [summaryError, setSummaryError] = useState<string | null>(null);
@@ -500,7 +510,7 @@ export default function AdminDashboard() {
       .catch((err) => {
         if (cancelled) return;
         setSummary(null);
-        setSummaryError(extractApiError(err, "Unable to load admin overview."));
+        setSummaryError(extractApiError(err, translate(infrastructureMessages.unableToLoadAdminOverview, locale)));
       })
       .finally(() => {
         if (!cancelled) setSummaryLoading(false);
@@ -508,7 +518,7 @@ export default function AdminDashboard() {
     return () => {
       cancelled = true;
     };
-  }, [refreshNonce]);
+  }, [locale, refreshNonce]);
 
   useEffect(() => {
     let cancelled = false;
@@ -520,12 +530,12 @@ export default function AdminDashboard() {
       })
       .catch((err) => {
         if (cancelled) return;
-        setOnboardingError(extractApiError(err, "Unable to load onboarding status."));
+        setOnboardingError(extractApiError(err, translate(infrastructureMessages.unableToLoadOnboardingStatus, locale)));
       });
     return () => {
       cancelled = true;
     };
-  }, [refreshNonce]);
+  }, [locale, refreshNonce]);
 
   useEffect(() => {
     if (summaryLoading) return;
@@ -547,7 +557,7 @@ export default function AdminDashboard() {
       .catch((err) => {
         if (cancelled) return;
         setStorage(null);
-        setStorageError(extractApiError(err, "Storage metrics are not available."));
+        setStorageError(extractApiError(err, translate(infrastructureMessages.storageMetricsAreNotAvailable, locale)));
       })
       .finally(() => {
         if (!cancelled) setStorageLoading(false);
@@ -555,7 +565,7 @@ export default function AdminDashboard() {
     return () => {
       cancelled = true;
     };
-  }, [refreshNonce, summary, summaryLoading]);
+  }, [locale, refreshNonce, summary, summaryLoading]);
 
   useEffect(() => {
     if (summaryLoading) return;
@@ -577,7 +587,7 @@ export default function AdminDashboard() {
       .catch((err) => {
         if (cancelled) return;
         setTraffic(null);
-        setTrafficError(extractApiError(err, "Usage logs are not available."));
+        setTrafficError(extractApiError(err, translate(infrastructureMessages.usageLogsAreNotAvailable, locale)));
       })
       .finally(() => {
         if (!cancelled) setTrafficLoading(false);
@@ -585,7 +595,7 @@ export default function AdminDashboard() {
     return () => {
       cancelled = true;
     };
-  }, [refreshNonce, summary, summaryLoading]);
+  }, [locale, refreshNonce, summary, summaryLoading]);
 
   useEffect(() => {
     let cancelled = false;
@@ -600,7 +610,7 @@ export default function AdminDashboard() {
       .catch((err) => {
         if (cancelled) return;
         setAuditLogs([]);
-        setAuditError(extractApiError(err, "Audit activity is not available."));
+        setAuditError(extractApiError(err, translate(infrastructureMessages.auditActivityIsNotAvailable, locale)));
       })
       .finally(() => {
         if (!cancelled) setAuditLoading(false);
@@ -608,7 +618,7 @@ export default function AdminDashboard() {
     return () => {
       cancelled = true;
     };
-  }, [refreshNonce]);
+  }, [locale, refreshNonce]);
 
   useEffect(() => {
     if (!generalSettings.endpoint_status_enabled) {
@@ -628,7 +638,7 @@ export default function AdminDashboard() {
         if (cancelled) return;
         const endpoints = data.endpoints ?? [];
         if (endpoints.length === 0) {
-          setEndpointFreshnessWarning("Endpoint Status is enabled, but no endpoint healthcheck data is available.");
+          setEndpointFreshnessWarning(translate(infrastructureMessages.endpointStatusIsEnabledButNoEndpointHealthcheckDataIs, locale));
           return;
         }
         const now = Date.now();
@@ -645,13 +655,13 @@ export default function AdminDashboard() {
           }
         }
         if (noChecksCount > 0 || staleCount > 0) {
-          setEndpointFreshnessWarning(formatEndpointFreshnessWarning(noChecksCount, staleCount, endpoints.length));
+          setEndpointFreshnessWarning(formatEndpointFreshnessWarning(noChecksCount, staleCount, endpoints.length, locale));
           return;
         }
         setEndpointFreshnessWarning(null);
       } catch {
         if (!cancelled) {
-          setEndpointFreshnessWarning("Endpoint Status is enabled, but freshness could not be verified.");
+          setEndpointFreshnessWarning(translate(infrastructureMessages.endpointStatusIsEnabledButFreshnessCouldNotBeVerified, locale));
         }
       }
     };
@@ -659,7 +669,7 @@ export default function AdminDashboard() {
     return () => {
       cancelled = true;
     };
-  }, [generalSettings.endpoint_status_enabled, refreshNonce]);
+  }, [generalSettings.endpoint_status_enabled, locale, refreshNonce]);
 
   useEffect(() => {
     if (!generalSettings.endpoint_status_enabled) return;
@@ -675,7 +685,7 @@ export default function AdminDashboard() {
       .catch((err) => {
         if (cancelled) return;
         setWorkspaceHealth(null);
-        setWorkspaceHealthError(extractApiError(err, "Unable to load workspace endpoint health."));
+        setWorkspaceHealthError(extractApiError(err, translate(infrastructureMessages.unableToLoadWorkspaceEndpointHealth, locale)));
       })
       .finally(() => {
         if (!cancelled) {
@@ -685,7 +695,7 @@ export default function AdminDashboard() {
     return () => {
       cancelled = true;
     };
-  }, [generalSettings.endpoint_status_enabled, refreshNonce]);
+  }, [generalSettings.endpoint_status_enabled, locale, refreshNonce]);
 
   useEffect(() => {
     if (!generalSettings.endpoint_status_enabled) {
@@ -705,7 +715,7 @@ export default function AdminDashboard() {
       .catch((err) => {
         if (cancelled) return;
         setMapEndpoints([]);
-        setMapEndpointsError(extractApiError(err, "Unable to load endpoint map coordinates."));
+        setMapEndpointsError(extractApiError(err, translate(infrastructureMessages.unableToLoadEndpointMapCoordinates, locale)));
       })
       .finally(() => {
         if (!cancelled) {
@@ -715,7 +725,7 @@ export default function AdminDashboard() {
     return () => {
       cancelled = true;
     };
-  }, [generalSettings.endpoint_status_enabled, refreshNonce]);
+  }, [generalSettings.endpoint_status_enabled, locale, refreshNonce]);
 
   useEffect(() => {
     if (!generalSettings.endpoint_status_enabled) return;
@@ -750,7 +760,7 @@ export default function AdminDashboard() {
       const data = await dismissOnboarding();
       setOnboarding(data);
     } catch (err) {
-      setOnboardingError(extractApiError(err, "Unable to dismiss onboarding yet."));
+      setOnboardingError(extractApiError(err, translate(infrastructureMessages.unableToDismissOnboardingYet, locale)));
     } finally {
       setDismissBusy(false);
     }
@@ -758,42 +768,31 @@ export default function AdminDashboard() {
 
   const coreFeatures = useMemo<WorkspaceDashboardFeature[]>(
     () => [
-      { id: "manager", label: "Manager", enabled: generalSettings.manager_enabled },
-      { id: "browser", label: "Browser", enabled: generalSettings.browser_enabled },
-      { id: "portal", label: "Portal", enabled: generalSettings.portal_enabled },
-      { id: "ceph_admin", label: "Ceph Admin", enabled: generalSettings.ceph_admin_enabled, massManagement: true },
-      { id: "storage_ops", label: "Storage Ops", enabled: generalSettings.storage_ops_enabled, massManagement: true },
+      { id: "manager", label: translate(infrastructureMessages.manager, locale), enabled: generalSettings.manager_enabled },
+      { id: "browser", label: translate(infrastructureMessages.browser, locale), enabled: generalSettings.browser_enabled },
+      { id: "portal", label: translate(infrastructureMessages.portal, locale), enabled: generalSettings.portal_enabled },
+      { id: "ceph_admin", label: translate(infrastructureMessages.cephAdmin, locale), enabled: generalSettings.ceph_admin_enabled, massManagement: true },
+      { id: "storage_ops", label: translate(infrastructureMessages.storageOps, locale), enabled: generalSettings.storage_ops_enabled, massManagement: true },
     ],
-    [
-      generalSettings.browser_enabled,
-      generalSettings.ceph_admin_enabled,
-      generalSettings.manager_enabled,
-      generalSettings.portal_enabled,
-      generalSettings.storage_ops_enabled,
-    ]
+    [generalSettings.browser_enabled, generalSettings.ceph_admin_enabled, generalSettings.manager_enabled, generalSettings.portal_enabled, generalSettings.storage_ops_enabled, locale]
   );
 
   const extraFeatures = useMemo<WorkspaceDashboardFeature[]>(
     () => [
-      { id: "billing", label: "Billing", enabled: generalSettings.billing_enabled },
-      { id: "endpoint_status", label: "Endpoint Status", enabled: generalSettings.endpoint_status_enabled },
-      { id: "quota_alerts", label: "Quota alerts", enabled: generalSettings.quota_alerts_enabled },
-      { id: "usage_history", label: "Usage history", enabled: generalSettings.usage_history_enabled },
+      { id: "billing", label: translate(infrastructureMessages.billing, locale), enabled: generalSettings.billing_enabled },
+      { id: "endpoint_status", label: translate(infrastructureMessages.endpointStatus, locale), enabled: generalSettings.endpoint_status_enabled },
+      { id: "quota_alerts", label: translate(infrastructureMessages.quotaAlerts, locale), enabled: generalSettings.quota_alerts_enabled },
+      { id: "usage_history", label: translate(infrastructureMessages.usageHistory, locale), enabled: generalSettings.usage_history_enabled },
     ],
-    [
-      generalSettings.billing_enabled,
-      generalSettings.endpoint_status_enabled,
-      generalSettings.quota_alerts_enabled,
-      generalSettings.usage_history_enabled,
-    ]
+    [generalSettings.billing_enabled, generalSettings.endpoint_status_enabled, generalSettings.quota_alerts_enabled, generalSettings.usage_history_enabled, locale]
   );
 
   const featureGroups = useMemo<WorkspaceDashboardFeatureGroup[]>(
     () => [
-      { title: "Core features", features: coreFeatures },
-      { title: "Extra features", features: extraFeatures },
+      { title: translate(infrastructureMessages.coreFeatures, locale), features: coreFeatures },
+      { title: translate(infrastructureMessages.extraFeatures, locale), features: extraFeatures },
     ],
-    [coreFeatures, extraFeatures]
+    [coreFeatures, extraFeatures, locale]
   );
 
   const administrationItems = useMemo<WorkspaceDashboardSummaryItem[]>(() => {
@@ -801,48 +800,48 @@ export default function AdminDashboard() {
     return [
       {
         id: "ui-users",
-        label: "UI Users",
+        label: translate(infrastructureMessages.uIUsers, locale),
         value: totalUiUsers,
-        hint: `Admins: ${summary?.total_admins ?? 0}  Users: ${summary?.total_users ?? 0}`,
+        hint: translate({ en: `Admins: ${summary?.total_admins ?? 0}  Users: ${summary?.total_users ?? 0}`, zh: `管理员：${summary?.total_admins ?? 0}  用户：${summary?.total_users ?? 0}` }, locale),
         to: "/admin/users",
       },
       {
         id: "active-sessions",
-        label: "Active Sessions",
+        label: translate(infrastructureMessages.activeSessions, locale),
         value: summary?.total_active_sessions ?? 0,
         hint: `UI: ${summary?.active_sessions_by_type?.ui ?? 0} · S3: ${summary?.active_sessions_by_type?.s3 ?? 0}`,
         to: "/admin/identity-security",
       },
       {
         id: "accounts-primary",
-        label: "Accounts",
+        label: translate(infrastructureMessages.accounts, locale),
         value: summary?.total_accounts ?? 0,
-        hint: `Assigned: ${summary?.assigned_accounts ?? 0}`,
+        hint: translate({ en: `Assigned: ${summary?.assigned_accounts ?? 0}`, zh: `已分配：${summary?.assigned_accounts ?? 0}` }, locale),
         to: "/admin/s3-accounts",
       },
       {
         id: "s3-users",
-        label: "S3 Users",
+        label: translate({ en: "S3 Users", zh: "S3 用户" }, locale),
         value: summary?.total_s3_users ?? 0,
-        hint: `Assigned: ${summary?.assigned_s3_users ?? 0}`,
+        hint: translate({ en: `Assigned: ${summary?.assigned_s3_users ?? 0}`, zh: `已分配：${summary?.assigned_s3_users ?? 0}` }, locale),
         to: "/admin/s3-users",
       },
       {
         id: "shared-s3-connections",
-        label: "Shared S3 Connections",
+        label: translate(infrastructureMessages.sharedS3Connections, locale),
         value: summary?.total_shared_connections ?? 0,
-        hint: "Admin-managed",
+        hint: translate(infrastructureMessages.adminmanaged, locale),
         to: "/admin/s3-connections",
       },
       {
         id: "endpoints",
-        label: "Endpoints",
+        label: translate(infrastructureMessages.endpoints, locale),
         value: summary?.total_endpoints ?? 0,
-        hint: `Ceph: ${summary?.total_ceph_endpoints ?? 0}  Other: ${summary?.total_other_endpoints ?? 0}`,
+        hint: translate({ en: `Ceph: ${summary?.total_ceph_endpoints ?? 0}  Other: ${summary?.total_other_endpoints ?? 0}`, zh: `Ceph：${summary?.total_ceph_endpoints ?? 0}  其他：${summary?.total_other_endpoints ?? 0}` }, locale),
         to: "/admin/storage-endpoints",
       },
     ];
-  }, [summary]);
+  }, [locale, summary?.active_sessions_by_type?.s3, summary?.active_sessions_by_type?.ui, summary?.assigned_accounts, summary?.assigned_s3_users, summary?.total_accounts, summary?.total_active_sessions, summary?.total_admins, summary?.total_ceph_endpoints, summary?.total_endpoints, summary?.total_none_users, summary?.total_other_endpoints, summary?.total_s3_users, summary?.total_shared_connections, summary?.total_users]);
 
   const mapMarkers = useMemo<AdminDashboardMapMarker[]>(() => {
     const statusByEndpointId = new Map<number, HealthCheckStatus>();
@@ -859,15 +858,15 @@ export default function AdminDashboard() {
   }, [mapEndpoints, workspaceHealth]);
 
   const endpointUnavailableReason = !generalSettings.endpoint_status_enabled
-    ? "Endpoint Status feature is disabled."
+    ? translate(infrastructureMessages.endpointStatusFeatureIsDisabled, locale)
     : workspaceHealthError
       ? workspaceHealthError
       : !workspaceHealthLoading && workspaceHealth && workspaceHealth.endpoint_count === 0
-        ? "Endpoint Status has no endpoint data yet."
+        ? translate(infrastructureMessages.endpointStatusHasNoEndpointDataYet, locale)
         : null;
   const healthScore = computeMeanAvailability(healthOverview);
   const healthScoreUnavailableReason =
-    (!generalSettings.endpoint_status_enabled ? "Endpoint Status feature is disabled." : null) ||
+    (!generalSettings.endpoint_status_enabled ? translate(infrastructureMessages.endpointStatusFeatureIsDisabled, locale) : null) ||
     healthOverviewError ||
     (healthScore == null && !healthOverviewLoading ? "7-day endpoint health history is not available." : null);
   const refreshing =
@@ -882,19 +881,19 @@ export default function AdminDashboard() {
   return (
     <div className="ui-dashboard-compact" data-testid="admin-dashboard">
       <PageHeader
-        title="Admin overview"
-        description="Monitor the health and status of your S3 infrastructure."
-        breadcrumbs={adminPageBreadcrumbs("dashboard")}
+        title={translate(infrastructureMessages.adminOverview, locale)}
+        description={translate(infrastructureMessages.monitorTheHealthAndStatusOfYourS3Infrastructure, locale)}
+        breadcrumbs={adminPageBreadcrumbs("dashboard", locale)}
         rightContent={
           <div className="flex items-center gap-3">
-            <span title="Last data update; healthcheck samples retain their own timestamps." className={cx("hidden ui-caption sm:inline", uiMutedTextClass)}>
-              Updated {lastUpdated ? formatLocalDateTime(lastUpdated) : "-"}
+            <span title={translate(infrastructureMessages.lastDataUpdateHealthcheckSamplesRetainTheirOwnTimestamps, locale)} className={cx("hidden ui-caption sm:inline", uiMutedTextClass)}>
+              {translate(infrastructureMessages.updated, locale)}{lastUpdated ? formatLocalDateTime(lastUpdated) : "-"}
             </span>
             <WorkspaceDashboardAction
               type="button"
               onClick={() => setRefreshNonce((current) => current + 1)}
-              aria-label="Refresh admin dashboard"
-              title="Refresh"
+              aria-label={translate(infrastructureMessages.refreshAdminDashboard, locale)}
+              title={translate(infrastructureMessages.refresh, locale)}
               variant="secondary"
               className="ui-dashboard-action-icon"
               disabled={refreshing}
@@ -936,7 +935,7 @@ export default function AdminDashboard() {
         <RecentActivityCard logs={auditLogs} loading={auditLoading} unavailableReason={auditError} />
         {generalSettings.endpoint_status_enabled && <AdminDashboardMap markers={mapMarkers} loading={mapEndpointsLoading} error={mapEndpointsError} />}
       </div>
-      <WorkspaceDashboardCard title="Enabled features" presentation="compact">
+      <WorkspaceDashboardCard title={translate(infrastructureMessages.enabledFeatures, locale)} presentation="compact">
         <div className="ui-dashboard-features">
           {featureGroups.map((group) => <WorkspaceFeatureSummary key={group.title} group={group} />)}
         </div>

@@ -2,6 +2,9 @@
  * Copyright (c) 2026 Laurent Barbe
  * Licensed under the Apache License, Version 2.0
  */
+import { translate, useI18n } from "../i18n";
+import type { UiLanguage } from "./language";
+import { infrastructureMessages } from "../infrastructureMessages";
 import { useId, useMemo, type ComponentProps, type HTMLAttributes, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import type { HealthCheckStatus } from "../api/healthchecks";
@@ -103,11 +106,11 @@ export function buildWorkspaceStorageEvolutionPoints(
   }));
 }
 
-function workspaceStatusLabel(status: HealthCheckStatus): string {
-  if (status === "up") return "Up";
-  if (status === "degraded") return "Degraded";
-  if (status === "down") return "Down";
-  return "Unknown";
+function workspaceStatusLabel(status: HealthCheckStatus, locale: UiLanguage = "en"): string {
+  if (status === "up") return translate({ en: "Up", zh: "正常" }, locale);
+  if (status === "degraded") return translate(infrastructureMessages.degraded, locale);
+  if (status === "down") return translate(infrastructureMessages.down, locale);
+  return translate(infrastructureMessages.unknown, locale);
 }
 
 function workspaceStatusDotClass(status: HealthCheckStatus): string {
@@ -135,12 +138,13 @@ export function WorkspaceStatusDot({ status, className }: { status: HealthCheckS
 }
 
 export function WorkspaceStatusPill({ status, className, presentation }: { status: HealthCheckStatus; className?: string; presentation?: "compact" }) {
+  const { locale } = useI18n();
   if (presentation === "compact") {
-    return <UiBadge tone={status === "up" ? "success" : status === "degraded" ? "warning" : status === "down" ? "danger" : "neutral"} className={cx("ui-dashboard-badge", className)}>{workspaceStatusLabel(status)}</UiBadge>;
+    return <UiBadge tone={status === "up" ? "success" : status === "degraded" ? "warning" : status === "down" ? "danger" : "neutral"} className={cx("ui-dashboard-badge", className)}>{workspaceStatusLabel(status, locale)}</UiBadge>;
   }
   return (
     <span className={cx("rounded-md border px-2 py-0.5 font-semibold leading-4", workspaceStatusPillClass(status), className)}>
-      {workspaceStatusLabel(status)}
+      {workspaceStatusLabel(status, locale)}
     </span>
   );
 }
@@ -270,11 +274,12 @@ export function WorkspaceDashboardProgressBar({
   className?: string;
   ariaLabel?: string;
 }) {
+  const { locale } = useI18n();
   const boundedValue = Math.max(0, Math.min(100, value ?? 0));
   return (
     <UiMeterBar
       value={boundedValue}
-      label={ariaLabel ?? "Quota usage"}
+      label={ariaLabel ?? translate(infrastructureMessages.quotaUsage, locale)}
       className={cx("h-2 bg-slate-200/70 dark:bg-slate-700/60", className)}
       barClassName={workspaceDashboardToneClasses(tone).bar}
     />
@@ -421,8 +426,8 @@ export function WorkspaceDashboardKpiRow({
 export function WorkspaceDashboardStorageEvolutionChart({
   points,
   gradientId,
-  emptyLabel = "No storage history yet.",
-  chartLabel = "Storage evolution chart",
+  emptyLabel: emptyLabelOverride,
+  chartLabel: chartLabelOverride,
   yLabelFormatter = formatBytes,
   xLabelFormatter = formatStorageEvolutionShortDate,
   presentation,
@@ -435,6 +440,9 @@ export function WorkspaceDashboardStorageEvolutionChart({
   xLabelFormatter?: (value: number) => string;
   presentation?: "compact";
 }) {
+  const { locale } = useI18n();
+  const chartLabel = chartLabelOverride ?? translate(infrastructureMessages.storageEvolutionChart, locale);
+  const emptyLabel = emptyLabelOverride ?? translate(infrastructureMessages.noStorageHistoryYet, locale);
   const fallbackId = useId();
   const chartColor = presentation === "compact" ? "var(--ui-primary)" : "rgb(37 99 235)";
   const fillId = gradientId ?? `workspace-storage-evolution-fill-${fallbackId.replace(/:/g, "")}`;
@@ -630,9 +638,10 @@ function WorkspaceDashboardSparkline({
   values: number[];
   tone: WorkspacePlatformMetric["tone"];
 }) {
+  const { locale } = useI18n();
   const points = normalizeSeries(values);
   const chart = (
-    <svg viewBox="0 0 96 34" className="h-[30px] w-full" role="img" aria-label="Trend line">
+    <svg viewBox="0 0 96 34" className="h-[30px] w-full" role="img" aria-label={translate(infrastructureMessages.trendLine, locale)}>
       <polyline points={points} fill="none" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={metricToneClass(tone)} />
     </svg>
   );
@@ -653,12 +662,14 @@ export function WorkspaceDashboardLinkRow({ className, ...props }: ComponentProp
   return <Link {...props} className={cx("ui-dashboard-link-row", className)} />;
 }
 
-export function WorkspaceDashboardSummary({ items, loading, unavailableReason, title = "Administration" }: {
+export function WorkspaceDashboardSummary({ items, loading, unavailableReason, title: titleOverride }: {
   title?: string;
   items: WorkspaceDashboardSummaryItem[];
   loading: boolean;
   unavailableReason?: string | null;
 }) {
+  const { locale } = useI18n();
+  const title = titleOverride ?? translate(infrastructureMessages.administration, locale);
   return (
     <WorkspaceDashboardCard title={title} presentation="compact">
       {unavailableReason && <p role="status" className="ui-dashboard-note">{unavailableReason}</p>}
@@ -677,18 +688,19 @@ export function WorkspaceDashboardSummary({ items, loading, unavailableReason, t
 
 /** A compact feature group, placed inside an owning dashboard panel. */
 export function WorkspaceFeatureSummary({ group }: { group: WorkspaceDashboardFeatureGroup }) {
+  const { locale } = useI18n();
   const enabledFeatures = group.features.filter((feature) => feature.enabled);
   return (
-    <section aria-label={`${group.title} summary`} className="ui-dashboard-feature-group">
+    <section aria-label={translate({ en: `${group.title} summary`, zh: `${group.title}概览` }, locale)} className="ui-dashboard-feature-group">
       <div className="ui-dashboard-feature-heading">
         <h3 className="ui-dashboard-label">{group.title}</h3>
-        <span className="ui-dashboard-note">{enabledFeatures.length} enabled</span>
+        <span className="ui-dashboard-note">{enabledFeatures.length} {" "}{translate(infrastructureMessages.enabled, locale)}</span>
       </div>
       <div className="ui-dashboard-badges">
-        {enabledFeatures.length === 0 ? <span className="ui-dashboard-note">None enabled</span> : enabledFeatures.map((feature) => (
+        {enabledFeatures.length === 0 ? <span className="ui-dashboard-note">{translate(infrastructureMessages.noneEnabled, locale)}</span> : enabledFeatures.map((feature) => (
           <UiBadge key={feature.id} tone="primary" className="ui-dashboard-badge">
             {feature.label}
-            {feature.massManagement && <span title="Mass management" className="ui-dashboard-note">MM</span>}
+            {feature.massManagement && <span title={translate(infrastructureMessages.massManagement, locale)} className="ui-dashboard-note">MM</span>}
           </UiBadge>
         ))}
       </div>
@@ -742,11 +754,12 @@ export function WorkspaceAvailabilityMetric({ score, loading, unavailableReason 
   loading: boolean;
   unavailableReason?: string | null;
 }) {
+  const { locale } = useI18n();
   return <WorkspacePlatformMetricCard metric={{
-    label: "Availability (7 days)",
+    label: translate(infrastructureMessages.availability7Days, locale),
     value: loading ? "…" : score == null || unavailableReason ? "—" : `${score}%`,
     tone: "emerald",
-    description: "Mean availability across endpoints with measurements.",
+    description: translate(infrastructureMessages.meanAvailabilityAcrossEndpointsWithMeasurements, locale),
     unavailableReason: unavailableReason || undefined,
   }} />;
 }

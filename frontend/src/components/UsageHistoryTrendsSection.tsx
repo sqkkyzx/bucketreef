@@ -2,6 +2,8 @@
  * Copyright (c) 2026 Laurent Barbe
  * Licensed under the Apache License, Version 2.0
  */
+import { translate, useI18n } from "../i18n";
+import { infrastructureMessages } from "../infrastructureMessages";
 import { type ReactNode, useMemo } from "react";
 import {
   Area,
@@ -27,11 +29,7 @@ import {
   uiMenuClass,
 } from "./ui/styles";
 
-const WINDOW_OPTIONS: { label: string; value: UsageHistoryTrendWindow; helper: string }[] = [
-  { label: "24h", value: "day", helper: "Hourly snapshots" },
-  { label: "7d", value: "week", helper: "Daily snapshots" },
-  { label: "30d", value: "month", helper: "Daily snapshots" },
-];
+
 
 type TrendPoint = UsageHistoryTrendResponse["points"][number] & {
   timestampMs: number;
@@ -72,10 +70,17 @@ export default function UsageHistoryTrendsSection({
   onWindowChange,
   loading,
   error,
-  title = "Usage history",
+  title: titleOverride,
   description,
   labels,
 }: UsageHistoryTrendsSectionProps) {
+  const { locale } = useI18n();
+  const title = titleOverride ?? translate(infrastructureMessages.usageHistory, locale);
+const WINDOW_OPTIONS: { label: string; value: UsageHistoryTrendWindow; helper: string }[] = [
+  { label: translate(infrastructureMessages.window24h, locale), value: "day", helper: translate(infrastructureMessages.hourlySnapshots, locale) },
+  { label: translate(infrastructureMessages.window7d, locale), value: "week", helper: translate(infrastructureMessages.dailySnapshots, locale) },
+  { label: translate(infrastructureMessages.window30d, locale), value: "month", helper: translate(infrastructureMessages.dailySnapshots, locale) },
+];
   const chartData = useMemo<TrendPoint[]>(
     () =>
       (trends?.points ?? [])
@@ -99,14 +104,14 @@ export default function UsageHistoryTrendsSection({
   }, [chartData, window]);
   const summary = trends?.summary;
   const hasData = chartData.length > 0;
-  const helper = WINDOW_OPTIONS.find((option) => option.value === window)?.helper ?? "Stored snapshots";
+  const helper = WINDOW_OPTIONS.find((option) => option.value === window)?.helper ?? translate(infrastructureMessages.storedSnapshots, locale);
   const subtitle = description ?? `${helper} from collected quota usage history.`;
 
   if (error) {
     return (
       <MetricsUnavailableCard
         title={title}
-        description={labels?.unavailableDescription ?? "Stored quota snapshots over time."}
+        description={labels?.unavailableDescription ?? translate(infrastructureMessages.storedQuotaSnapshotsOverTime, locale)}
         message={error}
         tone="error"
       />
@@ -117,8 +122,8 @@ export default function UsageHistoryTrendsSection({
     return (
       <MetricsUnavailableCard
         title={title}
-        description={labels?.unavailableDescription ?? "Stored quota snapshots over time."}
-        message={trends.unavailable_reason || "Usage history trends are unavailable for this context."}
+        description={labels?.unavailableDescription ?? translate(infrastructureMessages.storedQuotaSnapshotsOverTime, locale)}
+        message={trends.unavailable_reason || translate(infrastructureMessages.usageHistoryTrendsAreUnavailableForThisContext, locale)}
       />
     );
   }
@@ -139,35 +144,35 @@ export default function UsageHistoryTrendsSection({
 
       <div className="grid gap-4 md:grid-cols-4">
         <MetricsSnapshotCard
-          label={labels?.latestStorage ?? "Latest storage"}
+          label={labels?.latestStorage ?? translate(infrastructureMessages.latestStorage, locale)}
           value={formatBytes(summary?.latest_used_bytes ?? 0)}
-          hint={labels?.latestStorageHint ?? `${formatCompactNumber(summary?.subjects_count ?? 0)} subjects`}
+          hint={labels?.latestStorageHint ?? translate({ en: `${formatCompactNumber(summary?.subjects_count ?? 0)} subjects`, zh: `${formatCompactNumber(summary?.subjects_count ?? 0)} 个统计主体` }, locale)}
           loading={loading}
         />
         <MetricsSnapshotCard
-          label={labels?.latestObjects ?? "Latest objects"}
+          label={labels?.latestObjects ?? translate(infrastructureMessages.latestObjects, locale)}
           value={formatCompactNumber(summary?.latest_used_objects ?? 0)}
-          hint={labels?.latestObjectsHint ?? `${formatCompactNumber(summary?.latest_bucket_count ?? 0)} buckets`}
+          hint={labels?.latestObjectsHint ?? translate({ en: `${formatCompactNumber(summary?.latest_bucket_count ?? 0)} buckets`, zh: `${formatCompactNumber(summary?.latest_bucket_count ?? 0)} 个存储桶` }, locale)}
           loading={loading}
         />
         <MetricsSnapshotCard
-          label={labels?.maxQuotaRatio ?? "Max quota ratio"}
+          label={labels?.maxQuotaRatio ?? translate(infrastructureMessages.maxQuotaRatio, locale)}
           value={formatPercentage(summary?.max_usage_ratio_pct)}
-          hint={labels?.maxQuotaHint ?? "Highest point"}
+          hint={labels?.maxQuotaHint ?? translate(infrastructureMessages.highestPoint, locale)}
           loading={loading}
         />
         <MetricsSnapshotCard
-          label={labels?.snapshots ?? "Snapshots"}
+          label={labels?.snapshots ?? translate(infrastructureMessages.snapshots, locale)}
           value={formatCompactNumber(summary?.total_records ?? 0)}
-          hint={labels?.snapshotsHint ?? `${formatCompactNumber(summary?.points_count ?? 0)} periods`}
+          hint={labels?.snapshotsHint ?? translate({ en: `${formatCompactNumber(summary?.points_count ?? 0)} periods`, zh: `${formatCompactNumber(summary?.points_count ?? 0)} 个时段` }, locale)}
           loading={loading}
         />
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
         <ChartCard
-          title={labels?.storageChartTitle ?? "Storage evolution"}
-          subtitle={labels?.storageChartSubtitle ?? "Used bytes over time"}
+          title={labels?.storageChartTitle ?? translate(infrastructureMessages.storageEvolution, locale)}
+          subtitle={labels?.storageChartSubtitle ?? translate(infrastructureMessages.usedBytesOverTime, locale)}
           loading={loading}
           hasData={hasData}
           emptyMessage={labels?.emptyMessage}
@@ -186,14 +191,14 @@ export default function UsageHistoryTrendsSection({
               />
               <YAxis tickFormatter={(value) => formatBytesAxis(Number(value) || 0)} stroke="#94A3B8" />
               <Tooltip content={<UsageHistoryTooltip window={window} metric="storage" />} />
-              <Area type="monotone" dataKey="used_bytes" name={labels?.storageLineName ?? "Storage"} stroke="#4F46E5" fill="#4F46E5" fillOpacity={0.16} />
+              <Area type="monotone" dataKey="used_bytes" name={labels?.storageLineName ?? translate(infrastructureMessages.storageText, locale)} stroke="#4F46E5" fill="#4F46E5" fillOpacity={0.16} />
             </AreaChart>
           </ResponsiveContainer>
         </ChartCard>
 
         <ChartCard
-          title={labels?.inventoryChartTitle ?? "Objects & buckets"}
-          subtitle={labels?.inventoryChartSubtitle ?? "Inventory snapshots over time"}
+          title={labels?.inventoryChartTitle ?? translate(infrastructureMessages.objectsBuckets, locale)}
+          subtitle={labels?.inventoryChartSubtitle ?? translate(infrastructureMessages.inventorySnapshotsOverTime, locale)}
           loading={loading}
           hasData={hasData}
           emptyMessage={labels?.emptyMessage}
@@ -213,8 +218,8 @@ export default function UsageHistoryTrendsSection({
               <YAxis tickFormatter={(value) => formatCompactNumber(Number(value) || 0)} stroke="#94A3B8" />
               <Tooltip content={<UsageHistoryTooltip window={window} metric="inventory" />} />
               <Legend />
-              <Line type="monotone" dataKey="used_objects" name={labels?.objectLineName ?? "Objects"} stroke="#0EA5E9" strokeWidth={2} dot={false} />
-              <Line type="monotone" dataKey="bucket_count" name={labels?.bucketLineName ?? "Buckets"} stroke="#14B8A6" strokeWidth={2} dot={false} />
+              <Line type="monotone" dataKey="used_objects" name={labels?.objectLineName ?? translate(infrastructureMessages.objects, locale)} stroke="#0EA5E9" strokeWidth={2} dot={false} />
+              <Line type="monotone" dataKey="bucket_count" name={labels?.bucketLineName ?? translate(infrastructureMessages.buckets, locale)} stroke="#14B8A6" strokeWidth={2} dot={false} />
             </LineChart>
           </ResponsiveContainer>
         </ChartCard>
@@ -233,13 +238,14 @@ type ChartCardProps = {
 };
 
 function ChartCard({ title, subtitle, children, loading, hasData, emptyMessage }: ChartCardProps) {
+  const { locale } = useI18n();
   return (
     <MetricsChartPanel
       title={title}
       description={subtitle}
       loading={loading}
       hasData={hasData}
-      emptyMessage={emptyMessage ?? "No usage history snapshots for this window yet."}
+      emptyMessage={emptyMessage ?? translate(infrastructureMessages.noUsageHistorySnapshotsForThisWindowYet, locale)}
     >
       {children}
     </MetricsChartPanel>
@@ -276,8 +282,8 @@ function UsageHistoryTooltip({ payload, label, window, metric }: UsageHistoryToo
   );
 }
 
-function formatTooltipValue(name: string, value: unknown, metric: "storage" | "inventory") {
+function formatTooltipValue(_name: string, value: unknown, metric: "storage" | "inventory") {
   const numeric = Number(value) || 0;
-  if (metric === "storage" || name === "Storage") return formatBytes(numeric);
+  if (metric === "storage") return formatBytes(numeric);
   return formatCompactNumber(numeric);
 }

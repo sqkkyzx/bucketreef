@@ -2,6 +2,8 @@
  * Copyright (c) 2026 Laurent Barbe
  * Licensed under the Apache License, Version 2.0
  */
+import { translate, useI18n } from "../../i18n";
+import { infrastructureMessages } from "../../infrastructureMessages";
 import type { BucketUsageStatsAggregate } from "../../api/bucketUsageStats";
 import { MetricsCard, MetricsEmptyState } from "../../components/MetricsCard";
 import PageBanner from "../../components/PageBanner";
@@ -44,19 +46,22 @@ export default function BucketUsageStatsAggregateCard({
   recalculateLabel,
   onRecalculate,
   className,
-  coverageItemLabel = "buckets",
+  coverageItemLabel: coverageItemLabelOverride,
   emptyDescription,
-  emptyTitle = "No usage stats calculated yet.",
+  emptyTitle: emptyTitleOverride,
   compositionLabels,
 }: BucketUsageStatsAggregateCardProps) {
+  const { locale } = useI18n();
+  const emptyTitle = emptyTitleOverride ?? translate(infrastructureMessages.noUsageStatsCalculatedYet, locale);
+  const coverageItemLabel = coverageItemLabelOverride ?? (locale === "zh" ? "个存储桶" : "buckets");
   const hasSnapshot = Boolean(aggregate && aggregate.buckets_with_snapshot > 0);
   const coverageLabel = aggregate
-    ? `${aggregate.buckets_with_snapshot} / ${aggregate.bucket_count} ${coverageItemLabel} covered`
+    ? locale === "zh" ? `已覆盖 ${aggregate.buckets_with_snapshot} / ${aggregate.bucket_count} ${coverageItemLabel}` : `${aggregate.buckets_with_snapshot} / ${aggregate.bucket_count} ${coverageItemLabel} covered`
     : "";
-  const lastCalculated = aggregate?.newest_snapshot_at ? `Latest ${formatLocalDateTime(aggregate.newest_snapshot_at)}` : undefined;
+  const lastCalculated = aggregate?.newest_snapshot_at ? `${locale === "zh" ? "最新" : "Latest"} ${formatLocalDateTime(aggregate.newest_snapshot_at)}` : undefined;
   const accountCoverage =
     aggregate?.managed_account_count != null
-      ? `${aggregate.accounts_with_listed_buckets ?? 0} / ${aggregate.managed_account_count} managed accounts listed`
+      ? locale === "zh" ? `已列出 ${aggregate.accounts_with_listed_buckets ?? 0} / ${aggregate.managed_account_count} 个托管账户` : `${aggregate.accounts_with_listed_buckets ?? 0} / ${aggregate.managed_account_count} managed accounts listed`
       : undefined;
   const coverageHint = accountCoverage ? `${accountCoverage}${lastCalculated ? ` · ${lastCalculated}` : ""}` : lastCalculated;
 
@@ -73,7 +78,7 @@ export default function BucketUsageStatsAggregateCard({
             disabled={loading || recalculating}
             className={cx(uiButtonBaseClass, uiButtonVariants.secondary, "shrink-0")}
           >
-            {recalculating ? "Calculating..." : recalculateLabel}
+            {recalculating ? translate(infrastructureMessages.calculating, locale) : recalculateLabel}
           </button>
         ) : null
       }
@@ -93,8 +98,8 @@ export default function BucketUsageStatsAggregateCard({
           <span className={cx("block ui-caption", uiMutedTextClass)}>
             {emptyDescription ??
               (aggregate?.bucket_count
-                ? `0 / ${aggregate.bucket_count} ${coverageItemLabel} covered.`
-                : "Run a calculation to create the first snapshot.")}
+                ? locale === "zh" ? `已覆盖 0 / ${aggregate.bucket_count} ${coverageItemLabel}。` : `0 / ${aggregate.bucket_count} ${coverageItemLabel} covered.`
+                : translate(infrastructureMessages.runACalculationToCreateTheFirstSnapshot, locale))}
           </span>
         </MetricsEmptyState>
       ) : (
@@ -105,8 +110,8 @@ export default function BucketUsageStatsAggregateCard({
 
           <BucketUsageStatsCompositionVisuals
             stats={aggregate}
-            finalMetric={{ label: "Coverage", value: coverageLabel, hint: coverageHint }}
-            currentVsNoncurrentEmptyMessage="Current/non-current unavailable."
+            finalMetric={{ label: translate(infrastructureMessages.coverage, locale), value: coverageLabel, hint: coverageHint }}
+            currentVsNoncurrentEmptyMessage={translate(infrastructureMessages.currentnoncurrentUnavailable, locale)}
             labels={compositionLabels}
           />
         </>

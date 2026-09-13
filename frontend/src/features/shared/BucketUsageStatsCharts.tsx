@@ -2,6 +2,8 @@
  * Copyright (c) 2026 Laurent Barbe
  * Licensed under the Apache License, Version 2.0
  */
+import { translate, useI18n } from "../../i18n";
+import { infrastructureMessages } from "../../infrastructureMessages";
 import type { ReactNode } from "react";
 import {
   Bar,
@@ -39,11 +41,25 @@ export function usageStatsChartColor(index: number): string {
   return USAGE_STATS_CHART_COLORS[index % USAGE_STATS_CHART_COLORS.length];
 }
 
-export function nonEmptyUsageStatsEntries(entries?: BucketUsageStatsDistributionEntry[] | null): BucketUsageStatsDistributionEntry[] {
-  return (entries ?? []).filter((entry) => entry.count > 0 || entry.bytes > 0);
+export function nonEmptyUsageStatsEntries(entries?: BucketUsageStatsDistributionEntry[] | null, locale = "en"): BucketUsageStatsDistributionEntry[] {
+  const visible = (entries ?? []).filter((entry) => entry.count > 0 || entry.bytes > 0);
+  return localizedUsageStatsEntries(visible, locale);
 }
 
-export function UsageStatsEmptyChart({ message = "No data available.", compact = false }: { message?: string; compact?: boolean }) {
+export function localizedUsageStatsEntries(entries: BucketUsageStatsDistributionEntry[], locale: string): BucketUsageStatsDistributionEntry[] {
+  if (locale !== "zh") return entries;
+  const labels: Record<string, string> = {
+    documents: "文档", images: "图片", videos: "视频", audio: "音频", archives: "压缩归档",
+    scientific_data: "科学数据", source_code: "源代码", backups: "备份", other: "其他", unknown: "未知",
+    current: "当前版本", noncurrent: "非当前版本", lt_7d: "不足 7 天", "7_30d": "7–30 天",
+    "30_90d": "30–90 天", "90_365d": "90–365 天", "1_3y": "1–3 年", gt_3y: "超过 3 年",
+  };
+  return entries.map((entry) => ({ ...entry, label: labels[entry.key] ?? entry.label }));
+}
+
+export function UsageStatsEmptyChart({ message: messageOverride, compact = false }: { message?: string; compact?: boolean }) {
+  const { locale } = useI18n();
+  const message = messageOverride ?? translate(infrastructureMessages.noDataAvailable, locale);
   return (
     <MetricsEmptyState className={cx("flex items-center justify-center", compact ? "h-28" : "h-52")}>
       {message}
@@ -76,13 +92,14 @@ export function UsageStatsDistributionTooltip({
   payload,
   bytesAxis = true,
 }: UsageStatsDistributionTooltipProps) {
+  const { locale } = useI18n();
   if (!active || !payload?.length) return null;
   const item = payload[0]?.payload;
   if (!item) return null;
   const primaryValue = bytesAxis
     ? `${formatBytes(item.bytes)} · ${formatPercentage(item.ratio_bytes * 100)}`
-    : `${formatCompactNumber(item.count)} version(s) · ${formatPercentage(item.ratio_count * 100)}`;
-  const secondaryValue = bytesAxis ? `${formatCompactNumber(item.count)} version(s)` : `${formatBytes(item.bytes)} logical bytes`;
+    : `${formatCompactNumber(item.count)} ${translate(infrastructureMessages.versions, locale)} · ${formatPercentage(item.ratio_count * 100)}`;
+  const secondaryValue = bytesAxis ? `${formatCompactNumber(item.count)} ${translate(infrastructureMessages.versions, locale)}` : `${formatBytes(item.bytes)} ${locale === "zh" ? "逻辑字节数" : "logical bytes"}`;
   return (
     <div className="rounded-md border border-slate-200 bg-white px-3 py-2 shadow-sm dark:border-slate-700 dark:bg-slate-900">
       <p className="ui-caption font-semibold text-slate-900 dark:text-slate-100">{item.label}</p>

@@ -2,6 +2,8 @@
  * Copyright (c) 2026 Laurent Barbe
  * Licensed under the Apache License, Version 2.0
  */
+import { translate, useI18n } from "../../i18n";
+import { infrastructureMessages } from "../../infrastructureMessages";
 import type {
   BucketUsageStatsAggregate,
   BucketUsageStatsDistributionEntry,
@@ -15,6 +17,7 @@ import { formatLocalDateTime } from "../../utils/dateTime";
 import { formatBytes, formatCompactNumber, formatPercentage } from "../../utils/format";
 import {
   nonEmptyUsageStatsEntries,
+  localizedUsageStatsEntries,
   UsageStatsChartShell,
   UsageStatsDataTypeDonut,
   UsageStatsDistributionBars,
@@ -92,62 +95,64 @@ function topEntries(entries: BucketUsageStatsDistributionEntry[], limit = 5): Bu
 export function BucketUsageStatsCompositionVisuals({
   stats,
   finalMetric,
-  currentVsNoncurrentEmptyMessage = "Unavailable for fallback current-only scans.",
+  currentVsNoncurrentEmptyMessage: currentVsNoncurrentEmptyMessageOverride,
   showVersionListingWarning,
   labels,
 }: BucketUsageStatsCompositionVisualsProps) {
-  const dataTypes = nonEmptyUsageStatsEntries(stats.data_type_distribution);
-  const storageClasses = nonEmptyUsageStatsEntries(stats.storage_class_distribution);
+  const { locale } = useI18n();
+  const currentVsNoncurrentEmptyMessage = currentVsNoncurrentEmptyMessageOverride ?? translate(infrastructureMessages.unavailableForFallbackCurrentonlyScans, locale);
+  const dataTypes = nonEmptyUsageStatsEntries(stats.data_type_distribution, locale);
+  const storageClasses = nonEmptyUsageStatsEntries(stats.storage_class_distribution, locale);
   const sizeDistribution = stats.size_distribution ?? [];
-  const ageDistribution = stats.age_distribution ?? [];
-  const currentVsNoncurrent = stats.current_vs_noncurrent ?? [];
+  const ageDistribution = localizedUsageStatsEntries(stats.age_distribution ?? [], locale);
+  const currentVsNoncurrent = localizedUsageStatsEntries(stats.current_vs_noncurrent ?? [], locale);
   const versionBytes = (stats.current_bytes ?? 0) + (stats.noncurrent_bytes ?? 0);
 
   return (
     <div className="space-y-5">
       <div className="grid gap-3 md:grid-cols-4">
         <SummaryMetricCard
-          label={labels?.logicalBytes ?? "Logical bytes"}
+          label={labels?.logicalBytes ?? translate(infrastructureMessages.logicalBytes, locale)}
           value={formatBytes(stats.total_bytes)}
-          hint={`${formatCompactNumber(stats.object_version_count)} ${labels?.versionsUnit ?? "version(s)"}`}
+          hint={`${formatCompactNumber(stats.object_version_count)} ${labels?.versionsUnit ?? translate(infrastructureMessages.versions, locale)}`}
         />
         <SummaryMetricCard
-          label={labels?.currentBytes ?? "Current bytes"}
+          label={labels?.currentBytes ?? translate(infrastructureMessages.currentBytes, locale)}
           value={formatBytes(stats.current_bytes)}
-          hint={usageStatsRatio(stats.current_bytes, versionBytes, labels?.unavailable ?? "Unavailable")}
+          hint={usageStatsRatio(stats.current_bytes, versionBytes, labels?.unavailable ?? translate(infrastructureMessages.unavailable, locale))}
         />
         <SummaryMetricCard
-          label={labels?.noncurrentBytes ?? "Non-current bytes"}
+          label={labels?.noncurrentBytes ?? translate(infrastructureMessages.noncurrentBytes, locale)}
           value={formatBytes(stats.noncurrent_bytes)}
-          hint={usageStatsRatio(stats.noncurrent_bytes, versionBytes, labels?.unavailable ?? "Unavailable")}
+          hint={usageStatsRatio(stats.noncurrent_bytes, versionBytes, labels?.unavailable ?? translate(infrastructureMessages.unavailable, locale))}
         />
         <SummaryMetricCard {...finalMetric} />
       </div>
 
       {showVersionListingWarning && (
         <PageBanner tone="warning">
-          {labels?.versionListingWarning ?? "Version listing was unavailable. Current/non-current space distribution cannot be calculated from the fallback listing."}
+          {labels?.versionListingWarning ?? translate(infrastructureMessages.versionListingWasUnavailableCurrentnoncurrentSpaceDistributionCannotBeCalculated, locale)}
         </PageBanner>
       )}
 
       <div className="grid gap-4 xl:grid-cols-2">
-        <UsageStatsChartShell title={labels?.dataTypesTitle ?? "Data types"} subtitle={labels?.dataTypesSubtitle ?? "Logical bytes by inferred object type"}>
+        <UsageStatsChartShell title={labels?.dataTypesTitle ?? translate(infrastructureMessages.dataTypes, locale)} subtitle={labels?.dataTypesSubtitle ?? translate(infrastructureMessages.logicalBytesByInferredObjectType, locale)}>
           <UsageStatsDataTypeDonut entries={dataTypes} />
         </UsageStatsChartShell>
-        <UsageStatsChartShell title={labels?.currentVsNoncurrentTitle ?? "Current vs non-current"} subtitle={labels?.currentVsNoncurrentSubtitle ?? "Stored object-version bytes"}>
+        <UsageStatsChartShell title={labels?.currentVsNoncurrentTitle ?? translate(infrastructureMessages.currentVsNoncurrent, locale)} subtitle={labels?.currentVsNoncurrentSubtitle ?? translate(infrastructureMessages.storedObjectversionBytes, locale)}>
           {currentVsNoncurrent.length > 0 ? (
             <UsageStatsDataTypeDonut entries={currentVsNoncurrent} />
           ) : (
             <UsageStatsEmptyChart message={currentVsNoncurrentEmptyMessage} />
           )}
         </UsageStatsChartShell>
-        <UsageStatsChartShell title={labels?.storageClassesTitle ?? "Storage classes"} subtitle={labels?.storageClassesSubtitle ?? "Logical bytes by storage class"}>
+        <UsageStatsChartShell title={labels?.storageClassesTitle ?? translate(infrastructureMessages.storageClasses, locale)} subtitle={labels?.storageClassesSubtitle ?? translate(infrastructureMessages.logicalBytesByStorageClass, locale)}>
           <UsageStatsDistributionBars entries={storageClasses} />
         </UsageStatsChartShell>
-        <UsageStatsChartShell title={labels?.objectSizesTitle ?? "Object sizes"} subtitle={labels?.objectSizesSubtitle ?? "Version count by object size"}>
+        <UsageStatsChartShell title={labels?.objectSizesTitle ?? translate(infrastructureMessages.objectSizes, locale)} subtitle={labels?.objectSizesSubtitle ?? translate(infrastructureMessages.versionCountByObjectSize, locale)}>
           <UsageStatsDistributionBars entries={sizeDistribution} bytesAxis={false} />
         </UsageStatsChartShell>
-        <UsageStatsChartShell title={labels?.objectAgeTitle ?? "Object age"} subtitle={labels?.objectAgeSubtitle ?? "Version count by last modified date"}>
+        <UsageStatsChartShell title={labels?.objectAgeTitle ?? translate(infrastructureMessages.objectAge, locale)} subtitle={labels?.objectAgeSubtitle ?? translate(infrastructureMessages.versionCountByLastModifiedDate, locale)}>
           <UsageStatsDistributionBars entries={ageDistribution} bytesAxis={false} />
         </UsageStatsChartShell>
       </div>
@@ -163,7 +168,8 @@ export function BucketUsageStatsDataTypesCard({
   className,
   "data-testid": dataTestId,
 }: BucketUsageStatsDataTypesCardProps) {
-  const rawEntries = nonEmptyUsageStatsEntries(aggregate?.data_type_distribution);
+  const { locale } = useI18n();
+  const rawEntries = nonEmptyUsageStatsEntries(aggregate?.data_type_distribution, locale);
   const entries = topEntries(rawEntries, rawEntries.length);
   const topDataTypes = entries.slice(0, 4);
   const hasSnapshot = Boolean(aggregate && aggregate.buckets_with_snapshot > 0);
@@ -174,9 +180,9 @@ export function BucketUsageStatsDataTypesCard({
     <section className={cx(uiCardClass, presentation === "compact" ? "ui-dashboard-panel ui-dashboard-data-types" : "h-full p-4", className)} data-testid={dataTestId}>
       <div>
         <div className="min-w-0">
-          <h2 className={presentation === "compact" ? "ui-dashboard-title" : "ui-subtitle font-semibold text-[var(--ui-text)]"}>Data types</h2>
+          <h2 className={presentation === "compact" ? "ui-dashboard-title" : "ui-subtitle font-semibold text-[var(--ui-text)]"}>{translate(infrastructureMessages.dataTypes, locale)}</h2>
           <div className={cx("mt-0.5 flex flex-wrap gap-x-2 gap-y-0.5 ui-caption", uiMutedTextClass)}>
-            <span>{latest ? `Latest ${latest}` : "Latest bucket snapshots"}</span>
+            <span>{latest ? `${locale === "zh" ? "最新" : "Latest"} ${latest}` : translate(infrastructureMessages.latestBucketSnapshots, locale)}</span>
             {aggregate && <span>{coverage}</span>}
           </div>
         </div>
@@ -189,7 +195,7 @@ export function BucketUsageStatsDataTypesCard({
       ) : loading && !aggregate ? (
         <div className="mt-3 h-36 animate-pulse rounded-md bg-[var(--ui-surface-muted)]" />
       ) : !hasSnapshot ? (
-        <MetricsEmptyState className="mt-3 py-6 ui-caption">No usage stats snapshot yet.</MetricsEmptyState>
+        <MetricsEmptyState className="mt-3 py-6 ui-caption">{translate({ en: "No usage stats snapshot yet.", zh: "暂无用量统计快照。" }, locale)}</MetricsEmptyState>
       ) : (
         <div className="mt-3 grid gap-3 sm:grid-cols-[128px_minmax(0,1fr)] xl:grid-cols-1 2xl:grid-cols-[128px_minmax(0,1fr)]">
           <div className="h-32 min-w-0">
