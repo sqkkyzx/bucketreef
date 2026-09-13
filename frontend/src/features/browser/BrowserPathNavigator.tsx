@@ -1,3 +1,4 @@
+import { useI18n } from "../../i18n";
 import type { KeyboardEvent, RefObject } from "react";
 
 import { toolbarCompactInputClasses } from "../../components/toolbarControlClasses";
@@ -36,9 +37,19 @@ type BrowserPathNavigatorProps = {
   onSelectPrefix: (prefix: string) => void;
 };
 
-const suggestionSourceBadge = (source: PathSuggestion["source"]) => {
-  if (source === "history") return "Recent";
-  if (source === "local") return "Visible";
+const suggestionSourceBadge = (source: PathSuggestion["source"], t: ReturnType<typeof useI18n>["t"]) => {
+  if (source === "history") return t({
+    en: "Recent",
+    fr: "Récent",
+    de: "Zuletzt verwendet",
+    zh: "最近使用",
+  });
+  if (source === "local") return t({
+    en: "Visible",
+    fr: "Visible",
+    de: "Sichtbar",
+    zh: "当前可见",
+  });
   return null;
 };
 
@@ -61,6 +72,7 @@ export default function BrowserPathNavigator({
   onGoUp,
   onSelectPrefix,
 }: BrowserPathNavigatorProps) {
+  const { t } = useI18n();
   const activeSuggestion =
     activeSuggestionIndex >= 0 && activeSuggestionIndex < suggestions.length;
 
@@ -79,8 +91,18 @@ export default function BrowserPathNavigator({
             onChange={(event) => onChange(event.target.value)}
             onBlur={onBlur}
             onKeyDown={onKeyDown}
-            placeholder="root"
-            aria-label="Path"
+            placeholder={t({
+              en: "root",
+              fr: "racine",
+              de: "Stammverzeichnis",
+              zh: "根目录",
+            })}
+            aria-label={t({
+              en: "Path",
+              fr: "Chemin",
+              de: "Pfad",
+              zh: "路径",
+            })}
             role="combobox"
             aria-autocomplete="list"
             aria-controls="browser-path-suggestion-list"
@@ -102,14 +124,18 @@ export default function BrowserPathNavigator({
             >
               {suggestions.length === 0 ? (
                 <div className="px-2 py-1.5 text-slate-500 dark:text-slate-300">
-                  Searching folders...
-                </div>
+                  {t({
+                    en: "Searching folders...",
+                    fr: "Recherche de dossiers…",
+                    de: "Ordner werden gesucht…",
+                    zh: "正在搜索文件夹…",
+                  })}</div>
               ) : (
                 <div className="max-h-56 overflow-y-auto">
                   {suggestions.map((suggestion, index) => {
                     const isActive = index === activeSuggestionIndex;
                     const suggestionId = `browser-path-suggestion-${index}`;
-                    const sourceBadge = suggestionSourceBadge(suggestion.source);
+                    const sourceBadge = suggestionSourceBadge(suggestion.source, t);
                     return (
                       <button
                         id={suggestionId}
@@ -154,8 +180,12 @@ export default function BrowserPathNavigator({
               )}
               {suggestionsLoading && suggestions.length > 0 && (
                 <div className="border-t border-slate-200 px-2 py-1 text-slate-400 dark:border-slate-700 dark:text-slate-500">
-                  Searching more folders...
-                </div>
+                  {t({
+                    en: "Searching more folders...",
+                    fr: "Recherche de dossiers supplémentaires…",
+                    de: "Weitere Ordner werden gesucht…",
+                    zh: "正在搜索更多文件夹…",
+                  })}</div>
               )}
             </div>
           )}
@@ -170,17 +200,37 @@ export default function BrowserPathNavigator({
             }}
             className={breadcrumbIconButtonClasses}
             disabled={!canGoUp}
-            aria-label="Parent folder"
-            title="Parent folder"
+            aria-label={t({
+              en: "Parent folder",
+              fr: "Dossier parent",
+              de: "Übergeordneter Ordner",
+              zh: "上级文件夹",
+            })}
+            title={t({
+              en: "Parent folder",
+              fr: "Dossier parent",
+              de: "Übergeordneter Ordner",
+              zh: "上级文件夹",
+            })}
           >
             <UpIcon className="h-3.5 w-3.5" />
           </button>
           <nav
-            aria-label="Current path"
+            aria-label={t({
+              en: "Current path",
+              fr: "Chemin actuel",
+              de: "Aktueller Pfad",
+              zh: "当前路径",
+            })}
             className="browser-path-scroll min-w-0 flex flex-1 items-center gap-1 overflow-x-auto whitespace-nowrap py-0.5"
           >
             {breadcrumbs.length === 0 ? (
-              <span className="shrink-0 text-slate-400">(root)</span>
+              <span className="shrink-0 text-slate-400">{t({
+                en: "(root)",
+                fr: "(racine)",
+                de: "(Stammverzeichnis)",
+                zh: "（根目录）",
+              })}</span>
             ) : (
               <button
                 type="button"
@@ -189,10 +239,19 @@ export default function BrowserPathNavigator({
                   onSelectPrefix("");
                 }}
                 className="shrink-0 rounded-md px-1.5 py-0.5 text-slate-600 transition hover:bg-slate-100 hover:text-slate-800 dark:text-slate-300 dark:hover:bg-slate-800"
-                title="root"
+                title={t({
+                  en: "root",
+                  fr: "racine",
+                  de: "Stammverzeichnis",
+                  zh: "根目录",
+                })}
               >
-                root
-              </button>
+                {t({
+                  en: "root",
+                  fr: "racine",
+                  de: "Stammverzeichnis",
+                  zh: "根目录",
+                })}</button>
             )}
             {breadcrumbs.map((crumb) => (
               <span

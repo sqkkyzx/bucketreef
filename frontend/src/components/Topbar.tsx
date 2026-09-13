@@ -2,6 +2,7 @@
  * Copyright (c) 2025 Laurent Barbe
  * Licensed under the Apache License, Version 2.0
  */
+import { useI18n, type I18nMessage } from "../i18n";
 import { type KeyboardEvent as ReactKeyboardEvent, ReactNode, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import {
   clearReadUserNotifications,
@@ -61,20 +62,65 @@ type StoredTopbarUser = {
   account_links?: StoredAccountLink[] | null;
 };
 
-function resolveUiRoleLabel(user: StoredTopbarUser | null): string {
-  if (!user) return "Unknown";
-  if (user.authType === "s3_session") return "S3 Session";
-  if (user.role === "ui_superadmin") return "Superadmin";
-  if (user.role === "ui_admin") return "Admin";
-  if (user.role === "ui_user") return "User";
-  if (user.role === "ui_none") return "No access";
-  return "Unknown";
+function resolveUiRoleLabel(user: StoredTopbarUser | null, t: ReturnType<typeof useI18n>["t"]): string {
+  if (!user) return t({
+    en: "Unknown",
+    fr: "Inconnu",
+    de: "Unbekannt",
+    zh: "未知",
+  });
+  if (user.authType === "s3_session") return t({
+    en: "S3 Session",
+    fr: "Session S3",
+    de: "S3-Sitzung",
+    zh: "S3 会话",
+  });
+  if (user.role === "ui_superadmin") return t({
+    en: "Superadmin",
+    fr: "Super-administrateur",
+    de: "Superadministrator",
+    zh: "超级管理员",
+  });
+  if (user.role === "ui_admin") return t({
+    en: "Admin",
+    fr: "Administrateur",
+    de: "Administrator",
+    zh: "管理员",
+  });
+  if (user.role === "ui_user") return t({
+    en: "User",
+    fr: "Utilisateur",
+    de: "Benutzer",
+    zh: "用户",
+  });
+  if (user.role === "ui_none") return t({
+    en: "No access",
+    fr: "Aucun accès",
+    de: "Kein Zugriff",
+    zh: "无访问权限",
+  });
+  return t({
+    en: "Unknown",
+    fr: "Inconnu",
+    de: "Unbekannt",
+    zh: "未知",
+  });
 }
 
-function compactWorkspaceLabel(label?: string | null): string {
+function compactWorkspaceLabel(label: string | null | undefined, t: ReturnType<typeof useI18n>["t"]): string {
   const normalized = (label ?? "").replace(/\s*\([^)]*\)\s*$/, "").trim();
-  if (!normalized) return "Workspace";
-  if (normalized.toLowerCase() === "administration") return "Admin";
+  if (!normalized) return t({
+    en: "Workspace",
+    fr: "Espace de travail",
+    de: "Arbeitsbereich",
+    zh: "工作区",
+  });
+  if (normalized.toLowerCase() === "administration") return t({
+    en: "Admin",
+    fr: "Administrateur",
+    de: "Administrator",
+    zh: "管理员",
+  });
   return normalized;
 }
 
@@ -96,16 +142,16 @@ function formatBytes(value: unknown): string | null {
   return `${amount.toFixed(fractionDigits)} ${units[unitIndex]}`;
 }
 
-function formatCount(value: unknown): string | null {
+function formatCount(value: unknown, locale: string): string | null {
   if (typeof value !== "number" || !Number.isFinite(value)) return null;
-  return Math.round(value).toLocaleString();
+  return Math.round(value).toLocaleString(locale);
 }
 
-function formatDateTime(value?: string | null): string | null {
+function formatDateTime(value: string | null | undefined, locale: string): string | null {
   if (!value) return null;
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return null;
-  return parsed.toLocaleString(undefined, {
+  return parsed.toLocaleString(locale, {
     month: "short",
     day: "numeric",
     hour: "2-digit",
@@ -128,13 +174,14 @@ export default function Topbar({
   workspaceSwitcher,
   profilePath = "/profile",
 }: TopbarProps) {
+  const { t, locale } = useI18n();
   const [storedUser, setStoredUser] = useState<StoredTopbarUser | null>(
     () => readStoredUser() as StoredTopbarUser | null,
   );
   const isS3Session = storedUser?.authType === "s3_session";
   const canAccessPrivateConnections =
     !isS3Session && canAccessPrivateConnectionsSection(storedUser);
-  const uiRoleLabel = useMemo(() => resolveUiRoleLabel(storedUser), [storedUser]);
+  const uiRoleLabel = useMemo(() => resolveUiRoleLabel(storedUser, t), [storedUser, t]);
 
   const isMobileViewport = useMediaQuery("(max-width: 767px)");
   const [controlsAvailableWidth, setControlsAvailableWidth] = useState<number>(Number.POSITIVE_INFINITY);
@@ -147,7 +194,7 @@ export default function Topbar({
 
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [notificationsLoading, setNotificationsLoading] = useState(false);
-  const [notificationsError, setNotificationsError] = useState<string | null>(null);
+  const [notificationsError, setNotificationsError] = useState<I18nMessage | null>(null);
   const [notifications, setNotifications] = useState<UserNotification[]>([]);
   const [unreadNotificationsCount, setUnreadNotificationsCount] = useState(0);
   const [deletingNotification, setDeletingNotification] = useState<number | "read" | null>(null);
@@ -165,7 +212,12 @@ export default function Topbar({
 
   const controlsStripRef = useRef<HTMLDivElement | null>(null);
 
-  const accountDisplay = userEmail ?? "Session";
+  const accountDisplay = userEmail ?? t({
+    en: "Session",
+    fr: "Session",
+    de: "Sitzung",
+    zh: "会话",
+  });
   const accountName = storedUser?.full_name?.trim() || accountDisplay;
   const accountAvatarName = accountName === accountDisplay ? null : accountName;
   const showNotifications = !isS3Session;
@@ -218,7 +270,12 @@ export default function Topbar({
       setNotifications(response.items);
       setUnreadNotificationsCount(response.unread_count);
     } catch {
-      setNotificationsError("Unable to load notifications.");
+      setNotificationsError({
+        en: "Unable to load notifications.",
+        fr: "Impossible de charger les notifications.",
+        de: "Benachrichtigungen konnten nicht geladen werden.",
+        zh: "无法加载通知。",
+      });
     } finally {
       setNotificationsLoading(false);
     }
@@ -233,7 +290,12 @@ export default function Topbar({
       await loadNotifications();
     } catch (error) {
       console.warn("Unable to mark notifications as read", error);
-      setNotificationsError("Unable to mark notifications as read.");
+      setNotificationsError({
+        en: "Unable to mark notifications as read.",
+        fr: "Impossible de marquer les notifications comme lues.",
+        de: "Benachrichtigungen konnten nicht als gelesen markiert werden.",
+        zh: "无法将通知标为已读。",
+      });
     }
   }, [loadNotifications, showNotifications, unreadNotificationsCount]);
 
@@ -246,7 +308,12 @@ export default function Topbar({
       await loadNotifications();
     } catch (error) {
       console.warn("Unable to delete notification", error);
-      setNotificationsError("Unable to delete notification.");
+      setNotificationsError({
+        en: "Unable to delete notification.",
+        fr: "Impossible de supprimer la notification.",
+        de: "Benachrichtigung konnte nicht gelöscht werden.",
+        zh: "无法删除通知。",
+      });
     } finally {
       setDeletingNotification(null);
     }
@@ -261,7 +328,12 @@ export default function Topbar({
       await loadNotifications();
     } catch (error) {
       console.warn("Unable to clear read notifications", error);
-      setNotificationsError("Unable to clear read notifications.");
+      setNotificationsError({
+        en: "Unable to clear read notifications.",
+        fr: "Impossible de supprimer les notifications lues.",
+        de: "Gelesene Benachrichtigungen konnten nicht gelöscht werden.",
+        zh: "无法清除已读通知。",
+      });
     } finally {
       setDeletingNotification(null);
     }
@@ -479,8 +551,8 @@ export default function Topbar({
   };
 
   const workspaceTriggerLabel = workspaceSwitcher
-    ? compactWorkspaceLabel(workspaceSwitcher.currentWorkspaceLabel)
-    : compactWorkspaceLabel(section);
+    ? compactWorkspaceLabel(workspaceSwitcher.currentWorkspaceLabel, t)
+    : compactWorkspaceLabel(section, t);
   const showWorkspaceInTopbar = showWorkspaceSwitcher;
 
   const renderWorkspaceSelector = (placement: "sidebar" | "topbar") => {
@@ -493,7 +565,12 @@ export default function Topbar({
             ref={workspaceTriggerRef}
             type="button"
             onClick={() => setWorkspaceMenuOpen((open) => !open)}
-            aria-label="Switch workspace"
+            aria-label={t({
+              en: "Switch workspace",
+              fr: "Changer d’espace de travail",
+              de: "Arbeitsbereich wechseln",
+              zh: "切换工作区",
+            })}
             aria-haspopup="listbox"
             aria-expanded={workspaceMenuOpen}
             aria-controls={workspaceMenuOpen ? workspaceListboxId : undefined}
@@ -509,7 +586,12 @@ export default function Topbar({
             } ${workspaceMenuOpen ? "shell-control-active" : ""}`}
           >
             <span className="min-w-0 flex-1 leading-tight">
-              <span className="shell-muted-text block truncate text-[10px] font-medium">Workspace</span>
+              <span className="shell-muted-text block truncate text-[10px] font-medium">{t({
+                en: "Workspace",
+                fr: "Espace de travail",
+                de: "Arbeitsbereich",
+                zh: "工作区",
+              })}</span>
               <span className="mt-0.5 block truncate text-[12px] font-semibold leading-4 text-[var(--shell-text)]">
                 {workspaceTriggerLabel}
               </span>
@@ -536,7 +618,12 @@ export default function Topbar({
                   className="max-h-72 overflow-y-auto focus:outline-none"
                   role="listbox"
                   tabIndex={0}
-                  aria-label="Switch workspace"
+                  aria-label={t({
+                    en: "Switch workspace",
+                    fr: "Changer d’espace de travail",
+                    de: "Arbeitsbereich wechseln",
+                    zh: "切换工作区",
+                  })}
                   aria-activedescendant={
                     workspaceActiveIndex >= 0 ? `${workspaceListboxId}-option-${workspaceActiveIndex}` : undefined
                   }
@@ -586,7 +673,12 @@ export default function Topbar({
     return (
       <div className={`shell-control flex min-w-0 items-center gap-2 rounded-lg border ${sidebarPlacement ? "h-10 px-3" : "h-10 w-[140px] px-3"}`}>
         <span className="min-w-0 leading-[1.05]">
-          <span className="shell-muted-text block truncate text-[10px] font-medium">Workspace</span>
+          <span className="shell-muted-text block truncate text-[10px] font-medium">{t({
+            en: "Workspace",
+            fr: "Espace de travail",
+            de: "Arbeitsbereich",
+            zh: "工作区",
+          })}</span>
           {workspaceTriggerLabel && (
             <span className="mt-0.5 block truncate text-[12px] font-semibold leading-4 text-[var(--shell-text)]">
               {workspaceTriggerLabel}
@@ -601,13 +693,13 @@ export default function Topbar({
     const payload = item.payload ?? {};
     const isOperationalCheck = item.type === "quota_alert" || item.type === "endpoint_health";
     const occurredAt = formatDateTime(
-      (isOperationalCheck ? payload.checked_at as string | undefined : undefined) ?? item.created_at
+      (isOperationalCheck ? payload.checked_at as string | undefined : undefined) ?? item.created_at, locale
     );
     const ratio = formatPercent(payload.usage_ratio_pct);
     const usedBytes = formatBytes(payload.used_bytes);
     const quotaBytes = formatBytes(payload.quota_size_bytes);
-    const usedObjects = formatCount(payload.used_objects);
-    const quotaObjects = formatCount(payload.quota_objects);
+    const usedObjects = formatCount(payload.used_objects, locale);
+    const quotaObjects = formatCount(payload.quota_objects, locale);
     const endpointName = typeof payload.endpoint_name === "string" ? payload.endpoint_name : null;
     const targetUserEmail = typeof payload.target_user_email === "string" ? payload.target_user_email : null;
     const provider =
@@ -617,8 +709,23 @@ export default function Topbar({
     const currentStatus = typeof payload.current_status === "string" ? payload.current_status : null;
     const checkMode = typeof payload.check_mode === "string" ? payload.check_mode : null;
     const latency = typeof payload.latency_ms === "number" ? `${Math.round(payload.latency_ms)} ms` : null;
-    const expiresAt = formatDateTime(typeof payload.expires_at === "string" ? payload.expires_at : null);
-    const severityLabel = item.severity === "error" ? "Error" : item.severity === "warning" ? "Warning" : "Info";
+    const expiresAt = formatDateTime(typeof payload.expires_at === "string" ? payload.expires_at : null, locale);
+    const severityLabel = item.severity === "error" ? t({
+      en: "Error",
+      fr: "Erreur",
+      de: "Fehler",
+      zh: "错误",
+    }) : item.severity === "warning" ? t({
+      en: "Warning",
+      fr: "Avertissement",
+      de: "Warnung",
+      zh: "警告",
+    }) : t({
+      en: "Info",
+      fr: "Information",
+      de: "Information",
+      zh: "信息",
+    });
     const severityClass =
       item.severity === "error"
         ? "border-red-300 bg-red-50 text-red-700 dark:border-red-700/70 dark:bg-red-950/30 dark:text-red-200"
@@ -645,23 +752,43 @@ export default function Topbar({
               type="button"
               onClick={() => void deleteNotification(item.id)}
               disabled={deletingNotification !== null}
-              aria-label={`Delete notification: ${item.title}`}
+              aria-label={t({ en: `Delete notification: ${item.title}`, fr: `Supprimer la notification : ${item.title}`, de: `Benachrichtigung löschen: ${item.title}`, zh: `删除通知：${item.title}` })}
               className="rounded-md px-1.5 py-0.5 text-[10px] font-semibold text-[var(--shell-muted)] transition hover:bg-[var(--shell-hover)] hover:text-[var(--shell-text)] disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {deletingNotification === item.id ? "Deleting..." : "Delete"}
+              {deletingNotification === item.id ? t({
+                en: "Deleting...",
+                fr: "Suppression…",
+                de: "Wird gelöscht…",
+                zh: "正在删除…",
+              }) : t({
+                en: "Delete",
+                fr: "Supprimer",
+                de: "Löschen",
+                zh: "删除",
+              })}
             </button>
           </div>
         </div>
         <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 ui-caption text-[var(--shell-muted)]">
           {ratio && (
             <>
-              <dt>Usage</dt>
+              <dt>{t({
+                en: "Usage",
+                fr: "Utilisation",
+                de: "Auslastung",
+                zh: "使用率",
+              })}</dt>
               <dd className="text-right font-semibold text-[var(--shell-text)]">{ratio}</dd>
             </>
           )}
           {usedBytes && (
             <>
-              <dt>Storage</dt>
+              <dt>{t({
+                en: "Storage",
+                fr: "Stockage",
+                de: "Speicher",
+                zh: "存储",
+              })}</dt>
               <dd className="text-right text-[var(--shell-text)]">
                 {usedBytes}
                 {quotaBytes ? ` / ${quotaBytes}` : ""}
@@ -670,7 +797,12 @@ export default function Topbar({
           )}
           {usedObjects && (
             <>
-              <dt>Objects</dt>
+              <dt>{t({
+                en: "Objects",
+                fr: "Objets",
+                de: "Objekte",
+                zh: "对象",
+              })}</dt>
               <dd className="text-right text-[var(--shell-text)]">
                 {usedObjects}
                 {quotaObjects ? ` / ${quotaObjects}` : ""}
@@ -679,49 +811,94 @@ export default function Topbar({
           )}
           {endpointName && (
             <>
-              <dt>Endpoint</dt>
+              <dt>{t({
+                en: "Endpoint",
+                fr: "Point de terminaison",
+                de: "Endpunkt",
+                zh: "端点",
+              })}</dt>
               <dd className="truncate text-right text-[var(--shell-text)]">{endpointName}</dd>
             </>
           )}
           {targetUserEmail && (
             <>
-              <dt>User</dt>
+              <dt>{t({
+                en: "User",
+                fr: "Utilisateur",
+                de: "Benutzer",
+                zh: "用户",
+              })}</dt>
               <dd className="truncate text-right text-[var(--shell-text)]">{targetUserEmail}</dd>
             </>
           )}
           {provider && (
             <>
-              <dt>Provider</dt>
+              <dt>{t({
+                en: "Provider",
+                fr: "Fournisseur",
+                de: "Anbieter",
+                zh: "提供方",
+              })}</dt>
               <dd className="truncate text-right text-[var(--shell-text)]">{provider}</dd>
             </>
           )}
           {currentStatus && (
             <>
-              <dt>Status</dt>
+              <dt>{t({
+                en: "Status",
+                fr: "État",
+                de: "Status",
+                zh: "状态",
+              })}</dt>
               <dd className="text-right font-semibold capitalize text-[var(--shell-text)]">{currentStatus}</dd>
             </>
           )}
           {checkMode && (
             <>
-              <dt>Check</dt>
+              <dt>{t({
+                en: "Check",
+                fr: "Vérification",
+                de: "Prüfung",
+                zh: "检查",
+              })}</dt>
               <dd className="text-right uppercase text-[var(--shell-text)]">{checkMode}</dd>
             </>
           )}
           {latency && (
             <>
-              <dt>Latency</dt>
+              <dt>{t({
+                en: "Latency",
+                fr: "Latence",
+                de: "Latenz",
+                zh: "延迟",
+              })}</dt>
               <dd className="text-right text-[var(--shell-text)]">{latency}</dd>
             </>
           )}
           {expiresAt && (
             <>
-              <dt>Expires</dt>
+              <dt>{t({
+                en: "Expires",
+                fr: "Expiration",
+                de: "Läuft ab",
+                zh: "到期时间",
+              })}</dt>
               <dd className="text-right text-[var(--shell-text)]">{expiresAt}</dd>
             </>
           )}
           {occurredAt && (
             <>
-              <dt>{isOperationalCheck ? "Checked" : "Created"}</dt>
+              <dt>{isOperationalCheck ? t({
+                en: "Checked",
+                fr: "Vérifié",
+                de: "Geprüft",
+                zh: "检查时间",
+              }) : t({
+                en: "Created",
+                fr: "Créé",
+                de: "Erstellt",
+                zh: "创建时间",
+              })}</dt>
               <dd className="text-right text-[var(--shell-text)]">{occurredAt}</dd>
             </>
           )}
@@ -742,7 +919,17 @@ export default function Topbar({
               <button
                 type="button"
                 onClick={onMobileMenuToggle}
-                aria-label={mobileMenuOpen ? "Close navigation" : "Open navigation"}
+                aria-label={mobileMenuOpen ? t({
+                  en: "Close navigation",
+                  fr: "Fermer la navigation",
+                  de: "Navigation schließen",
+                  zh: "关闭导航",
+                }) : t({
+                  en: "Open navigation",
+                  fr: "Ouvrir la navigation",
+                  de: "Navigation öffnen",
+                  zh: "打开导航",
+                })}
                 aria-controls="mobile-navigation-panel"
                 aria-expanded={mobileMenuOpen}
                 className="shell-control inline-flex h-9 w-9 items-center justify-center rounded-lg border transition focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 md:hidden"
@@ -779,7 +966,12 @@ export default function Topbar({
                   ref={notificationsTriggerRef}
                   type="button"
                   onClick={() => setNotificationsOpen((open) => !open)}
-                  aria-label="Notifications"
+                  aria-label={t({
+                    en: "Notifications",
+                    fr: "Notifications",
+                    de: "Benachrichtigungen",
+                    zh: "通知",
+                  })}
                   aria-haspopup="menu"
                   aria-expanded={notificationsOpen}
                   aria-controls={notificationsOpen ? notificationsMenuId : undefined}
@@ -807,13 +999,23 @@ export default function Topbar({
                       id={notificationsMenuId}
                       ref={notificationsSurfaceRef}
                       role="menu"
-                      aria-label="Notifications"
+                      aria-label={t({
+                        en: "Notifications",
+                        fr: "Notifications",
+                        de: "Benachrichtigungen",
+                        zh: "通知",
+                      })}
                       className="overflow-hidden"
                     >
                       <div className="flex items-center justify-between gap-3 border-b border-[color:var(--shell-border-soft)] px-3 py-2">
                         <div>
-                          <p className="ui-caption font-semibold text-[var(--shell-text)]">Notifications</p>
-                          <p className="shell-muted-text ui-caption">{unreadNotificationsCount} unread</p>
+                          <p className="ui-caption font-semibold text-[var(--shell-text)]">{t({
+                            en: "Notifications",
+                            fr: "Notifications",
+                            de: "Benachrichtigungen",
+                            zh: "通知",
+                          })}</p>
+                          <p className="shell-muted-text ui-caption">{t({ en: `${unreadNotificationsCount} unread`, fr: `${unreadNotificationsCount} non lues`, de: `${unreadNotificationsCount} ungelesen`, zh: `${unreadNotificationsCount} 条未读` })}</p>
                         </div>
                         <div className="flex items-center gap-1">
                           <button
@@ -822,7 +1024,17 @@ export default function Topbar({
                             disabled={notifications.length === 0 || deletingNotification !== null}
                             className="rounded-md px-2 py-1 ui-caption font-semibold text-[var(--shell-muted)] transition hover:bg-[var(--shell-hover)] hover:text-[var(--shell-text)] disabled:cursor-not-allowed disabled:opacity-50"
                           >
-                            {deletingNotification === "read" ? "Clearing..." : "Clear read"}
+                            {deletingNotification === "read" ? t({
+                              en: "Clearing...",
+                              fr: "Suppression…",
+                              de: "Wird geleert…",
+                              zh: "正在清除…",
+                            }) : t({
+                              en: "Clear read",
+                              fr: "Supprimer les notifications lues",
+                              de: "Gelesene löschen",
+                              zh: "清除已读",
+                            })}
                           </button>
                           <button
                             type="button"
@@ -830,25 +1042,37 @@ export default function Topbar({
                             disabled={unreadNotificationsCount <= 0 || deletingNotification !== null}
                             className="rounded-md px-2 py-1 ui-caption font-semibold text-primary-700 transition hover:bg-primary-50 disabled:cursor-not-allowed disabled:opacity-50 dark:text-primary-200 dark:hover:bg-white/[0.06]"
                           >
-                            Mark all as read
-                          </button>
+                            {t({
+                              en: "Mark all as read",
+                              fr: "Tout marquer comme lu",
+                              de: "Alle als gelesen markieren",
+                              zh: "全部标为已读",
+                            })}</button>
                         </div>
                       </div>
 
                       <div className="max-h-[28rem] overflow-y-auto p-2">
                         {notificationsError && (
                           <div className="mb-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 ui-caption text-red-700 dark:border-red-800/70 dark:bg-red-950/30 dark:text-red-200">
-                            {notificationsError}
+                            {t(notificationsError)}
                           </div>
                         )}
                         {notificationsLoading && notifications.length === 0 ? (
                           <div className="rounded-md border border-[color:var(--shell-border-soft)] px-3 py-6 text-center ui-caption text-[var(--shell-muted)]">
-                            Loading notifications...
-                          </div>
+                            {t({
+                              en: "Loading notifications...",
+                              fr: "Chargement des notifications…",
+                              de: "Benachrichtigungen werden geladen…",
+                              zh: "正在加载通知…",
+                            })}</div>
                         ) : notifications.length === 0 ? (
                           <div className="rounded-md border border-[color:var(--shell-border-soft)] px-3 py-6 text-center ui-caption text-[var(--shell-muted)]">
-                            No notifications.
-                          </div>
+                            {t({
+                              en: "No notifications.",
+                              fr: "Aucune notification.",
+                              de: "Keine Benachrichtigungen.",
+                              zh: "暂无通知。",
+                            })}</div>
                         ) : (
                           <ul className="space-y-2">{notifications.map(renderNotificationItem)}</ul>
                         )}
@@ -864,7 +1088,7 @@ export default function Topbar({
                 ref={accountMenuTriggerRef}
                 type="button"
                 onClick={() => setAccountMenuOpen((open) => !open)}
-                aria-label={`Account actions for ${accountDisplay}`}
+                aria-label={t({ en: `Account actions for ${accountDisplay}`, fr: `Actions du compte ${accountDisplay}`, de: `Kontoaktionen für ${accountDisplay}`, zh: `${accountDisplay} 的账户操作` })}
                 aria-haspopup="menu"
                 aria-expanded={accountMenuOpen}
                 aria-controls={accountMenuOpen ? accountMenuId : undefined}
@@ -898,7 +1122,12 @@ export default function Topbar({
                     id={accountMenuId}
                     ref={accountMenuSurfaceRef}
                     role="menu"
-                    aria-label="Account actions"
+                    aria-label={t({
+                      en: "Account actions",
+                      fr: "Actions du compte",
+                      de: "Kontoaktionen",
+                      zh: "账户操作",
+                    })}
                     className="shell-menu w-72 rounded-lg border p-1.5"
                   >
                     <div className="shell-menu-muted mb-1 flex items-center gap-2.5 rounded-md border px-2.5 py-2">
@@ -910,7 +1139,12 @@ export default function Topbar({
                         className="border-[var(--shell-surface)] shadow-none"
                       />
                       <div className="min-w-0 flex-1">
-                        <p className="shell-muted-text ui-caption">Signed in as</p>
+                        <p className="shell-muted-text ui-caption">{t({
+                          en: "Signed in as",
+                          fr: "Connecté en tant que",
+                          de: "Angemeldet als",
+                          zh: "当前登录身份",
+                        })}</p>
                         <p className="truncate ui-caption font-semibold text-[var(--shell-text)]">{accountName}</p>
                         {accountName !== accountDisplay ? (
                           <p className="shell-muted-text truncate ui-caption">{accountDisplay}</p>
@@ -933,11 +1167,19 @@ export default function Topbar({
                       <UserIcon className="shell-icon-muted mt-0.5 h-4 w-4" />
                       <span>
                         <span className="block ui-caption font-semibold text-[var(--shell-text)]">
-                          User profile
-                        </span>
+                          {t({
+                            en: "User profile",
+                            fr: "Profil utilisateur",
+                            de: "Benutzerprofil",
+                            zh: "用户资料",
+                          })}</span>
                         <span className="shell-muted-text block ui-caption">
-                          Personal details and preferences
-                        </span>
+                          {t({
+                            en: "Personal details and preferences",
+                            fr: "Informations personnelles et préférences",
+                            de: "Persönliche Angaben und Einstellungen",
+                            zh: "个人信息和偏好设置",
+                          })}</span>
                       </span>
                     </a>
 
@@ -952,11 +1194,19 @@ export default function Topbar({
                         <LinkIcon className="shell-icon-muted mt-0.5 h-4 w-4" />
                         <span>
                           <span className="block ui-caption font-semibold text-[var(--shell-text)]">
-                            Private S3 connections
-                          </span>
+                            {t({
+                              en: "Private S3 connections",
+                              fr: "Connexions S3 privées",
+                              de: "Private S3-Verbindungen",
+                              zh: "私有 S3 连接",
+                            })}</span>
                           <span className="shell-muted-text block ui-caption">
-                            Manage your endpoints and credentials
-                          </span>
+                            {t({
+                              en: "Manage your endpoints and credentials",
+                              fr: "Gérez vos points de terminaison et identifiants",
+                              de: "Endpunkte und Zugangsdaten verwalten",
+                              zh: "管理您的端点和凭据",
+                            })}</span>
                         </span>
                       </a>
                     )}
@@ -970,7 +1220,12 @@ export default function Topbar({
                       className="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left ui-caption font-semibold text-primary-700 transition hover:bg-primary-50 dark:text-primary-200 dark:hover:bg-white/[0.06]"
                     >
                       <LogoutIcon className="h-4 w-4" />
-                      <span>Sign out</span>
+                      <span>{t({
+                        en: "Sign out",
+                        fr: "Se déconnecter",
+                        de: "Abmelden",
+                        zh: "退出登录",
+                      })}</span>
                     </button>
                   </div>
                 </AnchoredPortalMenu>

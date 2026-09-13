@@ -2,6 +2,7 @@
  * Copyright (c) 2025 Laurent Barbe
  * Licensed under the Apache License, Version 2.0
  */
+import { useI18n, type I18nMessage } from "../../i18n";
 import { useEffect, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { completeOidcLogin } from "../../api/auth";
@@ -23,13 +24,14 @@ import {
 } from "../../utils/workspaces";
 
 export default function OidcCallbackPage() {
+  const { t } = useI18n();
   const { provider } = useParams<{ provider: string }>();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { setGeneralSettings } = useGeneralSettings();
   const { setLanguagePreference } = useLanguage();
   const { setTheme } = useTheme();
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<I18nMessage | null>(null);
   const [processing, setProcessing] = useState(true);
   const { acceptAuthentication } = useSession();
 
@@ -40,13 +42,23 @@ export default function OidcCallbackPage() {
 
     if (!provider) {
       setProcessing(false);
-      setError("Missing identity provider.");
+      setError({
+        en: "Missing identity provider.",
+        fr: "Fournisseur d’identité manquant.",
+        de: "Identitätsanbieter fehlt.",
+        zh: "缺少身份提供方。",
+      });
       return;
     }
     const providerId = provider;
     if (!code || !state) {
       setProcessing(false);
-      setError("Incomplete authentication response.");
+      setError({
+        en: "Incomplete authentication response.",
+        fr: "Réponse d’authentification incomplète.",
+        de: "Unvollständige Authentifizierungsantwort.",
+        zh: "认证响应不完整。",
+      });
       return;
     }
     const codeValue = code;
@@ -66,7 +78,12 @@ export default function OidcCallbackPage() {
           return;
         }
         if (res.status === "link_approval_required") {
-          setError("This identity must be approved by a superadministrator before it can be linked.");
+          setError({
+            en: "This identity must be approved by a superadministrator before it can be linked.",
+            fr: "Cette identité doit être approuvée par un super-administrateur avant de pouvoir être liée.",
+            de: "Diese Identität muss vor der Verknüpfung von einem Superadministrator genehmigt werden.",
+            zh: "此身份必须经超级管理员批准后才能关联。",
+          });
           setProcessing(false);
           return;
         }
@@ -101,7 +118,12 @@ export default function OidcCallbackPage() {
       } catch (err) {
         console.error(err);
         if (!cancelled) {
-          setError("Unable to complete the sign-in. Please try again.");
+          setError({
+            en: "Unable to complete the sign-in. Please try again.",
+            fr: "Impossible de terminer la connexion. Réessayez.",
+            de: "Die Anmeldung konnte nicht abgeschlossen werden. Versuchen Sie es erneut.",
+            zh: "无法完成登录，请重试。",
+          });
           setProcessing(false);
         }
       }
@@ -123,18 +145,32 @@ export default function OidcCallbackPage() {
       <div className="relative z-10 flex min-h-screen items-center justify-center px-4">
         <div className="w-full max-w-md rounded-3xl border border-white/70 bg-white/95 p-8 text-center shadow-2xl">
           <BrandMark alt={PRODUCT_NAME} className="mx-auto mb-5 h-16 w-16" />
-          <h1 className="mb-2 text-2xl font-semibold text-slate-900">Signing you in</h1>
-          {processing && <p className="ui-body text-slate-500">Please wait...</p>}
+          <h1 className="mb-2 text-2xl font-semibold text-slate-900">{t({
+            en: "Signing you in",
+            fr: "Connexion en cours",
+            de: "Anmeldung läuft",
+            zh: "正在为您登录",
+          })}</h1>
+          {processing && <p className="ui-body text-slate-500">{t({
+            en: "Please wait...",
+            fr: "Veuillez patienter…",
+            de: "Bitte warten…",
+            zh: "请稍候…",
+          })}</p>}
           {error && (
             <>
-              <UiInlineMessage tone="error">{error}</UiInlineMessage>
+              <UiInlineMessage tone="error">{t(error)}</UiInlineMessage>
               <button
                 type="button"
                 className="mt-6 w-full rounded-xl bg-primary px-4 py-2.5 ui-body font-semibold text-white shadow-sm transition hover:bg-primary-600"
                 onClick={() => navigate("/login", { replace: true })}
               >
-                Back to login
-              </button>
+                {t({
+                  en: "Back to login",
+                  fr: "Retour à la connexion",
+                  de: "Zurück zur Anmeldung",
+                  zh: "返回登录",
+                })}</button>
             </>
           )}
         </div>

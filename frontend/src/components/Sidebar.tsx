@@ -2,6 +2,7 @@
  * Copyright (c) 2025 Laurent Barbe
  * Licensed under the Apache License, Version 2.0
  */
+import { useI18n } from "../i18n";
 import { CSSProperties, ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { PRODUCT_NAME } from "../constants/product";
@@ -60,8 +61,6 @@ function SidebarLinkBadge({
   );
 }
 
-const DEFAULT_DISABLED_HINT = "Unavailable in current context.";
-
 export type SidebarSection = {
   label: string;
   links: SidebarLink[];
@@ -106,6 +105,7 @@ export default function Sidebar({
   compact = false,
   onCollapseToggle,
 }: SidebarProps) {
+  const { t } = useI18n();
   const effectiveSections: SidebarSection[] = useMemo(
     () => (sections && sections.length > 0 ? sections : links.length > 0 ? [{ label: "Navigation", links }] : []),
     [links, sections]
@@ -210,8 +210,18 @@ export default function Sidebar({
           <button
             type="button"
             onClick={onCollapseToggle}
-            aria-label="Expand sidebar"
-            title="Expand sidebar"
+            aria-label={t({
+              en: "Expand sidebar",
+              fr: "Développer la barre latérale",
+              de: "Seitenleiste ausklappen",
+              zh: "展开侧边栏",
+            })}
+            title={t({
+              en: "Expand sidebar",
+              fr: "Développer la barre latérale",
+              de: "Seitenleiste ausklappen",
+              zh: "展开侧边栏",
+            })}
             className="flex h-10 w-10 items-center justify-center rounded-lg bg-transparent transition-colors hover:bg-[var(--shell-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--shell-sidebar-bg)]"
           >
             <BrandMark className="h-9 w-9" />
@@ -224,8 +234,18 @@ export default function Sidebar({
               <button
                 type="button"
                 onClick={onCollapseToggle}
-                aria-label="Collapse sidebar"
-                title="Collapse sidebar"
+                aria-label={t({
+                  en: "Collapse sidebar",
+                  fr: "Réduire la barre latérale",
+                  de: "Seitenleiste einklappen",
+                  zh: "收起侧边栏",
+                })}
+                title={t({
+                  en: "Collapse sidebar",
+                  fr: "Réduire la barre latérale",
+                  de: "Seitenleiste einklappen",
+                  zh: "收起侧边栏",
+                })}
                 className="shell-sidebar-item ml-auto flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-[var(--shell-muted)] transition-colors hover:text-[var(--shell-text)] focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-400"
               >
                 <CollapseIcon className="h-4 w-4" />
@@ -242,7 +262,7 @@ export default function Sidebar({
             ref={navRef}
             className={`shell-sidebar-scroll flex min-h-0 flex-1 flex-col overflow-y-auto ${navScrolling ? "shell-sidebar-scroll-active" : ""} ${navSpacingClasses}`}
             onScroll={handleNavScroll}
-            aria-label={`${title} navigation`}
+            aria-label={t({ en: `${title} navigation`, fr: `Navigation ${title}`, de: `${title}-Navigation`, zh: `${title}导航` })}
           >
             {!compact && headerAction ? <div className="pb-1">{headerAction}</div> : null}
             {effectiveSections.map((section, index) => {
@@ -262,12 +282,12 @@ export default function Sidebar({
                       onClick={() => toggleSection(section.label, collapsible)}
                       className="shell-section-label flex h-5 w-full items-center justify-between rounded-md px-2 text-[10px] font-semibold uppercase transition hover:bg-[var(--shell-hover)] hover:text-[var(--shell-text)]"
                     >
-                      <span>{section.label}</span>
+                      <span>{section.label === "Navigation" ? t({ en: "Navigation", fr: "Navigation", de: "Navigation", zh: "导航" }) : section.label}</span>
                       <SidebarChevronIcon className={`h-3.5 w-3.5 transition-transform ${isCollapsed ? "" : "rotate-90"}`} />
                     </button>
                   ) : (
                     <div className="shell-section-label px-2 text-[10px] font-semibold uppercase">
-                      {section.label}
+                      {section.label === "Navigation" ? t({ en: "Navigation", fr: "Navigation", de: "Navigation", zh: "导航" }) : section.label}
                     </div>
                   )}
                   {!isCollapsed && (
@@ -279,7 +299,12 @@ export default function Sidebar({
                               className={`${baseLinkClasses} ${inactiveLinkClasses} cursor-not-allowed opacity-50`}
                               aria-disabled="true"
                               aria-label={compact ? compactLinkLabel(link) : undefined}
-                              title={link.disabledHint ?? DEFAULT_DISABLED_HINT}
+                              title={link.disabledHint ?? t({
+                                en: "Unavailable in current context.",
+                                fr: "Indisponible dans le contexte actuel.",
+                                de: "Im aktuellen Kontext nicht verfügbar.",
+                                zh: "在当前上下文中不可用。",
+                              })}
                             >
                               <div className={`flex min-w-0 items-center ${compact ? "" : "gap-1.5"}`}>
                                 <span className={`shell-icon-muted shrink-0 ${iconClasses}`}>
@@ -334,15 +359,30 @@ export default function Sidebar({
         <NavLink
           to={profilePath}
           onClick={onNavigate}
-          aria-label={compact ? "Profile" : undefined}
-          title={compact ? "Profile" : undefined}
+          aria-label={compact ? t({
+            en: "Profile",
+            fr: "Profil",
+            de: "Profil",
+            zh: "个人资料",
+          }) : undefined}
+          title={compact ? t({
+            en: "Profile",
+            fr: "Profil",
+            de: "Profil",
+            zh: "个人资料",
+          }) : undefined}
           className={({ isActive }) =>
             `${baseLinkClasses} w-full focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 ${isActive ? activeLinkClasses : inactiveLinkClasses}`
           }
         >
           <div className={`flex min-w-0 items-center ${compact ? "" : "gap-1.5"}`}>
             <UserProfileIcon className="h-4 w-4 shrink-0" />
-            {!compact && <span className="truncate">Profile</span>}
+            {!compact && <span className="truncate">{t({
+              en: "Profile",
+              fr: "Profil",
+              de: "Profil",
+              zh: "个人资料",
+            })}</span>}
           </div>
         </NavLink>
       </div>
