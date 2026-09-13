@@ -1,5 +1,5 @@
 /* Copyright (c) 2026 Laurent Barbe; Licensed under the Apache License, Version 2.0 */
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   fetchGeneralFeatureLocks,
   sendQuotaNotificationTestEmail,
@@ -32,6 +32,7 @@ import {
   type FieldErrors,
   type SettingsPath,
 } from "./settings/appSettingsDraft";
+import { useAdminControlText } from "./adminControlMessages";
 
 const featureFields = [
   "manager_enabled",
@@ -80,28 +81,28 @@ function validLogo(value: string) {
     return false;
   }
 }
-function validateSmtp(values: AppSettingsValues): FieldErrors {
+function validateSmtp(values: AppSettingsValues, text = (message: string) => message): FieldErrors {
   return {
     "quota_notifications.smtp_port": validateInteger(
       values["quota_notifications.smtp_port"],
-      "SMTP port",
+      text("SMTP port"),
       1,
       65535,
     ),
     "quota_notifications.smtp_timeout_seconds": validateInteger(
       values["quota_notifications.smtp_timeout_seconds"],
-      "SMTP timeout",
+      text("SMTP timeout"),
       1,
       300,
     ),
   };
 }
-function validate(values: AppSettingsValues): FieldErrors {
+function validate(values: AppSettingsValues, text = (message: string) => message): FieldErrors {
   return {
-    ...validateSmtp(values),
+    ...validateSmtp(values, text),
     "quota_notifications.threshold_percent": validateInteger(
       values["quota_notifications.threshold_percent"],
-      "Threshold percent",
+      text("Threshold percent"),
       1,
       100,
     ),
@@ -109,20 +110,23 @@ function validate(values: AppSettingsValues): FieldErrors {
       String(values["branding.primary_color"]),
     )
       ? undefined
-      : "Choose a valid color.",
+      : text("Choose a valid color."),
     "branding.login_logo_url": validLogo(
       String(values["branding.login_logo_url"] ?? "").trim(),
     )
       ? undefined
-      : "Use an HTTP(S), relative, or image data URL.",
+      : text("Use an HTTP(S), relative, or image data URL."),
   };
 }
 
 export default function GeneralSettingsPage() {
+  const { locale, t } = useAdminControlText();
+  const validateSmtpDraft = useCallback((values: AppSettingsValues) => validateSmtp(values, t), [t]);
+  const validateDraft = useCallback((values: AppSettingsValues) => validate(values, t), [t]);
   const [locks, setLocks] = useState<GeneralFeatureLocks | null>(null);
   const form = useAppSettingsDraft(
     paths,
-    validate,
+    validateDraft,
     (saved) => applyBranding(saved.branding.primary_color),
     (defaults, current) => ({
       ...defaults,
@@ -148,13 +152,13 @@ export default function GeneralSettingsPage() {
       .catch((err) => {
         if (active)
           setLockError(
-            extractApiError(err, "Unable to load environment locks."),
+            extractApiError(err, t("Unable to load environment locks.")),
           );
       });
     return () => {
       active = false;
     };
-  }, []);
+  }, [t]);
   const feature = (
     key: (typeof featureFields)[number],
     title: string,
@@ -167,17 +171,17 @@ export default function GeneralSettingsPage() {
         key={key}
         form={form}
         field={`general.${key}`}
-        title={title}
-        ariaLabel={`${title} feature`}
+        title={t(title)}
+        ariaLabel={`${t(title)} ${t("feature")}`}
         disabled={!locks || lock?.forced}
         experimental={experimental}
         description={
           <>
-            {description}
+            {t(description)}
             {lock?.forced && (
               <span className="block">
-                Forced by environment ({lock.source ? `${lock.source}=` : ""}
-                {String(lock.value)}).
+                {t("Forced by environment")}（{lock.source ? `${lock.source}=` : ""}
+                {String(lock.value)}）
               </span>
             )}
           </>
@@ -186,7 +190,7 @@ export default function GeneralSettingsPage() {
     );
   };
   const testSmtp = async (values: AppSettingsValues) => {
-    if (sending || Object.values(validateSmtp(values)).some(Boolean)) return;
+    if (sending || Object.values(validateSmtpDraft(values)).some(Boolean)) return;
     setSending(true);
     setTestError(null);
     setTestMessage(null);
@@ -212,9 +216,9 @@ export default function GeneralSettingsPage() {
     };
     try {
       const result = await sendQuotaNotificationTestEmail(settings);
-      setTestMessage(`Test email sent to ${result.recipient}.`);
+      setTestMessage(locale === "zh" ? `${t("Test email sent to")} ${result.recipient}。` : `Test email sent to ${result.recipient}.`);
     } catch (err) {
-      setTestError(extractApiError(err, "Unable to send test email."));
+      setTestError(extractApiError(err, t("Unable to send test email.")));
     } finally {
       setSending(false);
     }
@@ -222,19 +226,19 @@ export default function GeneralSettingsPage() {
   const color = String(form.draft["branding.primary_color"] ?? "#0569f8");
   return (
     <AdminSettingsFrame
-      title="General settings"
-      description="Workspace availability, platform services and branding."
+      title={t("General settings")}
+      description={t("Workspace availability, platform services and branding.")}
       page="general-settings"
-      resetTitle="Reset general settings draft?"
+      resetTitle={t("Reset general settings draft?")}
       form={form}
       dialogDirty={dialogDirty}
       dialogs={
         smtpOpen && (
           <SettingsDraftDialog
-            title="Email delivery"
+            title={t("Email delivery")}
             maxWidthClass="max-w-xl"
             initialValue={{ ...form.draft }}
-            validate={validateSmtp}
+            validate={validateSmtpDraft}
             onDirtyChange={setDialogDirty}
             onClose={() => setSmtpOpen(false)}
             onApply={(values) => {
@@ -255,9 +259,9 @@ export default function GeneralSettingsPage() {
                   const path = `quota_notifications.${field.key}` as const;
                   return (
                     <label key={path}>
-                      <span>{field.label}</span>
+                      <span>{t(field.label)}</span>
                       <SettingsField
-                        label={field.label}
+                        label={t(field.label)}
                         type={"max" in field ? "number" : "text"}
                         min={1}
                         max={"max" in field ? field.max : undefined}
@@ -274,9 +278,9 @@ export default function GeneralSettingsPage() {
                   );
                 })}
                 <div className="flex items-center justify-between gap-3">
-                  <span>SMTP STARTTLS</span>
+                  <span>{t("SMTP STARTTLS")}</span>
                   <SettingsSwitch
-                    ariaLabel="SMTP STARTTLS"
+                    ariaLabel={t("SMTP STARTTLS")}
                     checked={Boolean(
                       values["quota_notifications.smtp_starttls"],
                     )}
@@ -289,8 +293,7 @@ export default function GeneralSettingsPage() {
                   />
                 </div>
                 <p className="text-xs text-[var(--ui-text-muted)]">
-                  SMTP_PASSWORD is managed by the environment. A test uses this
-                  draft without saving it.
+                  {t("SMTP_PASSWORD is managed by the environment. A test uses this draft without saving it.")}
                 </p>
                 <SettingsButton
                   variant="secondary"
@@ -299,7 +302,7 @@ export default function GeneralSettingsPage() {
                     if (validateDraft()) void testSmtp(values);
                   }}
                 >
-                  {sending ? "Sending..." : "Send test email"}
+                  {sending ? t("Sending...") : t("Send test email")}
                 </SettingsButton>
                 {testError && (
                   <UiInlineMessage tone="error">{testError}</UiInlineMessage>
@@ -314,8 +317,8 @@ export default function GeneralSettingsPage() {
       {lockError && <UiInlineMessage tone="error">{lockError}</UiInlineMessage>}
       <SettingsSection
         presentation="compact"
-        title="Available workspaces"
-        description="Availability does not grant storage permissions."
+        title={t("Available workspaces")}
+        description={t("Availability does not grant storage permissions.")}
       >
         {feature(
           "manager_enabled",
@@ -346,8 +349,8 @@ export default function GeneralSettingsPage() {
       </SettingsSection>
       <SettingsSection
         presentation="compact"
-        title="Services and monitoring"
-        description="Optional platform capabilities."
+        title={t("Services and monitoring")}
+        description={t("Optional platform capabilities.")}
       >
         {feature(
           "billing_enabled",
@@ -364,43 +367,43 @@ export default function GeneralSettingsPage() {
         <AppSettingsToggle
           form={form}
           field="general.usage_history_enabled"
-          title="Usage history"
-          ariaLabel="Usage history feature"
-          description="Collect usage snapshots for historical metrics."
+          title={t("Usage history")}
+          ariaLabel={t("Usage history feature")}
+          description={t("Collect usage snapshots for historical metrics.")}
         />
       </SettingsSection>
       <SettingsSection
         presentation="compact"
-        title="Quota alerts"
-        description="Email notifications for S3 Accounts and S3 Users."
+        title={t("Quota alerts")}
+        description={t("Email notifications for S3 Accounts and S3 Users.")}
       >
         <AppSettingsToggle
           form={form}
           field="general.quota_alerts_enabled"
-          title="Quota alerts"
-          ariaLabel="Quota alerts feature"
+          title={t("Quota alerts")}
+          ariaLabel={t("Quota alerts feature")}
         />
         <AppSettingsNumber
           form={form}
           field="quota_notifications.threshold_percent"
-          title="Threshold percent"
+          title={t("Threshold percent")}
           min={1}
           max={100}
-          description="Full-quota alerts are always sent at 100%."
+          description={t("Full-quota alerts are always sent at 100%.")}
         />
         <AppSettingsToggle
           form={form}
           field="quota_notifications.include_subject_contact_email"
-          title="Include subject contact email"
-          description="Also notify the account or S3 user's contact address when defined."
+          title={t("Include subject contact email")}
+          description={t("Also notify the account or S3 user's contact address when defined.")}
         />
         <SettingsItem
           compact
-          title="Email delivery"
+          title={t("Email delivery")}
           description={
             form.draft["quota_notifications.smtp_host"]
               ? `${form.draft["quota_notifications.smtp_host"]}:${form.draft["quota_notifications.smtp_port"]}`
-              : "SMTP is not configured."
+              : t("SMTP is not configured.")
           }
           action={
             <SettingsButton
@@ -411,19 +414,19 @@ export default function GeneralSettingsPage() {
                 setSmtpOpen(true);
               }}
             >
-              Configure SMTP
+              {t("Configure SMTP")}
             </SettingsButton>
           }
         />
       </SettingsSection>
       <SettingsSection
         presentation="compact"
-        title="Branding"
-        description="Preview your changes here. The application updates after saving."
+        title={t("Branding")}
+        description={t("Preview your changes here. The application updates after saving.")}
       >
         <SettingsItem
           compact
-          title="Primary accent color"
+          title={t("Primary accent color")}
           action={
             <div className="flex flex-wrap items-center gap-2">
               {colors.map((value) => (
@@ -432,12 +435,12 @@ export default function GeneralSettingsPage() {
                   type="button"
                   className="h-11 w-11 lg:h-8 lg:w-8 rounded border border-[var(--ui-border)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
                   style={{ backgroundColor: value }}
-                  aria-label={`Use preset color ${value}`}
+                  aria-label={locale === "zh" ? `使用预设颜色 ${value}` : `Use preset color ${value}`}
                   onClick={() => form.setValue("branding.primary_color", value)}
                 />
               ))}
               <SettingsField
-                label="Primary color picker"
+                label={t("Primary color picker")}
                 type="color"
                 value={color}
                 onChange={(event) =>
@@ -451,11 +454,11 @@ export default function GeneralSettingsPage() {
         />
         <SettingsItem
           compact
-          title="Login logo"
-          description="Leave empty to use the default logo. BucketReef branding always remains visible."
+          title={t("Login logo")}
+          description={t("Leave empty to use the default logo. BucketReef branding always remains visible.")}
           action={
             <SettingsField
-              label="Login logo URL"
+              label={t("Login logo URL")}
               value={String(form.draft["branding.login_logo_url"] ?? "")}
               onChange={(event) =>
                 form.setValue("branding.login_logo_url", event.target.value)

@@ -4,6 +4,7 @@
  */
 import { useMemo, useState } from "react";
 import type { HealthCheckStatus } from "../../api/healthchecks";
+import { useAdminControlText } from "./adminControlMessages";
 
 export const STATUS_LABELS: Record<HealthCheckStatus, string> = {
   unknown: "Unknown",
@@ -13,6 +14,7 @@ export const STATUS_LABELS: Record<HealthCheckStatus, string> = {
 };
 
 export function StatusPill({ status }: { status: HealthCheckStatus }) {
+  const { t } = useAdminControlText();
   const classes =
     status === "up"
       ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-100"
@@ -21,7 +23,7 @@ export function StatusPill({ status }: { status: HealthCheckStatus }) {
         : status === "down"
           ? "bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-100"
           : "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200";
-  return <span className={`inline-flex items-center rounded-full px-2.5 py-1 ui-caption font-semibold ${classes}`}>{STATUS_LABELS[status]}</span>;
+  return <span className={`inline-flex items-center rounded-full px-2.5 py-1 ui-caption font-semibold ${classes}`}>{t(STATUS_LABELS[status])}</span>;
 }
 
 export function formatLatency(value?: number | null) {
@@ -29,10 +31,10 @@ export function formatLatency(value?: number | null) {
   return `${value} ms`;
 }
 
-export function formatTimestamp(value: string) {
+export function formatTimestamp(value: string, locale?: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString();
+  return date.toLocaleString(locale);
 }
 
 export function formatChartTime(value: number) {
@@ -118,12 +120,12 @@ export function formatDurationShort(durationMs: number) {
   return remainingHours > 0 ? `${days} d ${remainingHours} h` : `${days} d`;
 }
 
-function timelineSegmentCause(status: HealthCheckStatus, latencyMs?: number | null, reason?: string | null) {
+function timelineSegmentCause(status: HealthCheckStatus, latencyMs?: number | null, reason?: string | null, text = (value: string) => value) {
   if (reason) return reason;
-  if (status === "down") return "Endpoint unavailable or check failure.";
+  if (status === "down") return text("Endpoint unavailable or check failure.");
   if (status === "degraded") {
-    if (latencyMs != null) return `Latency elevated (${latencyMs} ms).`;
-    return "Service degraded during this period.";
+    if (latencyMs != null) return text("Latency elevated") + ` (${latencyMs} ms).`;
+    return text("Service degraded during this period.");
   }
   return null;
 }
@@ -189,12 +191,13 @@ function buildTimelineSegments(points: TimelinePoint[], rangeStart?: string | nu
 export function buildTimelineSegmentDetails(
   points: TimelinePoint[],
   rangeStart?: string | null,
-  rangeEnd?: string | null
+  rangeEnd?: string | null,
+  text = (value: string) => value,
 ): TimelineSegmentDetail[] {
   const segments = buildTimelineSegments(points, rangeStart, rangeEnd);
   return segments.map((segment, index) => {
     const durationMs = Math.max(1, segment.endMs - segment.startMs);
-    const cause = timelineSegmentCause(segment.status, segment.latencyMs, segment.reason);
+    const cause = timelineSegmentCause(segment.status, segment.latencyMs, segment.reason, text);
     return {
       ...segment,
       key: `${segment.status}-${segment.startMs}-${segment.endMs}-${index}`,
@@ -221,8 +224,9 @@ export function EndpointTimelineBar({
   selectedSegmentKey?: string | null;
   onSegmentSelect?: (segment: TimelineSegmentDetail) => void;
 }) {
+  const { locale, t } = useAdminControlText();
   const [hoveredSegmentKey, setHoveredSegmentKey] = useState<string | null>(null);
-  const segments = useMemo(() => buildTimelineSegmentDetails(points, rangeStart, rangeEnd), [points, rangeStart, rangeEnd]);
+  const segments = useMemo(() => buildTimelineSegmentDetails(points, rangeStart, rangeEnd, t), [points, rangeStart, rangeEnd, t]);
   const rangeStartMs = parseTimestampMs(rangeStart);
   const rangeEndMs = parseTimestampMs(rangeEnd);
   const hasRange = rangeStartMs != null && rangeEndMs != null && rangeEndMs > rangeStartMs;
@@ -238,12 +242,12 @@ export function EndpointTimelineBar({
         const isHovered = hoveredSegmentKey === segmentDetail.key;
         const isSelected = selectedSegmentKey === segmentDetail.key;
         const lines = [
-          `${STATUS_LABELS[segmentDetail.status]}`,
-          `Start: ${formatTimestamp(segmentDetail.startTimestamp)}`,
-          `End: ${formatTimestamp(segmentDetail.endTimestamp)}`,
-          `Duration: ${formatDurationShort(segmentDetail.durationMs)}`,
+          `${t(STATUS_LABELS[segmentDetail.status])}`,
+          `${t("Start")}: ${formatTimestamp(segmentDetail.startTimestamp, locale)}`,
+          `${t("End")}: ${formatTimestamp(segmentDetail.endTimestamp, locale)}`,
+          `${t("Duration")}: ${formatDurationShort(segmentDetail.durationMs)}`,
         ];
-        if (segmentDetail.cause) lines.push(`Cause: ${segmentDetail.cause}`);
+        if (segmentDetail.cause) lines.push(`${t("Cause")}: ${segmentDetail.cause}`);
         return (
           <div
             key={segmentDetail.key}
