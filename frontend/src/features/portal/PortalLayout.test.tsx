@@ -257,7 +257,7 @@ describe("PortalLayout", () => {
       </LanguageProvider>,
     );
 
-    const nav = screen.getByRole("navigation", { name: "PORTAL navigation" });
+    const nav = screen.getByRole("navigation", { name: "Navigation PORTAL" });
     expect(
       within(nav)
         .getAllByRole("link")
@@ -273,7 +273,7 @@ describe("PortalLayout", () => {
       "Paramètres",
     ]);
     expect(
-      await screen.findByRole("button", { name: "Switch workspace" }),
+      await screen.findByRole("button", { name: "Changer d’espace de travail" }),
     ).toBeInTheDocument();
     await user.click(
       screen.getByRole("button", { name: "Sélectionner un projet" }),
