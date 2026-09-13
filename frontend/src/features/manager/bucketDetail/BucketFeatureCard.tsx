@@ -5,6 +5,7 @@
 import { ReactNode } from "react";
 import UiCard from "../../../components/ui/UiCard";
 import { cx, uiFeatureCardStateClasses } from "../../../components/ui/styles";
+import { useManagerBucketDetailText } from "../managerBucketDetailMessages";
 import type { BucketFeatureCardMode, BucketFeatureVisualState } from "./bucketFeatureState";
 
 const bucketFeatureCardBaseClass =
@@ -33,10 +34,12 @@ export default function BucketFeatureCard({
   bodyClassName,
   testId,
 }: BucketFeatureCardProps) {
+  const { t } = useManagerBucketDetailText();
+
   return (
     <UiCard
-      title={title}
-      description={description}
+      title={t(title)}
+      description={t(description)}
       actions={actions}
       className={cx(bucketFeatureCardBaseClass, uiFeatureCardStateClasses[visualState], className)}
       bodyClassName={bodyClassName}

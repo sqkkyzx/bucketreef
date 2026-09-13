@@ -81,6 +81,7 @@ import {
 import { isApiFeatureNotImplemented } from "../../utils/apiError";
 import { formatBytes } from "../../utils/format";
 import type { UiRole } from "../../api/users";
+import { useManagerBucketDetailText } from "./managerBucketDetailMessages";
 
 type BucketConfigurationDeleteKind =
   | "cors"
@@ -317,6 +318,7 @@ function BucketDetailPageContent({
   routeBucketName,
   s3AccountContext,
 }: BucketDetailPageContentProps) {
+  const { locale, t } = useManagerBucketDetailText();
   const bucketName = bucketNameOverride ?? routeBucketName;
   const isCephAdmin = mode === "ceph-admin";
   const {
@@ -1298,9 +1300,9 @@ function BucketDetailPageContent({
     [bucketListPathOverride, mode]
   );
   const breadcrumbs = useMemo(() => {
-    const items = buildBucketDetailBreadcrumbs(mode, bucketName);
+    const items = buildBucketDetailBreadcrumbs(mode, bucketName, locale);
     return items.map((item, index) => (index === 1 ? { ...item, to: basePath } : item));
-  }, [basePath, bucketName, mode]);
+  }, [basePath, bucketName, locale, mode]);
 
   const confirmPendingConfigurationDelete = async () => {
     if (!pendingConfigurationDelete) return;
@@ -1346,27 +1348,28 @@ function BucketDetailPageContent({
     <div className={bucketDetailSectionStackClass}>
       {!embedded && (
         <PageHeader
-          title={bucketName ?? "Bucket"}
+          title={bucketName ?? t("Bucket")}
           description={
-            bucketError ||
+            (bucketError && t(bucketError)) ||
             (isCephAdmin
-              ? "Bucket configuration and permissions (Admin Ops + S3)."
-              : "Bucket overview, objects, properties, permissions, metrics.")
+              ? t("Bucket configuration and permissions (Admin Ops + S3).")
+              : t("Bucket overview, objects, properties, permissions, metrics."))
           }
           breadcrumbs={breadcrumbs}
+          breadcrumbLabel={t("Breadcrumb")}
           actions={[
             onBackToBuckets
-              ? { label: "← Back to buckets", onClick: onBackToBuckets, variant: "ghost" }
-              : { label: "← Back to buckets", to: basePath, variant: "ghost" },
+              ? { label: t("← Back to buckets"), onClick: onBackToBuckets, variant: "ghost" }
+              : { label: t("← Back to buckets"), to: basePath, variant: "ghost" },
           ]}
         />
       )}
 
       {isCephAdmin && !endpointId && (
-        <PageBanner tone="warning">Select a Ceph endpoint before managing this bucket.</PageBanner>
+        <PageBanner tone="warning">{t("Select a Ceph endpoint before managing this bucket.")}</PageBanner>
       )}
 
-      {bucketError && <PageBanner tone="error">{bucketError}</PageBanner>}
+      {bucketError && <PageBanner tone="error">{t(bucketError)}</PageBanner>}
 
       <PageTabs
         activeTab={activeTab}
@@ -1378,56 +1381,56 @@ function BucketDetailPageContent({
             disabled={!canRefreshActiveTab || activeTabLoading}
             className="rounded-md border border-slate-200 px-3 py-1 ui-caption font-semibold text-slate-700 hover:border-primary hover:text-primary disabled:opacity-60 dark:border-slate-700 dark:text-slate-100 dark:hover:border-primary-500 dark:hover:text-primary-100"
           >
-            {activeTabLoading ? "Loading..." : "Refresh"}
+            {activeTabLoading ? t("Loading...") : t("Refresh")}
           </button>
         }
         tabs={[
           {
             id: "overview",
-            label: "Overview",
+            label: t("Overview"),
             content: (
               <section className="space-y-4 px-1 py-2">
                 <header className={bucketDetailTightStackClass}>
                   <h3 className="ui-subtitle font-semibold text-slate-900 dark:text-slate-100">
-                    {bucketName ? `Bucket ${bucketName}` : "Bucket overview"}
+                    {bucketName ? `${t("Bucket")} ${bucketName}` : t("Bucket overview")}
                   </h3>
                   <dl className="flex flex-wrap gap-x-6 gap-y-1">
                     <div className={bucketDetailHintClass}>
-                      <dt className="inline">Owner: </dt>
-                      <dd className="inline font-semibold text-slate-700 dark:text-slate-200">{bucketOwner ?? (loadingBucket || bucketAclLoading ? "Loading..." : "Unknown")}</dd>
+                      <dt className="inline">{t("Owner:")} </dt>
+                      <dd className="inline font-semibold text-slate-700 dark:text-slate-200">{bucketOwner ?? (loadingBucket || bucketAclLoading ? t("Loading...") : t("Unknown"))}</dd>
                     </div>
                     <div className={bucketDetailHintClass}>
-                      <dt className="inline">Created: </dt>
-                      <dd className="inline font-semibold text-slate-700 dark:text-slate-200">{loadingBucket ? "Loading..." : formatLocalDateTime(bucket?.creation_date)}</dd>
+                      <dt className="inline">{t("Created:")} </dt>
+                      <dd className="inline font-semibold text-slate-700 dark:text-slate-200">{loadingBucket ? t("Loading...") : formatLocalDateTime(bucket?.creation_date)}</dd>
                     </div>
                   </dl>
                 </header>
                 <div className={bucketDetailTwoColumnGridClass}>
                   <UsageTile
-                    label="Storage"
+                    label={t("Storage")}
                     used={storageUsage.used}
                     quota={storageUsage.quota}
                     formatter={formatBytes}
                     quotaFormatter={formatBytes}
                     loading={loadingBucket}
-                    emptyHint="No storage quota configured."
+                    emptyHint={t("No storage quota configured.")}
                   />
                   <UsageTile
-                    label="Objects"
+                    label={t("Objects")}
                     used={objectUsage.used}
                     quota={objectUsage.quota}
                     formatter={formatCompactNumber}
                     quotaFormatter={(value) => (value != null ? value.toLocaleString() : "-")}
                     loading={loadingBucket}
-                    unitHint="objects"
-                    emptyHint="No object quota configured."
+                    unitHint={t("objects")}
+                    emptyHint={t("No object quota configured.")}
                   />
                 </div>
                 <div className="border-t border-[color:var(--ui-border-soft)] pt-4">
-                  <p className="ui-body font-semibold text-slate-900 dark:text-slate-50">Bucket properties</p>
+                  <p className="ui-body font-semibold text-slate-900 dark:text-slate-50">{t("Bucket properties")}</p>
                   <div className="mt-3 flex flex-wrap gap-2">
                     {propertySummary.map((item) => (
-                      <PropertySummaryChip key={item.label} label={item.label} state={item.state} tone={item.tone} />
+                      <PropertySummaryChip key={item.label} label={t(item.label)} state={t(item.state)} tone={item.tone} />
                     ))}
                   </div>
                 </div>
@@ -1438,12 +1441,12 @@ function BucketDetailPageContent({
             ? [
                 {
                   id: "objects",
-                  label: "Objects / S3 Console",
+                  label: t("Objects / S3 Console"),
                   content: (
                     <SplitView
                       left={
                   <div className="p-3 space-y-2">
-                    <p className="ui-body font-semibold text-slate-800 dark:text-slate-100">Prefixes</p>
+                    <p className="ui-body font-semibold text-slate-800 dark:text-slate-100">{t("Prefixes")}</p>
                     <div className={bucketDetailTightStackClass}>
                       <button
                         className={`flex w-full items-center justify-between rounded-md px-2.5 py-1.5 text-left ui-caption ${
@@ -1453,14 +1456,14 @@ function BucketDetailPageContent({
                         }`}
                         onClick={() => openObjectsPrefix("")}
                       >
-                        <span>(root)</span>
+                        <span>{t("(root)")}</span>
                       </button>
                       {parentPrefix !== "" && (
                         <button
                           className="flex w-full items-center justify-between rounded-md px-2.5 py-1.5 text-left ui-caption text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800/60"
                           onClick={() => openObjectsPrefix(parentPrefix)}
                         >
-                          <span>⬆️ Up</span>
+                          <span>{t("⬆️ Up")}</span>
                           <span className={bucketDetailHintClass}>{parentPrefix || "/"}</span>
                         </button>
                       )}
@@ -1488,14 +1491,14 @@ function BucketDetailPageContent({
                   <div className="space-y-3 p-4">
                     <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                       <div className={bucketDetailTightStackClass}>
-                        <p className="ui-body font-semibold text-slate-800 dark:text-slate-100">Path</p>
+                        <p className="ui-body font-semibold text-slate-800 dark:text-slate-100">{t("Path")}</p>
                         <div className="ui-caption text-slate-500 dark:text-slate-300">
-                          {bucketName}/{currentPrefix || "(root)"}
+                          {bucketName}/{currentPrefix || t("(root)")}
                         </div>
                         <div className={bucketDetailHintClass}>
                           {isCephAdmin
-                            ? "Read-only preview using the selected endpoint's Ceph Admin credentials."
-                            : "Read-only preview. Use the main Browser page for object operations."}
+                            ? t("Read-only preview using the selected endpoint's Ceph Admin credentials.")
+                            : t("Read-only preview. Use the main Browser page for object operations.")}
                         </div>
                       </div>
                       <div className={bucketDetailWrapActionsClass}>
@@ -1505,12 +1508,12 @@ function BucketDetailPageContent({
                           disabled={objectsLoading}
                           className="rounded-md border border-slate-200 px-3 py-1 ui-caption font-semibold text-slate-700 transition hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:text-slate-100 dark:hover:border-primary-500 dark:hover:text-primary-100"
                         >
-                          Refresh
+                          {t("Refresh")}
                         </button>
                       </div>
                     </div>
                     {objectsError && (
-                      <UiInlineMessage tone="error">{objectsError}</UiInlineMessage>
+                      <UiInlineMessage tone="error">{t(objectsError)}</UiInlineMessage>
                     )}
 
                     <div className={uiTableContainerClass}>
@@ -1518,16 +1521,16 @@ function BucketDetailPageContent({
                         <thead>
                           <tr>
                             <th className="text-left">
-                              Name
+                              {t("Name")}
                             </th>
                             <th className="text-left">
-                              Size
+                              {t("Size")}
                             </th>
                             <th className="text-left">
-                              Last modified
+                              {t("Last modified")}
                             </th>
                             <th className="text-left">
-                              Storage class
+                              {t("Storage class")}
                             </th>
                           </tr>
                         </thead>
@@ -1535,14 +1538,14 @@ function BucketDetailPageContent({
                           {objectsLoading && (
                             <tr>
                               <td colSpan={4} className="ui-table-secondary">
-                                Loading objects...
+                                {t("Loading objects...")}
                               </td>
                             </tr>
                           )}
                           {!objectsLoading && objectRows.length === 0 && (
                             <tr>
                               <td colSpan={4} className="ui-table-secondary">
-                                No objects in this prefix.
+                                {t("No objects in this prefix.")}
                               </td>
                             </tr>
                           )}
@@ -1587,13 +1590,13 @@ function BucketDetailPageContent({
       : []),
           {
             id: "properties",
-            label: "Properties",
+            label: t("Properties"),
             content: (
               <div className={bucketDetailSectionStackClass}>
                 <div className={bucketDetailTwoColumnGridClass}>
                   <BucketFeatureCard
-                    title="Versioning"
-                    description="Enable or disable S3 object versioning."
+                    title={t("Versioning")}
+                    description={t("Enable or disable S3 object versioning.")}
                     mode="graphical"
                     visualState={versioningCardState}
                     testId="bucket-feature-versioning"
@@ -1609,40 +1612,40 @@ function BucketDetailPageContent({
                           versioningDisableBlocked ||
                           !versioningDirty
                         }
-                        title={versioningDisableBlocked ? "Disable Object Lock to change versioning." : undefined}
+                        title={versioningDisableBlocked ? t("Disable Object Lock to change versioning.") : undefined}
                         className={bucketFeaturePrimaryActionClass}
                       >
-                        {updatingVersioning ? "Saving..." : "Save"}
+                        {updatingVersioning ? t("Saving...") : t("Save")}
                       </button>
                     }
                   >
                     <div className={bucketDetailCompactStackClass}>
                       {versioningLoading && (
-                        <UiInlineMessage>Loading versioning...</UiInlineMessage>
+                        <UiInlineMessage>{t("Loading versioning...")}</UiInlineMessage>
                       )}
                       {versioningLoadError && (
-                        <UiInlineMessage tone="error">{versioningLoadError}</UiInlineMessage>
+                        <UiInlineMessage tone="error">{t(versioningLoadError)}</UiInlineMessage>
                       )}
                       {versioningSaveError && (
-                        <UiInlineMessage tone="error">{versioningSaveError}</UiInlineMessage>
+                        <UiInlineMessage tone="error">{t(versioningSaveError)}</UiInlineMessage>
                       )}
                       <div className="flex items-start justify-between gap-3 rounded-md border border-slate-200 px-3 py-2 dark:border-slate-700">
                         <div>
-                          <p className="ui-body font-semibold text-slate-900 dark:text-slate-100">Enable versioning</p>
+                          <p className="ui-body font-semibold text-slate-900 dark:text-slate-100">{t("Enable versioning")}</p>
                           <p className={bucketDetailHintClass}>
-                            Keeps object history for restores and is required for Object Lock.
+                            {t("Keeps object history for restores and is required for Object Lock.")}
                           </p>
                         </div>
                         <div className="flex items-center gap-2">
                           {versioningIsSuspended && (
                             <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 ui-caption font-semibold text-amber-700 dark:border-amber-900/40 dark:bg-amber-950/60 dark:text-amber-100">
-                              Suspended
+                              {t("Suspended")}
                             </span>
                           )}
                           <SettingsSwitch
                             checked={versioningDraftEnabled}
                             disabled={updatingVersioning || versioningLoading || Boolean(versioningLoadError) || versioningDisableBlocked}
-                            ariaLabel="Enable versioning"
+                            ariaLabel={t("Enable versioning")}
                             onChange={updateVersioningDraft}
                           />
                         </div>
@@ -1650,13 +1653,13 @@ function BucketDetailPageContent({
                     </div>
                     {versioningDisableBlocked && (
                       <p className="mt-2 ui-caption text-slate-500 dark:text-slate-400">
-                        Versioning cannot be disabled while Object Lock is enabled.
+                        {t("Versioning cannot be disabled while Object Lock is enabled.")}
                       </p>
                     )}
                   </BucketFeatureCard>
                   <BucketFeatureCard
-                    title="Server-side encryption"
-                    description="Bucket default encryption rules (S3 API Rules array)."
+                    title={t("Server-side encryption")}
+                    description={t("Bucket default encryption rules (S3 API Rules array).")}
                     mode="json"
                     visualState={encryptionCardState}
                     testId="bucket-feature-encryption"
@@ -1669,7 +1672,7 @@ function BucketDetailPageContent({
                           disabled={!sseFeatureEnabled || encryptionNotImplemented || deletingEncryption || !encryptionConfigured}
                           className={bucketFeatureDangerActionClass}
                         >
-                          {deletingEncryption ? "Disabling..." : "Disable"}
+                          {deletingEncryption ? t("Disabling...") : t("Disable")}
                         </button>
                         <button
                           type="button"
@@ -1677,17 +1680,17 @@ function BucketDetailPageContent({
                           disabled={!sseFeatureEnabled || encryptionNotImplemented || savingEncryption || encryptionLoading}
                           className={bucketFeaturePrimaryActionClass}
                         >
-                          {savingEncryption ? "Saving..." : "Save"}
+                          {savingEncryption ? t("Saving...") : t("Save")}
                         </button>
                       </div>
                     }
                   >
                     {!sseFeatureEnabled && <EndpointFeatureDisabledNotice featureLabel="Server-side encryption" />}
                     {encryptionError && (
-                      <UiInlineMessage tone="error">{encryptionError}</UiInlineMessage>
+                      <UiInlineMessage tone="error">{t(encryptionError)}</UiInlineMessage>
                     )}
                     {encryptionStatus && (
-                      <UiInlineMessage tone="success">{encryptionStatus}</UiInlineMessage>
+                      <UiInlineMessage tone="success">{t(encryptionStatus)}</UiInlineMessage>
                     )}
                     <textarea
                       value={encryptionText}
@@ -1710,14 +1713,14 @@ function BucketDetailPageContent({
                       disabled={!sseFeatureEnabled || encryptionNotImplemented}
                       helperText={
                         <span className={bucketDetailHintClass}>
-                          Leave <code>Rules</code> empty to disable default encryption.
+                          {t("Leave Rules empty to disable default encryption.")}
                         </span>
                       }
                     />
                   </BucketFeatureCard>
                   <BucketFeatureCard
-                    title="Object Lock"
-                    description="WORM / default retention."
+                    title={t("Object Lock")}
+                    description={t("WORM / default retention.")}
                     mode="graphical"
                     visualState={objectLockCardState}
                     testId="bucket-feature-object-lock"
@@ -1730,7 +1733,7 @@ function BucketDetailPageContent({
                           className={bucketFeatureSecondaryActionClass}
                           disabled={objectLockLoading || Boolean(objectLockLoadError) || savingObjectLock}
                         >
-                          Reset
+                          {t("Reset")}
                         </button>
                         <button
                           type="submit"
@@ -1738,23 +1741,23 @@ function BucketDetailPageContent({
                           disabled={savingObjectLock || objectLockLoading || Boolean(objectLockLoadError)}
                           className={bucketFeaturePrimaryActionClass}
                         >
-                          {savingObjectLock ? "Saving..." : "Save"}
+                          {savingObjectLock ? t("Saving...") : t("Save")}
                         </button>
                       </div>
                     }
                   >
                     <div className={bucketDetailCompactStackClass}>
                       {objectLockLoading && (
-                        <UiInlineMessage>Loading Object Lock configuration...</UiInlineMessage>
+                        <UiInlineMessage>{t("Loading Object Lock configuration...")}</UiInlineMessage>
                       )}
                       {objectLockLoadError && (
-                        <UiInlineMessage tone="error">{objectLockLoadError}</UiInlineMessage>
+                        <UiInlineMessage tone="error">{t(objectLockLoadError)}</UiInlineMessage>
                       )}
                       {objectLockError && (
-                        <UiInlineMessage tone="error">{objectLockError}</UiInlineMessage>
+                        <UiInlineMessage tone="error">{t(objectLockError)}</UiInlineMessage>
                       )}
                       {objectLockStatus && (
-                        <UiInlineMessage tone="success">{objectLockStatus}</UiInlineMessage>
+                        <UiInlineMessage tone="success">{t(objectLockStatus)}</UiInlineMessage>
                       )}
                       <form
                         id={objectLockFormId}
@@ -1766,15 +1769,15 @@ function BucketDetailPageContent({
                       >
                         <div className="flex items-start justify-between gap-3 rounded-md border border-slate-200 px-3 py-2 dark:border-slate-700">
                           <div>
-                            <p className="ui-body font-semibold text-slate-900 dark:text-slate-100">Enable Object Lock</p>
+                            <p className="ui-body font-semibold text-slate-900 dark:text-slate-100">{t("Enable Object Lock")}</p>
                             <p className={bucketDetailHintClass}>
-                              Write-once retention controls for bucket objects.
+                              {t("Write-once retention controls for bucket objects.")}
                             </p>
                           </div>
                           <SettingsSwitch
                             checked={objectLockEnabled ?? false}
                             disabled={objectLockPersistentlyEnabled || objectLockLoading || Boolean(objectLockLoadError) || objectLockNotImplemented}
-                            ariaLabel="Enable object lock"
+                            ariaLabel={t("Enable object lock")}
                             onChange={(checked) => {
                               if (objectLockPersistentlyEnabled) return;
                               updateObjectLockEnabled(checked);
@@ -1785,34 +1788,34 @@ function BucketDetailPageContent({
                           />
                         </div>
                         <p className={bucketDetailHintClass}>
-                          Enabling Object Lock automatically enables bucket versioning.
+                          {t("Enabling Object Lock automatically enables bucket versioning.")}
                         </p>
                         {objectLockPersistentlyEnabled && (
                           <p className={bucketDetailHintClass}>
-                            Object Lock cannot be disabled once it has been enabled on the bucket. Update only the default retention below.
+                            {t("Object Lock cannot be disabled once it has been enabled on the bucket. Update only the default retention below.")}
                           </p>
                         )}
                         {objectLockActive && (
                           <UiInlineMessage tone="warning">
-                            Warning: while Object Lock is enabled, objects cannot be deleted until the specified retention period ends. Review mode and retention before saving changes.
+                            {t("Warning: while Object Lock is enabled, objects cannot be deleted until the specified retention period ends. Review mode and retention before saving changes.")}
                           </UiInlineMessage>
                         )}
                         <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                           <label className={bucketFeatureLabelClass}>
-                            Mode
+                            {t("Mode")}
                             <select
                               value={objectLockMode}
                               onChange={(e) => updateObjectLockMode(e.target.value)}
                               className={bucketFeatureInputClass}
                               disabled={objectLockNotImplemented}
                             >
-                              <option value="">(none)</option>
-                              <option value="GOVERNANCE">Governance</option>
-                              <option value="COMPLIANCE">Compliance</option>
+                              <option value="">{t("(none)")}</option>
+                              <option value="GOVERNANCE">{t("Governance")}</option>
+                              <option value="COMPLIANCE">{t("Compliance")}</option>
                             </select>
                           </label>
                           <label className={bucketFeatureLabelClass}>
-                            Retention (days)
+                            {t("Retention (days)")}
                             <input
                               type="number"
                               min={0}
@@ -1820,12 +1823,12 @@ function BucketDetailPageContent({
                               value={objectLockDays}
                               onChange={(e) => updateObjectLockDays(e.target.value)}
                               className={bucketFeatureInputClass}
-                              placeholder="e.g. 30"
+                              placeholder={t("e.g. 30")}
                               disabled={objectLockNotImplemented}
                             />
                           </label>
                           <label className={bucketFeatureLabelClass}>
-                            Retention (years)
+                            {t("Retention (years)")}
                             <input
                               type="number"
                               min={0}
@@ -1833,41 +1836,49 @@ function BucketDetailPageContent({
                               value={objectLockYears}
                               onChange={(e) => updateObjectLockYears(e.target.value)}
                               className={bucketFeatureInputClass}
-                              placeholder="e.g. 1"
+                              placeholder={t("e.g. 1")}
                               disabled={objectLockNotImplemented}
                             />
                           </label>
                         </div>
                         {objectLockConfig?.mode && (objectLockConfig.days != null || objectLockConfig.years != null) && (
                           <p className={bucketDetailMutedBodyClass}>
-                            Current retention: {objectLockConfig.mode}
-                            {objectLockConfig.days != null ? ` · ${objectLockConfig.days} day(s)` : ""}
-                            {objectLockConfig.years != null ? ` · ${objectLockConfig.years} year(s)` : ""}
+                            {t("Current retention:")} {objectLockConfig.mode}
+                            {objectLockConfig.days != null
+                              ? locale === "zh"
+                                ? ` · ${objectLockConfig.days} 天`
+                                : ` · ${objectLockConfig.days} day(s)`
+                              : ""}
+                            {objectLockConfig.years != null
+                              ? locale === "zh"
+                                ? ` · ${objectLockConfig.years} 年`
+                                : ` · ${objectLockConfig.years} year(s)`
+                              : ""}
                           </p>
                         )}
                       </form>
                     </div>
                     <p className="mt-1 ui-caption text-slate-500 dark:text-slate-400">
-                      Choose a mode plus days or years. Leave it empty to remove the default retention (Object Lock must already be enabled on the bucket).
+                      {t("Choose a mode plus days or years. Leave it empty to remove the default retention (Object Lock must already be enabled on the bucket).")}
                     </p>
                   </BucketFeatureCard>
                   <BucketFeatureCard
-                      title="Lifecycle rules"
-                      description="S3-side expiration/clean-up."
+                      title={t("Lifecycle rules")}
+                      description={t("S3-side expiration/clean-up.")}
                       mode="hybrid"
                       visualState={lifecycleCardState}
                       testId="bucket-feature-lifecycle"
                       className="order-4 md:order-none md:col-span-2 md:col-start-1 md:row-start-3"
                       actions={
                         <div className="flex items-center gap-2">
-                          <span className={bucketDetailHintClass}>{lifecycleRuleCount} rule(s)</span>
+                          <span className={bucketDetailHintClass}>{lifecycleRuleCount} {t("rule(s)")}</span>
                           <button
                             type="button"
                             onClick={toggleLifecycleEditor}
                             className={bucketFeatureSecondaryActionClass}
                             disabled={lifecycleNotImplemented}
                           >
-                            {showLifecycleEditor ? "Hide editor" : "Show editor"}
+                            {showLifecycleEditor ? t("Hide editor") : t("Show editor")}
                           </button>
                           <button
                             type="button"
@@ -1880,47 +1891,47 @@ function BucketDetailPageContent({
                             }
                             title={
                               lifecycleMode === "simple"
-                                ? "Quick add actions save immediately."
+                                ? t("Quick add actions save immediately.")
                                 : undefined
                             }
                             className={bucketFeaturePrimaryActionClass}
                           >
-                            {savingLifecycle ? "Saving..." : "Save"}
+                            {savingLifecycle ? t("Saving...") : t("Save")}
                           </button>
                         </div>
                       }
                     >
                       {lifecycleLoading && (
-                        <UiInlineMessage className="mt-2">Loading lifecycle rules...</UiInlineMessage>
+                        <UiInlineMessage className="mt-2">{t("Loading lifecycle rules...")}</UiInlineMessage>
                       )}
                       {lifecycleError && (
-                        <UiInlineMessage tone="error" className="mt-2">{lifecycleError}</UiInlineMessage>
+                        <UiInlineMessage tone="error" className="mt-2">{t(lifecycleError)}</UiInlineMessage>
                       )}
                       {lifecycleStatus && (
-                        <UiInlineMessage tone="success" className="mt-2">{lifecycleStatus}</UiInlineMessage>
+                        <UiInlineMessage tone="success" className="mt-2">{t(lifecycleStatus)}</UiInlineMessage>
                       )}
                       <div className={cx(uiCardMutedClass, "mt-3 px-3 py-2")}>
                         {lifecycleRules.length === 0 ? (
-                          <p className={bucketDetailMutedBodyClass}>No rules configured on this bucket.</p>
+                          <p className={bucketDetailMutedBodyClass}>{t("No rules configured on this bucket.")}</p>
                         ) : (
                           <div className="overflow-x-auto">
                             <table className={uiDataTableClass}>
                               <thead>
                                 <tr>
                                   <th className="text-left">
-                                    ID
+                                    {t("ID")}
                                   </th>
                                   <th className="text-left">
-                                    Status
+                                    {t("Status")}
                                   </th>
                                   <th className="text-left">
-                                    Filter
+                                    {t("Filter")}
                                   </th>
                                   <th className="text-left">
-                                    Actions
+                                    {t("Actions")}
                                   </th>
                                   <th className="text-left">
-                                    Manage
+                                    {t("Manage")}
                                   </th>
                                 </tr>
                               </thead>
@@ -1936,7 +1947,7 @@ function BucketDetailPageContent({
                                       className="hover:bg-slate-50 dark:hover:bg-slate-800/50"
                                     >
                                       <td className="ui-table-primary">
-                                        {ruleId ?? "(no ID)"}
+                                        {ruleId ?? t("(no ID)")}
                                       </td>
                                       <td >
                                         <ListActionButton
@@ -1945,11 +1956,11 @@ function BucketDetailPageContent({
                                           variant={status === "Disabled" ? "secondary" : "success"}
                                           disabled={lifecycleNotImplemented || savingLifecycle || lifecycleLoading}
                                         >
-                                          {status}
+                                          {t(status)}
                                         </ListActionButton>
                                       </td>
-                                      <td >{filterLabel}</td>
-                                      <td >{describeLifecycleActions(rule)}</td>
+                                      <td>{filterLabel.split(" · ").map((part) => t(part)).join(" · ")}</td>
+                                      <td>{describeLifecycleActions(rule).split(" · ").map((action) => t(action)).join(" · ")}</td>
                                       <td >
                                         <div className={bucketDetailWrapActionsClass}>
                                           <ListActionButton variant="danger"
@@ -1957,7 +1968,7 @@ function BucketDetailPageContent({
                                             onClick={() => deleteLifecycleRule(idx)}
                                             disabled={lifecycleNotImplemented || savingLifecycle || lifecycleLoading}
                                           >
-                                            Delete
+                                            {t("Delete")}
                                           </ListActionButton>
                                         </div>
                                       </td>
@@ -1976,8 +1987,8 @@ function BucketDetailPageContent({
                             <BucketFeatureModeToggle
                               value={lifecycleMode}
                               options={[
-                                { value: "json", label: "JSON mode" },
-                                { value: "simple", label: "Quick add" },
+                                { value: "json", label: t("JSON mode") },
+                                { value: "simple", label: t("Quick add") },
                               ]}
                               onChange={updateLifecycleMode}
                               disabled={lifecycleNotImplemented}
@@ -1986,18 +1997,18 @@ function BucketDetailPageContent({
                           {lifecycleMode === "simple" ? (
                             <div className="mt-3 space-y-3">
                               {simpleLifecycleWarning && (
-                                <UiInlineMessage tone="warning">{simpleLifecycleWarning}</UiInlineMessage>
+                                <UiInlineMessage tone="warning">{t(simpleLifecycleWarning)}</UiInlineMessage>
                               )}
                               <p className={bucketDetailMutedBodyClass}>
-                                Quickly add one of the preconfigured rules below (appended to the existing configuration).
+                                {t("Quickly add one of the preconfigured rules below (appended to the existing configuration).")}
                               </p>
                               <div className={bucketDetailStackClass}>
                                 <div className={cx(uiCardMutedClass, "px-3 py-2")}>
                                   <p className={bucketDetailMutedTitleClass}>
-                                    Rule 1: noncurrent 90d + multipart 30d + delete markers (explicit)
+                                    {t("Rule 1: noncurrent 90d + multipart 30d + delete markers (explicit)")}
                                   </p>
                                   <p className="mt-1 ui-caption text-slate-500 dark:text-slate-400">
-                                    Cleans noncurrent versions after 90d, removes incomplete multipart uploads after 30d, and deletes expired delete markers.
+                                    {t("Cleans noncurrent versions after 90d, removes incomplete multipart uploads after 30d, and deletes expired delete markers.")}
                                   </p>
                                   <div className={bucketDetailEndActionClass}>
                                     <button
@@ -2006,16 +2017,16 @@ function BucketDetailPageContent({
                                       className={bucketDetailTextActionClass}
                                       disabled={lifecycleNotImplemented || savingLifecycle || lifecycleLoading}
                                     >
-                                      Add
+                                      {t("Add")}
                                     </button>
                                   </div>
                                 </div>
 
                                 <div className={cx(uiCardMutedClass, "px-3 py-2")}>
-                                  <p className={bucketDetailMutedTitleClass}>Rule 2: current/noncurrent transitions</p>
+                                  <p className={bucketDetailMutedTitleClass}>{t("Rule 2: current/noncurrent transitions")}</p>
                                   <div className="mt-2 flex flex-wrap items-end gap-3 ui-caption">
                                     <label className={bucketDetailFieldStackClass}>
-                                      Current versions expiration (days)
+                                      {t("Current versions expiration (days)")}
                                       <input
                                         type="number"
                                         min={0}
@@ -2030,7 +2041,7 @@ function BucketDetailPageContent({
                                       />
                                     </label>
                                     <label className={bucketDetailFieldStackClass}>
-                                      Noncurrent versions expiration (days)
+                                      {t("Noncurrent versions expiration (days)")}
                                       <input
                                         type="number"
                                         min={0}
@@ -2045,7 +2056,7 @@ function BucketDetailPageContent({
                                       />
                                     </label>
                                     <label className={bucketDetailFieldStackClass}>
-                                      Storage class
+                                      {t("Storage class")}
                                       <input
                                         type="text"
                                         value={lifecycleTransitionDraft.storageClass}
@@ -2060,7 +2071,7 @@ function BucketDetailPageContent({
                                       />
                                     </label>
                                     <label className={bucketDetailFieldStackClass}>
-                                      Prefix (optional)
+                                      {t("Prefix (optional)")}
                                       <input
                                         type="text"
                                         value={lifecycleTransitionDraft.prefix}
@@ -2082,16 +2093,16 @@ function BucketDetailPageContent({
                                       className={bucketDetailTextActionClass}
                                       disabled={lifecycleNotImplemented || savingLifecycle || lifecycleLoading}
                                     >
-                                      Add
+                                      {t("Add")}
                                     </button>
                                   </div>
                                 </div>
 
                                 <div className={cx(uiCardMutedClass, "px-3 py-2")}>
-                                  <p className={bucketDetailMutedTitleClass}>Rule 3: current/noncurrent expiration</p>
+                                  <p className={bucketDetailMutedTitleClass}>{t("Rule 3: current/noncurrent expiration")}</p>
                                   <div className="mt-2 flex flex-wrap items-end gap-3 ui-caption">
                                     <label className={bucketDetailFieldStackClass}>
-                                      Current versions expiration (days)
+                                      {t("Current versions expiration (days)")}
                                       <input
                                         type="number"
                                         min={0}
@@ -2106,7 +2117,7 @@ function BucketDetailPageContent({
                                       />
                                     </label>
                                     <label className={bucketDetailFieldStackClass}>
-                                      Noncurrent versions expiration (days)
+                                      {t("Noncurrent versions expiration (days)")}
                                       <input
                                         type="number"
                                         min={0}
@@ -2121,7 +2132,7 @@ function BucketDetailPageContent({
                                       />
                                     </label>
                                     <label className={bucketDetailFieldStackClass}>
-                                      Prefix (optional)
+                                      {t("Prefix (optional)")}
                                       <input
                                         type="text"
                                         value={lifecycleExpirationDraft.prefix}
@@ -2143,19 +2154,19 @@ function BucketDetailPageContent({
                                       className={bucketDetailTextActionClass}
                                       disabled={lifecycleNotImplemented || savingLifecycle || lifecycleLoading}
                                     >
-                                      Add
+                                      {t("Add")}
                                     </button>
                                   </div>
                                 </div>
                               </div>
                               <p className={bucketDetailHintClass}>
-                                Use JSON mode to customize or edit rules.
+                                {t("Use JSON mode to customize or edit rules.")}
                               </p>
                             </div>
                           ) : (
                             <div className="mt-3 space-y-2">
                               <p className={bucketDetailHintClass}>
-                                Paste a JSON array that matches the S3 API (<code>Rules</code>). Existing rules are listed above.
+                                {t("Paste a JSON array that matches the S3 API (Rules). Existing rules are listed above.")}
                               </p>
                               <textarea
                                 value={lifecycleText}
@@ -2177,8 +2188,8 @@ function BucketDetailPageContent({
                       )}
                     </BucketFeatureCard>
                     <BucketFeatureCard
-                      title="Bucket tags"
-                      description="S3 key/value tags associated with this bucket."
+                      title={t("Bucket tags")}
+                      description={t("S3 key/value tags associated with this bucket.")}
                       mode="graphical"
                       visualState={tagsCardState}
                       testId="bucket-feature-tags"
@@ -2191,7 +2202,7 @@ function BucketDetailPageContent({
                             className={bucketFeatureDangerActionClass}
                             disabled={tagsNotImplemented || bucketTagsLoading || savingBucketTags || deletingBucketTags || bucketTags.length === 0}
                           >
-                            {deletingBucketTags ? "Clearing..." : "Clear"}
+                            {deletingBucketTags ? t("Clearing...") : t("Clear")}
                           </button>
                           <button
                             type="button"
@@ -2199,23 +2210,23 @@ function BucketDetailPageContent({
                             className={bucketFeaturePrimaryActionClass}
                             disabled={tagsNotImplemented || bucketTagsLoading || savingBucketTags || deletingBucketTags}
                           >
-                            {savingBucketTags ? "Saving..." : "Save"}
+                            {savingBucketTags ? t("Saving...") : t("Save")}
                           </button>
                         </div>
                       }
                     >
                       {bucketTagsError && (
-                        <UiInlineMessage tone="error">{bucketTagsError}</UiInlineMessage>
+                        <UiInlineMessage tone="error">{t(bucketTagsError)}</UiInlineMessage>
                       )}
                       {bucketTagsStatus && (
-                        <UiInlineMessage tone="success">{bucketTagsStatus}</UiInlineMessage>
+                        <UiInlineMessage tone="success">{t(bucketTagsStatus)}</UiInlineMessage>
                       )}
                       {bucketTagsLoading ? (
-                        <UiInlineMessage>Loading bucket tags...</UiInlineMessage>
+                        <UiInlineMessage>{t("Loading bucket tags...")}</UiInlineMessage>
                       ) : (
                         <div className={bucketDetailCompactStackClass}>
                           {bucketTags.length === 0 && (
-                            <p className={bucketDetailHintClass}>No tags configured on this bucket.</p>
+                            <p className={bucketDetailHintClass}>{t("No tags configured on this bucket.")}</p>
                           )}
                           {bucketTags.map((tag) => (
                             <div
@@ -2227,7 +2238,7 @@ function BucketDetailPageContent({
                                 value={tag.key}
                                 onChange={(e) => updateBucketTag(tag.uiId, { key: e.target.value })}
                                 className={bucketFeatureInputClass}
-                                placeholder="Tag key"
+                                placeholder={t("Tag key")}
                                 disabled={tagsNotImplemented || savingBucketTags || deletingBucketTags}
                               />
                               <input
@@ -2235,7 +2246,7 @@ function BucketDetailPageContent({
                                 value={tag.value}
                                 onChange={(e) => updateBucketTag(tag.uiId, { value: e.target.value })}
                                 className={bucketFeatureInputClass}
-                                placeholder="Tag value"
+                                placeholder={t("Tag value")}
                                 disabled={tagsNotImplemented || savingBucketTags || deletingBucketTags}
                               />
                               <button
@@ -2244,7 +2255,7 @@ function BucketDetailPageContent({
                                 className={bucketFeatureSecondaryActionClass}
                                 disabled={tagsNotImplemented || savingBucketTags || deletingBucketTags}
                               >
-                                Remove
+                                {t("Remove")}
                               </button>
                             </div>
                           ))}
@@ -2255,10 +2266,10 @@ function BucketDetailPageContent({
                               className={bucketFeatureSecondaryActionClass}
                               disabled={tagsNotImplemented || savingBucketTags || deletingBucketTags}
                             >
-                              Add tag
+                              {t("Add tag")}
                             </button>
                             <p className={bucketDetailHintClass}>
-                              Tag keys must be unique and cannot be empty.
+                              {t("Tag keys must be unique and cannot be empty.")}
                             </p>
                           </div>
                         </div>
@@ -2270,12 +2281,12 @@ function BucketDetailPageContent({
           },
           {
             id: "permissions",
-            label: "Permissions",
+            label: t("Permissions"),
             content: (
               <div className={bucketDetailSectionStackClass}>
                 <BucketFeatureCard
-                  title="Block public access"
-                  description="Manage the four S3 public access block flags. Configure each option below."
+                  title={t("Block public access")}
+                  description={t("Manage the four S3 public access block flags. Configure each option below.")}
                   mode="graphical"
                   visualState={publicAccessCardState}
                   testId="bucket-feature-block-public-access"
@@ -2287,15 +2298,15 @@ function BucketDetailPageContent({
                       disabled={publicAccessNotImplemented || publicAccessLoading || savingPublicAccess}
                       className={bucketFeaturePrimaryActionClass}
                     >
-                      {savingPublicAccess ? "Saving..." : "Save"}
+                      {savingPublicAccess ? t("Saving...") : t("Save")}
                     </button>
                   }
                 >
                   {publicAccessStatus && (
-                    <UiInlineMessage tone="success">{publicAccessStatus}</UiInlineMessage>
+                    <UiInlineMessage tone="success">{t(publicAccessStatus)}</UiInlineMessage>
                   )}
                   {publicAccessError && (
-                    <UiInlineMessage tone="error">{publicAccessError}</UiInlineMessage>
+                    <UiInlineMessage tone="error">{t(publicAccessError)}</UiInlineMessage>
                   )}
                   <div className={bucketDetailTwoColumnGridClass}>
                     {publicAccessOptions.map((option) => (
@@ -2305,7 +2316,7 @@ function BucketDetailPageContent({
                       >
                         <div>
                           <p className="font-semibold text-slate-900 dark:text-slate-50">{option.label}</p>
-                          <p className={bucketDetailHintClass}>{option.description}</p>
+                          <p className={bucketDetailHintClass}>{t(option.description)}</p>
                         </div>
                         <input
                           type="checkbox"
@@ -2320,8 +2331,8 @@ function BucketDetailPageContent({
                 </BucketFeatureCard>
 
                 <BucketFeatureCard
-                  title="Access control list"
-                  description="Configure a canned ACL and review resulting grants."
+                  title={t("Access control list")}
+                  description={t("Configure a canned ACL and review resulting grants.")}
                   mode="graphical"
                   visualState={aclCardState}
                   testId="bucket-feature-acl"
@@ -2333,19 +2344,19 @@ function BucketDetailPageContent({
                       className={bucketFeaturePrimaryActionClass}
                       disabled={aclNotImplemented || savingBucketAcl || bucketAclLoading}
                     >
-                      {savingBucketAcl ? "Saving..." : "Save"}
+                      {savingBucketAcl ? t("Saving...") : t("Save")}
                     </button>
                   }
                 >
                   {bucketAclError && (
-                    <UiInlineMessage tone="error">{bucketAclError}</UiInlineMessage>
+                    <UiInlineMessage tone="error">{t(bucketAclError)}</UiInlineMessage>
                   )}
                   {bucketAclStatus && (
-                    <UiInlineMessage tone="success">{bucketAclStatus}</UiInlineMessage>
+                    <UiInlineMessage tone="success">{t(bucketAclStatus)}</UiInlineMessage>
                   )}
                   <div className={bucketDetailTwoColumnGridClass}>
                     <label className={bucketFeatureLabelClass}>
-                      Canned ACL
+                      {t("Canned ACL")}
                       <select
                         value={bucketAclPreset}
                         onChange={(e) => updateBucketAclPreset(e.target.value)}
@@ -2354,43 +2365,43 @@ function BucketDetailPageContent({
                       >
                         {bucketAclOptions.map((option) => (
                           <option key={option.value} value={option.value}>
-                            {option.label}
+                            {t(option.label)}
                           </option>
                         ))}
                       </select>
                     </label>
                     {bucketAclPreset === "custom" && (
                       <label className={bucketFeatureLabelClass}>
-                        Custom ACL
+                        {t("Custom ACL")}
                         <input
                           type="text"
                           value={bucketAclCustom}
                           onChange={(e) => updateBucketAclCustom(e.target.value)}
                           className={bucketFeatureInputClass}
-                          placeholder="e.g. private"
+                          placeholder={t("e.g. private")}
                           disabled={aclNotImplemented || bucketAclLoading || savingBucketAcl}
                         />
                       </label>
                     )}
                   </div>
                   <p className={bucketDetailHintClass}>
-                    Saving a canned ACL replaces the current ACL grants.
+                    {t("Saving a canned ACL replaces the current ACL grants.")}
                   </p>
                   {bucketAclLoading ? (
-                    <UiInlineMessage>Loading ACL...</UiInlineMessage>
+                    <UiInlineMessage>{t("Loading ACL...")}</UiInlineMessage>
                   ) : (
                     <div className={bucketDetailStackClass}>
                       <p className={bucketDetailHintClass}>
-                        Owner: <span className="font-semibold text-slate-700 dark:text-slate-200">{bucketAcl?.owner ?? "Unknown"}</span>
+                        {t("Owner:")} <span className="font-semibold text-slate-700 dark:text-slate-200">{bucketAcl?.owner ?? t("Unknown")}</span>
                       </p>
                       {(bucketAcl?.grants?.length ?? 0) > 0 ? (
                         <div className="overflow-x-auto">
                           <table className="ui-data-table min-w-full divide-y divide-slate-200 ui-body dark:divide-slate-800">
                             <thead className="bg-slate-50 ui-caption uppercase tracking-wide text-slate-500 dark:bg-slate-900/50 dark:text-slate-400">
                               <tr>
-                                <th className="text-left">Grantee</th>
-                                <th className="text-left">Type</th>
-                                <th className="text-left">Permission</th>
+                                <th className="text-left">{t("Grantee")}</th>
+                                <th className="text-left">{t("Type")}</th>
+                                <th className="text-left">{t("Permission")}</th>
                               </tr>
                             </thead>
                             <tbody className={bucketDetailDividerClass}>
@@ -2413,15 +2424,15 @@ function BucketDetailPageContent({
                           </table>
                         </div>
                       ) : (
-                        <p className="ui-body text-slate-600 dark:text-slate-300">No explicit ACL grants on this bucket.</p>
+                        <p className="ui-body text-slate-600 dark:text-slate-300">{t("No explicit ACL grants on this bucket.")}</p>
                       )}
                     </div>
                   )}
                 </BucketFeatureCard>
 
                 <BucketFeatureCard
-                  title="Bucket policy"
-                  description="IAM-like JSON applied directly on the bucket."
+                  title={t("Bucket policy")}
+                  description={t("IAM-like JSON applied directly on the bucket.")}
                   mode="json"
                   visualState={policyCardState}
                   testId="bucket-feature-policy"
@@ -2434,7 +2445,7 @@ function BucketDetailPageContent({
                         disabled={policyNotImplemented || deletingPolicy || !policyConfigured}
                         className={bucketFeatureDangerActionClass}
                       >
-                        {deletingPolicy ? "Deleting..." : "Delete"}
+                        {deletingPolicy ? t("Deleting...") : t("Delete")}
                       </button>
                       <button
                         type="button"
@@ -2442,13 +2453,13 @@ function BucketDetailPageContent({
                         disabled={policyNotImplemented || savingPolicy || policyLoading}
                         className={bucketFeaturePrimaryActionClass}
                       >
-                        {savingPolicy ? "Saving..." : "Save"}
+                        {savingPolicy ? t("Saving...") : t("Save")}
                       </button>
                     </div>
                   }
                 >
                   {policyError && (
-                    <UiInlineMessage tone="error">{policyError}</UiInlineMessage>
+                    <UiInlineMessage tone="error">{t(policyError)}</UiInlineMessage>
                   )}
                   <textarea
                     value={policyText}
@@ -2468,8 +2479,8 @@ function BucketDetailPageContent({
                 </BucketFeatureCard>
 
                 <BucketFeatureCard
-                  title="CORS"
-                  description="CORS rules in AWS format (CORSRules)."
+                  title={t("CORS")}
+                  description={t("CORS rules in AWS format (CORSRules).")}
                   mode="json"
                   visualState={corsCardState}
                   testId="bucket-feature-cors"
@@ -2482,7 +2493,7 @@ function BucketDetailPageContent({
                         disabled={corsNotImplemented || deletingCors || !corsConfigured}
                         className={bucketFeatureDangerActionClass}
                       >
-                        {deletingCors ? "Deleting..." : "Delete"}
+                        {deletingCors ? t("Deleting...") : t("Delete")}
                       </button>
                       <button
                         type="button"
@@ -2490,13 +2501,13 @@ function BucketDetailPageContent({
                         disabled={corsNotImplemented || savingCors || corsLoading}
                         className={bucketFeaturePrimaryActionClass}
                       >
-                        {savingCors ? "Saving..." : "Save"}
+                        {savingCors ? t("Saving...") : t("Save")}
                       </button>
                     </div>
                   }
                 >
                   {corsError && (
-                    <UiInlineMessage tone="error">{corsError}</UiInlineMessage>
+                    <UiInlineMessage tone="error">{t(corsError)}</UiInlineMessage>
                   )}
                   <textarea
                     value={corsText}
@@ -2520,12 +2531,12 @@ function BucketDetailPageContent({
           },
           {
             id: "advanced",
-            label: "Advanced",
+            label: t("Advanced"),
             content: (
               <div className={bucketDetailStackClass}>
                 <BucketFeatureCard
-                  title="Static website"
-                  description="Host a static website from this bucket or redirect all requests."
+                  title={t("Static website")}
+                  description={t("Host a static website from this bucket or redirect all requests.")}
                   mode="hybrid"
                   visualState={websiteCardState}
                   testId="bucket-feature-website"
@@ -2538,7 +2549,7 @@ function BucketDetailPageContent({
                         disabled={websiteNotImplemented || clearingWebsite || staticWebsiteBlocked || !websiteConfigured}
                         className={bucketFeatureDangerActionClass}
                       >
-                        {clearingWebsite ? "Deleting..." : "Delete"}
+                        {clearingWebsite ? t("Deleting...") : t("Delete")}
                       </button>
                       <button
                         type="button"
@@ -2546,17 +2557,17 @@ function BucketDetailPageContent({
                         disabled={websiteNotImplemented || savingWebsite || websiteLoading || staticWebsiteBlocked}
                         className={bucketFeaturePrimaryActionClass}
                       >
-                        {savingWebsite ? "Saving..." : "Save"}
+                        {savingWebsite ? t("Saving...") : t("Save")}
                       </button>
                     </div>
                   }
                 >
                   {staticWebsiteBlocked && <EndpointFeatureDisabledNotice featureLabel="Static website" />}
                   {websiteError && (
-                    <UiInlineMessage tone="error">{websiteError}</UiInlineMessage>
+                    <UiInlineMessage tone="error">{t(websiteError)}</UiInlineMessage>
                   )}
                   {websiteStatus && (
-                    <UiInlineMessage tone="success">{websiteStatus}</UiInlineMessage>
+                    <UiInlineMessage tone="success">{t(websiteStatus)}</UiInlineMessage>
                   )}
                   <div className={bucketDetailTwoColumnGridClass}>
                     <label className="flex items-start gap-3 rounded-lg border border-slate-200 px-3 py-2 ui-caption text-slate-700 dark:border-slate-700 dark:text-slate-100">
@@ -2568,9 +2579,9 @@ function BucketDetailPageContent({
                         className="mt-0.5 h-4 w-4 text-primary focus:ring-primary"
                       />
                       <div>
-                        <p className="font-semibold text-slate-900 dark:text-slate-100">Host a website</p>
+                        <p className="font-semibold text-slate-900 dark:text-slate-100">{t("Host a website")}</p>
                         <p className={bucketDetailHintClass}>
-                          Serve index and error documents from this bucket.
+                          {t("Serve index and error documents from this bucket.")}
                         </p>
                       </div>
                     </label>
@@ -2583,9 +2594,9 @@ function BucketDetailPageContent({
                         className="mt-0.5 h-4 w-4 text-primary focus:ring-primary"
                       />
                       <div>
-                        <p className="font-semibold text-slate-900 dark:text-slate-100">Redirect all requests</p>
+                        <p className="font-semibold text-slate-900 dark:text-slate-100">{t("Redirect all requests")}</p>
                         <p className={bucketDetailHintClass}>
-                          Point every request to another host or domain.
+                          {t("Point every request to another host or domain.")}
                         </p>
                       </div>
                     </label>
@@ -2594,7 +2605,7 @@ function BucketDetailPageContent({
                     <div className={bucketDetailStackClass}>
                       <div className={bucketDetailTwoColumnGridClass}>
                         <label className={bucketFeatureLabelClass}>
-                          Index document
+                          {t("Index document")}
                           <input
                             type="text"
                             value={websiteIndexDocument}
@@ -2605,7 +2616,7 @@ function BucketDetailPageContent({
                           />
                         </label>
                         <label className={bucketFeatureLabelClass}>
-                          Error document (optional)
+                          {t("Error document (optional)")}
                           <input
                             type="text"
                             value={websiteErrorDocument}
@@ -2618,7 +2629,7 @@ function BucketDetailPageContent({
                       </div>
                       <div className={bucketDetailCompactStackClass}>
                         <label className="ui-caption font-medium text-slate-700 dark:text-slate-200">
-                          Routing rules (JSON array)
+                          {t("Routing rules (JSON array)")}
                         </label>
                         <textarea
                           value={websiteRoutingRules}
@@ -2643,7 +2654,7 @@ function BucketDetailPageContent({
                   ) : (
                     <div className={bucketDetailTwoColumnGridClass}>
                       <label className={bucketFeatureLabelClass}>
-                        Redirect hostname
+                        {t("Redirect hostname")}
                         <input
                           type="text"
                           value={websiteRedirectHost}
@@ -2654,7 +2665,7 @@ function BucketDetailPageContent({
                         />
                       </label>
                       <label className={bucketFeatureLabelClass}>
-                        Protocol (optional)
+                        {t("Protocol (optional)")}
                         <input
                           type="text"
                           value={websiteRedirectProtocol}
@@ -2665,15 +2676,15 @@ function BucketDetailPageContent({
                         />
                       </label>
                       <p className="md:col-span-2 ui-caption text-slate-500 dark:text-slate-400">
-                        All requests will redirect to the host above. Index and routing rules are ignored.
+                        {t("All requests will redirect to the host above. Index and routing rules are ignored.")}
                       </p>
                     </div>
                   )}
                 </BucketFeatureCard>
                 {isCephEndpoint && (
                   <BucketFeatureCard
-                    title="Replication / multisite"
-                    description="Configure Ceph RGW multisite bucket replication across zones within this bucket's zonegroup."
+                    title={t("Replication / multisite")}
+                    description={t("Configure Ceph RGW multisite bucket replication across zones within this bucket's zonegroup.")}
                     mode="hybrid"
                     visualState={replicationCardState}
                     testId="bucket-feature-replication"
@@ -2686,7 +2697,7 @@ function BucketDetailPageContent({
                           disabled={replicationBlocked || replicationNotImplemented || replicationBusy || !replicationConfigured}
                           className={bucketFeatureDangerActionClass}
                         >
-                          {clearingReplication ? "Clearing..." : "Clear"}
+                          {clearingReplication ? t("Clearing...") : t("Clear")}
                         </button>
                         <button
                           type="button"
@@ -2694,7 +2705,7 @@ function BucketDetailPageContent({
                           disabled={replicationBlocked || replicationNotImplemented || replicationBusy}
                           className={bucketFeaturePrimaryActionClass}
                         >
-                          {savingReplication ? "Saving..." : "Save"}
+                          {savingReplication ? t("Saving...") : t("Save")}
                         </button>
                       </div>
                     }
@@ -2702,28 +2713,28 @@ function BucketDetailPageContent({
                     <BucketFeatureModeToggle
                       value={replicationMode}
                       options={[
-                        { value: "graphical", label: "Graphical mode" },
-                        { value: "json", label: "JSON mode" },
+                        { value: "graphical", label: t("Graphical mode") },
+                        { value: "json", label: t("JSON mode") },
                       ]}
                       onChange={updateReplicationMode}
                       disabled={replicationBlocked || replicationNotImplemented || replicationBusy}
                     />
                     {replicationBlocked && <EndpointFeatureDisabledNotice featureLabel="Bucket replication" />}
                     {replicationError && (
-                      <UiInlineMessage tone="error">{replicationError}</UiInlineMessage>
+                      <UiInlineMessage tone="error">{t(replicationError)}</UiInlineMessage>
                     )}
                     {replicationWarning && (
-                      <UiInlineMessage tone="warning">{replicationWarning}</UiInlineMessage>
+                      <UiInlineMessage tone="warning">{t(replicationWarning)}</UiInlineMessage>
                     )}
                     {replicationStatus && (
-                      <UiInlineMessage tone="success">{replicationStatus}</UiInlineMessage>
+                      <UiInlineMessage tone="success">{t(replicationStatus)}</UiInlineMessage>
                     )}
                     {replicationLoading ? (
-                      <UiInlineMessage>Loading replication configuration...</UiInlineMessage>
+                      <UiInlineMessage>{t("Loading replication configuration...")}</UiInlineMessage>
                     ) : replicationMode === "graphical" ? (
                       <div className={bucketDetailStackClass}>
                         <label className={bucketFeatureLabelClass}>
-                          Role ARN
+                          {t("Role ARN")}
                           <input
                             type="text"
                             value={replicationRole}
@@ -2740,19 +2751,19 @@ function BucketDetailPageContent({
                               className={cx(uiCardMutedClass, "space-y-3 p-3")}
                             >
                               <div className="flex items-center justify-between">
-                                <p className="ui-caption font-semibold text-slate-700 dark:text-slate-200">Rule {index + 1}</p>
+                                <p className="ui-caption font-semibold text-slate-700 dark:text-slate-200">{t("Rule")} {index + 1}</p>
                                 <button
                                   type="button"
                                   onClick={() => removeReplicationRule(rule.uiId)}
                                   disabled={replicationBlocked || replicationNotImplemented || replicationBusy || replicationRules.length <= 1}
                                   className="rounded-md border border-rose-200 px-2 py-1 ui-caption font-semibold text-rose-700 hover:border-rose-400 hover:text-rose-800 disabled:opacity-60 dark:border-rose-900/50 dark:text-rose-200 dark:hover:border-rose-800"
                                 >
-                                  Remove
+                                  {t("Remove")}
                                 </button>
                               </div>
                               <div className={bucketDetailTwoColumnGridClass}>
                                 <label className={bucketFeatureLabelClass}>
-                                  ID
+                                  {t("ID")}
                                   <input
                                     type="text"
                                     value={rule.id}
@@ -2763,19 +2774,19 @@ function BucketDetailPageContent({
                                   />
                                 </label>
                                 <label className={bucketFeatureLabelClass}>
-                                  Status
+                                  {t("Status")}
                                   <select
                                     value={rule.status}
                                     onChange={(e) => updateReplicationRule(rule.uiId, { status: e.target.value as "Enabled" | "Disabled" })}
                                     className={bucketFeatureInputClass}
                                     disabled={replicationBlocked || replicationNotImplemented || replicationBusy}
                                   >
-                                    <option value="Enabled">Enabled</option>
-                                    <option value="Disabled">Disabled</option>
+                                    <option value="Enabled">{t("Enabled")}</option>
+                                    <option value="Disabled">{t("Disabled")}</option>
                                   </select>
                                 </label>
                                 <label className={bucketFeatureLabelClass}>
-                                  Priority
+                                  {t("Priority")}
                                   <input
                                     type="number"
                                     min={0}
@@ -2788,7 +2799,7 @@ function BucketDetailPageContent({
                                   />
                                 </label>
                                 <label className={bucketFeatureLabelClass}>
-                                  Prefix (optional)
+                                  {t("Prefix (optional)")}
                                   <input
                                     type="text"
                                     value={rule.prefix}
@@ -2799,7 +2810,7 @@ function BucketDetailPageContent({
                                   />
                                 </label>
                                 <label className={bucketFeatureLabelClass}>
-                                  Destination bucket ARN
+                                  {t("Destination bucket ARN")}
                                   <input
                                     type="text"
                                     value={rule.destinationBucket}
@@ -2810,7 +2821,7 @@ function BucketDetailPageContent({
                                   />
                                 </label>
                                 <label className={bucketFeatureLabelClass}>
-                                  Delete marker replication
+                                  {t("Delete marker replication")}
                                   <select
                                     value={rule.deleteMarkerStatus}
                                     onChange={(e) =>
@@ -2821,8 +2832,8 @@ function BucketDetailPageContent({
                                     className={bucketFeatureInputClass}
                                     disabled={replicationBlocked || replicationNotImplemented || replicationBusy}
                                   >
-                                    <option value="Disabled">Disabled</option>
-                                    <option value="Enabled">Enabled</option>
+                                    <option value="Disabled">{t("Disabled")}</option>
+                                    <option value="Enabled">{t("Enabled")}</option>
                                   </select>
                                 </label>
                               </div>
@@ -2836,7 +2847,7 @@ function BucketDetailPageContent({
                             disabled={replicationBlocked || replicationNotImplemented || replicationBusy}
                             className="rounded-md border border-slate-200 px-3 py-1 ui-caption font-semibold text-slate-700 hover:border-slate-300 dark:border-slate-700 dark:text-slate-200"
                           >
-                            Add rule
+                            {t("Add rule")}
                           </button>
                         </div>
                       </div>
@@ -2852,7 +2863,7 @@ function BucketDetailPageContent({
                         />
                         {replicationHasUnsupportedZone && (
                           <p className="ui-caption text-rose-700 dark:text-rose-200">
-                            Destination.Zone is not supported in V1 and must be removed before saving.
+                            {t("Destination.Zone is not supported in V1 and must be removed before saving.")}
                           </p>
                         )}
                         <BucketFeatureJsonExample
@@ -2867,8 +2878,8 @@ function BucketDetailPageContent({
                   </BucketFeatureCard>
                 )}
                 <BucketFeatureCard
-                  title="Server access logging"
-                  description="Deliver S3 server access logs to another bucket."
+                  title={t("Server access logging")}
+                  description={t("Deliver S3 server access logs to another bucket.")}
                   mode="graphical"
                   visualState={accessLoggingCardState}
                   testId="bucket-feature-access-logging"
@@ -2881,7 +2892,7 @@ function BucketDetailPageContent({
                         disabled={accessLoggingNotImplemented || clearingAccessLogging || !accessLoggingConfigured}
                         className={bucketFeatureDangerActionClass}
                       >
-                        {clearingAccessLogging ? "Disabling..." : "Disable"}
+                        {clearingAccessLogging ? t("Disabling...") : t("Disable")}
                       </button>
                       <button
                         type="button"
@@ -2889,16 +2900,16 @@ function BucketDetailPageContent({
                         disabled={accessLoggingNotImplemented || savingAccessLogging || accessLoggingLoading}
                         className={bucketFeaturePrimaryActionClass}
                       >
-                        {savingAccessLogging ? "Saving..." : "Save"}
+                        {savingAccessLogging ? t("Saving...") : t("Save")}
                       </button>
                     </div>
                   }
                 >
                   {accessLoggingError && (
-                    <UiInlineMessage tone="error">{accessLoggingError}</UiInlineMessage>
+                    <UiInlineMessage tone="error">{t(accessLoggingError)}</UiInlineMessage>
                   )}
                   {accessLoggingStatus && (
-                    <UiInlineMessage tone="success">{accessLoggingStatus}</UiInlineMessage>
+                    <UiInlineMessage tone="success">{t(accessLoggingStatus)}</UiInlineMessage>
                   )}
                   <label className="flex items-center gap-2 ui-caption font-semibold text-slate-700 dark:text-slate-200">
                     <input
@@ -2908,11 +2919,11 @@ function BucketDetailPageContent({
                       disabled={accessLoggingNotImplemented || accessLoggingLoading || savingAccessLogging || clearingAccessLogging}
                       className={uiCheckboxClass}
                     />
-                    Enable server access logging
+                    {t("Enable server access logging")}
                   </label>
                   <div className={bucketDetailTwoColumnGridClass}>
                     <label className={bucketFeatureLabelClass}>
-                      Target bucket
+                      {t("Target bucket")}
                       <input
                         type="text"
                         value={accessLoggingTargetBucket}
@@ -2923,7 +2934,7 @@ function BucketDetailPageContent({
                       />
                     </label>
                     <label className={bucketFeatureLabelClass}>
-                      Target prefix (optional)
+                      {t("Target prefix (optional)")}
                       <input
                         type="text"
                         value={accessLoggingTargetPrefix}
@@ -2935,14 +2946,13 @@ function BucketDetailPageContent({
                     </label>
                   </div>
                   <p className={bucketDetailHintClass}>
-                    The target bucket must allow log delivery (e.g., ACL <code className="font-mono ui-caption">log-delivery-write</code>
-                    or an equivalent policy).
+                    {t("The target bucket must allow log delivery (e.g., ACL log-delivery-write or an equivalent policy).")}
                   </p>
                 </BucketFeatureCard>
                 <BucketFeatureCard
-                  title="Notifications / SNS topics"
+                  title={t("Notifications / SNS topics")}
                   description={
-                    "JSON payload forwarded to put_bucket_notification_configuration."
+                    t("JSON payload forwarded to put_bucket_notification_configuration.")
                   }
                   mode="json"
                   visualState={notificationsCardState}
@@ -2956,7 +2966,7 @@ function BucketDetailPageContent({
                         disabled={notificationsNotImplemented || clearingNotifications || !notificationsConfigured}
                         className={bucketFeatureDangerActionClass}
                       >
-                        {clearingNotifications ? "Clearing..." : "Clear"}
+                        {clearingNotifications ? t("Clearing...") : t("Clear")}
                       </button>
                       <button
                         type="button"
@@ -2964,16 +2974,16 @@ function BucketDetailPageContent({
                         disabled={notificationsNotImplemented || savingNotifications || notificationsLoading}
                         className={bucketFeaturePrimaryActionClass}
                       >
-                        {savingNotifications ? "Saving..." : "Save"}
+                        {savingNotifications ? t("Saving...") : t("Save")}
                       </button>
                     </div>
                   }
                 >
                   {notificationsError && (
-                    <UiInlineMessage tone="error">{notificationsError}</UiInlineMessage>
+                    <UiInlineMessage tone="error">{t(notificationsError)}</UiInlineMessage>
                   )}
                   {notificationsStatus && (
-                    <UiInlineMessage tone="success">{notificationsStatus}</UiInlineMessage>
+                    <UiInlineMessage tone="success">{t(notificationsStatus)}</UiInlineMessage>
                   )}
                   <textarea
                     value={notificationText}
@@ -2991,14 +3001,12 @@ function BucketDetailPageContent({
                     disabled={notificationsNotImplemented}
                     helperText={
                       <span className={bucketDetailHintClass}>
-                        Need a topic? Create it in the Topics section.
+                        {t("Need a topic? Create it in the Topics section.")}
                       </span>
                     }
                   />
                   <p className={bucketDetailHintClass}>
-                    Only topic-based notifications are supported. Each entry should include{" "}
-                    <code className="font-mono ui-caption">TopicArn</code>, <code className="font-mono ui-caption">Events</code>, and
-                    an optional filter.
+                    {t("Only topic-based notifications are supported. Each entry should include TopicArn, Events, and an optional filter.")}
                   </p>
                 </BucketFeatureCard>
               </div>
@@ -3006,12 +3014,12 @@ function BucketDetailPageContent({
           },
           {
             id: "usage-stats",
-            label: "Usage stats",
+            label: t("Usage stats"),
             content: (
               <BucketUsageStatsPanel
                 snapshot={usageStatsSnapshot}
                 loading={usageStatsLoading}
-                error={usageStatsError}
+                error={usageStatsError ? t(usageStatsError) : null}
                 recalculating={usageStatsRecalculating}
                 onRefresh={loadUsageStats}
                 onRecalculate={recalculateUsageStats}
@@ -3020,40 +3028,39 @@ function BucketDetailPageContent({
           },
           {
             id: "metrics",
-            label: "Metrics",
+            label: t("Metrics"),
             disabled: !canViewBucketMetrics,
             content: (
               <div className={bucketDetailSectionStackClass}>
                 <MetricsCard
-                  title="Current usage and quota"
-                  description="Live usage, quotas, and traffic sourced from backend metrics."
+                  title={t("Current usage and quota")}
+                  description={t("Live usage, quotas, and traffic sourced from backend metrics.")}
                 >
                   <div className={bucketDetailTwoColumnGridClass}>
                     <UsageTile
-                      label="Storage"
+                      label={t("Storage")}
                       used={storageUsage.used}
                       quota={storageUsage.quota}
                       formatter={formatBytes}
                       quotaFormatter={formatBytes}
                       loading={loadingBucket}
-                      emptyHint="No storage quota defined."
+                      emptyHint={t("No storage quota defined.")}
                     />
                     <UsageTile
-                      label="Objects"
+                      label={t("Objects")}
                       used={objectUsage.used}
                       quota={objectUsage.quota}
                       formatter={formatCompactNumber}
                       quotaFormatter={(value) => (value != null ? value.toLocaleString() : "-")}
                       loading={loadingBucket}
-                      unitHint="objects"
-                      emptyHint="No object quota defined."
+                      unitHint={t("objects")}
+                      emptyHint={t("No object quota defined.")}
                     />
                   </div>
                 </MetricsCard>
                 {!canViewLiveBucketMetrics && (
                   <PageBanner>
-                    Live endpoint metrics are unavailable. BucketReef usage stats calculated from bucket listings remain
-                    available in the Usage stats tab.
+                    {t("Live endpoint metrics are unavailable. BucketReef usage stats calculated from bucket listings remain available in the Usage stats tab.")}
                   </PageBanner>
                 )}
                 {canViewLiveBucketMetrics &&
@@ -3061,12 +3068,12 @@ function BucketDetailPageContent({
                     endpointId && bucketName ? (
                       <TrafficAnalytics scope="ceph-admin" endpointId={endpointId} bucketName={bucketName} enabled={hasCephContext} />
                     ) : (
-                      <PageBanner tone="warning">Select an endpoint and a bucket to view detailed metrics.</PageBanner>
+                      <PageBanner tone="warning">{t("Select an endpoint and a bucket to view detailed metrics.")}</PageBanner>
                     )
                   ) : hasAccountContext && bucketName ? (
                     <TrafficAnalytics accountId={accountIdForApi} bucketName={bucketName} enabled={hasAccountContext} />
                   ) : (
-                    <PageBanner tone="warning">Select an account and a bucket to view detailed metrics.</PageBanner>
+                    <PageBanner tone="warning">{t("Select an account and a bucket to view detailed metrics.")}</PageBanner>
                   ))}
               </div>
             ),
@@ -3075,19 +3082,19 @@ function BucketDetailPageContent({
             ? [
                 {
                   id: "ceph",
-                  label: isCephAdmin ? "Ceph Admin" : "Privileged Ceph",
+                  label: isCephAdmin ? t("Ceph Admin") : t("Privileged Ceph"),
                   content: (
                     <div className={bucketDetailStackClass}>
                       <BucketFeatureCard
-                        title="Quota"
-                        description="Allowed bucket size and object count."
+                        title={t("Quota")}
+                        description={t("Allowed bucket size and object count.")}
                         mode="graphical"
                         visualState={quotaCardState}
                         testId="bucket-feature-quota"
                         actions={
                           quotaSectionRestricted ? (
                             <ListBadge tone="neutral">
-                              Restricted
+                              {t("Restricted")}
                             </ListBadge>
                           ) : canEditQuota ? (
                             <button
@@ -3097,13 +3104,13 @@ function BucketDetailPageContent({
                               className={bucketFeaturePrimaryActionClass}
                               title={
                                 !quotaFeatureEnabled
-                                  ? "Unavailable on this endpoint"
+                                  ? t("Unavailable on this endpoint")
                                   : !canEditQuota
-                                    ? "Privileged Ceph access required"
+                                    ? t("Privileged Ceph access required")
                                     : undefined
                               }
                             >
-                              {updatingQuota ? "Saving..." : "Save"}
+                              {updatingQuota ? t("Saving...") : t("Save")}
                             </button>
                           ) : null
                         }
@@ -3116,7 +3123,7 @@ function BucketDetailPageContent({
                   >
                     <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                       <label className={bucketFeatureLabelClass}>
-                        Size
+                        {t("Size")}
                         <div className={bucketDetailInlineActionsClass}>
                           <input
                             type="number"
@@ -3125,7 +3132,7 @@ function BucketDetailPageContent({
                             value={quotaSizeGb}
                             onChange={(e) => updateQuotaSize(e.target.value)}
                             className={cx(bucketFeatureInputClass, "flex-1")}
-                            placeholder="e.g. 100"
+                            placeholder={t("e.g. 100")}
                             disabled={!canEditQuota}
                           />
                           <select
@@ -3141,7 +3148,7 @@ function BucketDetailPageContent({
                         </div>
                       </label>
                       <label className={bucketFeatureLabelClass}>
-                        Object count
+                        {t("Object count")}
                         <input
                           type="number"
                           min={0}
@@ -3149,22 +3156,22 @@ function BucketDetailPageContent({
                           value={quotaObjects}
                           onChange={(e) => updateQuotaObjects(e.target.value)}
                           className={bucketFeatureInputClass}
-                          placeholder="e.g. 1000000"
+                          placeholder={t("e.g. 1000000")}
                           disabled={!canEditQuota}
                         />
                       </label>
                     </div>
                     {quotaStatus && (
-                      <UiInlineMessage tone="success">{quotaStatus}</UiInlineMessage>
+                      <UiInlineMessage tone="success">{t(quotaStatus)}</UiInlineMessage>
                     )}
                     {quotaError && (
-                      <UiInlineMessage tone="error">{quotaError}</UiInlineMessage>
+                      <UiInlineMessage tone="error">{t(quotaError)}</UiInlineMessage>
                     )}
                   </form>
                   <p className="mt-1 ui-caption text-slate-500 dark:text-slate-400">
                     {quotaFeatureEnabled
-                      ? `Leave empty to remove the quota. ${canEditQuota ? "" : "(Privileged Ceph access required.)"}`
-                      : "Quota management is unavailable on this endpoint."}
+                      ? `${t("Leave empty to remove the quota.")} ${canEditQuota ? "" : t("(Privileged Ceph access required.)")}`
+                      : t("Quota management is unavailable on this endpoint.")}
                   </p>
                       </BucketFeatureCard>
                     </div>
@@ -3177,11 +3184,12 @@ function BucketDetailPageContent({
 
       {pendingConfigurationDelete && (
         <ConfirmActionDialog
-          title={bucketConfigurationDeleteCopy[pendingConfigurationDelete].title}
-          description={bucketConfigurationDeleteCopy[pendingConfigurationDelete].description}
-          confirmLabel={bucketConfigurationDeleteCopy[pendingConfigurationDelete].confirmLabel}
-          details={[{ label: "Bucket", value: bucketName ?? "Unknown", mono: true }]}
-          impacts={bucketConfigurationDeleteCopy[pendingConfigurationDelete].impacts}
+          title={t(bucketConfigurationDeleteCopy[pendingConfigurationDelete].title)}
+          description={t(bucketConfigurationDeleteCopy[pendingConfigurationDelete].description)}
+          confirmLabel={t(bucketConfigurationDeleteCopy[pendingConfigurationDelete].confirmLabel)}
+          closeLabel={t("Close")}
+          details={[{ label: t("Bucket"), value: bucketName ?? t("Unknown"), mono: true }]}
+          impacts={bucketConfigurationDeleteCopy[pendingConfigurationDelete].impacts.map((impact) => t(impact))}
           loading={configurationDeleteLoading}
           onCancel={() => setPendingConfigurationDelete(null)}
           onConfirm={() => void confirmPendingConfigurationDelete()}
@@ -3193,9 +3201,10 @@ function BucketDetailPageContent({
 }
 
 function EndpointFeatureDisabledNotice({ featureLabel }: { featureLabel: string }) {
+  const { locale, t } = useManagerBucketDetailText();
   return (
     <UiInlineMessage>
-      {featureLabel} is disabled on this endpoint.
+      {locale === "zh" ? `${t(featureLabel)}${t("is disabled on this endpoint.")}` : `${featureLabel} is disabled on this endpoint.`}
     </UiInlineMessage>
   );
 }

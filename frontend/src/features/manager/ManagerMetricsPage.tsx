@@ -24,12 +24,15 @@ import { extractApiError } from "../../utils/apiError";
 import BucketUsageStatsAggregateCard from "../shared/BucketUsageStatsAggregateCard";
 import TrafficAnalytics from "./TrafficAnalytics";
 import { useS3AccountContext } from "./S3AccountContext";
-import { managerPageBreadcrumbs } from "./managerBreadcrumbs";
+import { localizedManagerPageBreadcrumbs } from "./managerBreadcrumbs";
+import { managerDashboardZhMessages } from "./managerDashboardMessages";
+import { useManagerText } from "./managerI18n";
 import { useManagerStats } from "./useManagerStats";
 
 type ManagerMetricsTab = "storage" | "usage-composition" | "usage-history" | "traffic";
 
 export default function ManagerMetricsPage() {
+  const { locale, t } = useManagerText(managerDashboardZhMessages);
   const { generalSettings } = useGeneralSettings();
   const [activeTab, setActiveTab] = useState<ManagerMetricsTab>("storage");
   const {
@@ -62,7 +65,7 @@ export default function ManagerMetricsPage() {
   const showTrafficDisabledBanner = hasContext && managerStatsEnabled && usageFeatureEnabled && !metricsFeatureEnabled;
   const managerMetricsMessage =
     hasContext && !managerStatsEnabled
-      ? managerStatsMessage || "Metrics are unavailable for this context."
+      ? t(managerStatsMessage || "Metrics are unavailable for this context.")
       : null;
 
   const { stats, loading, error } = useManagerStats(
@@ -157,27 +160,45 @@ export default function ManagerMetricsPage() {
     };
   }, [accountIdForApi, showUsageHistoryTrends, usageHistoryWindow]);
 
+  const localizedUsageStatsAggregate = useMemo(
+    () => usageStatsAggregate
+      ? { ...usageStatsAggregate, warnings: usageStatsAggregate.warnings.map((warning) => t(warning)) }
+      : usageStatsAggregate,
+    [t, usageStatsAggregate]
+  );
+  const localizedUsageHistoryTrends = useMemo(
+    () => usageHistoryTrends
+      ? {
+          ...usageHistoryTrends,
+          unavailable_reason: usageHistoryTrends.unavailable_reason
+            ? t(usageHistoryTrends.unavailable_reason)
+            : usageHistoryTrends.unavailable_reason,
+        }
+      : usageHistoryTrends,
+    [t, usageHistoryTrends]
+  );
+
   const usageStatsAggregateSection = canLoadUsageStatsAggregate ? (
     <BucketUsageStatsAggregateCard
-      title="Account usage composition"
-      description="Latest calculated bucket snapshots for the active account context."
-      aggregate={usageStatsAggregate}
+      title={t("Account usage composition")}
+      description={t("Latest calculated bucket snapshots for the active account context.")}
+      aggregate={localizedUsageStatsAggregate}
       loading={usageStatsLoading}
-      error={usageStatsError}
+      error={usageStatsError ? t(usageStatsError) : usageStatsError}
       recalculating={usageStatsRecalculating}
-      recalculateLabel="Recalculate account"
+      recalculateLabel={t("Recalculate account")}
       onRecalculate={handleRecalculateUsageStats}
     />
   ) : null;
   const metricsTabs = useMemo(
     () =>
       [
-        { id: "storage" as const, label: "Storage" },
-        ...(canLoadUsageStatsAggregate ? [{ id: "usage-composition" as const, label: "Usage composition" }] : []),
-        ...(showUsageHistoryTrends ? [{ id: "usage-history" as const, label: "Usage history" }] : []),
-        { id: "traffic" as const, label: "Traffic" },
+        { id: "storage" as const, label: t("Storage") },
+        ...(canLoadUsageStatsAggregate ? [{ id: "usage-composition" as const, label: t("Usage composition") }] : []),
+        ...(showUsageHistoryTrends ? [{ id: "usage-history" as const, label: t("Usage history") }] : []),
+        { id: "traffic" as const, label: t("Traffic") },
       ],
-    [canLoadUsageStatsAggregate, showUsageHistoryTrends]
+    [canLoadUsageStatsAggregate, showUsageHistoryTrends, t]
   );
 
   useEffect(() => {
@@ -188,29 +209,33 @@ export default function ManagerMetricsPage() {
 
   return (
     <PageShell
-      title="Usage & Metrics"
-      description="Logical usage composition, storage analytics, and traffic analytics for the active execution context."
-      breadcrumbs={managerPageBreadcrumbs("metrics")}
+      title={t("Usage & Metrics")}
+      description={t("Logical usage composition, storage analytics, and traffic analytics for the active execution context.")}
+      breadcrumbs={localizedManagerPageBreadcrumbs("metrics", locale)}
+      breadcrumbLabel={t("Breadcrumb")}
     >
       {!hasContext ? (
         <PageEmptyState
-          title="Select an account to view usage and metrics"
-          description="Usage composition and Manager metrics depend on an execution context. Choose an account to load bucket usage, storage, and traffic analytics."
-          primaryAction={{ label: "Open buckets", to: "/manager/buckets" }}
+          eyebrow={t("Next step")}
+          title={t("Select an account to view usage and metrics")}
+          description={t("Usage composition and Manager metrics depend on an execution context. Choose an account to load bucket usage, storage, and traffic analytics.")}
+          primaryAction={{ label: t("Open buckets"), to: "/manager/buckets" }}
           tone="warning"
         />
       ) : showFullPageMetricsUnavailable ? (
         <PageEmptyState
-          title="Metrics are unavailable for this context"
-          description={managerMetricsMessage ?? "Metrics are unavailable for this context."}
-          primaryAction={{ label: "Open buckets", to: "/manager/buckets" }}
+          eyebrow={t("Next step")}
+          title={t("Metrics are unavailable for this context")}
+          description={managerMetricsMessage ?? t("Metrics are unavailable for this context.")}
+          primaryAction={{ label: t("Open buckets"), to: "/manager/buckets" }}
           tone="warning"
         />
       ) : showFullPageMetricsDisabled ? (
         <PageEmptyState
-          title="Metrics are disabled for this endpoint"
-          description="Neither storage analytics nor traffic analytics are enabled on the selected endpoint."
-          primaryAction={{ label: "Open buckets", to: "/manager/buckets" }}
+          eyebrow={t("Next step")}
+          title={t("Metrics are disabled for this endpoint")}
+          description={t("Neither storage analytics nor traffic analytics are enabled on the selected endpoint.")}
+          primaryAction={{ label: t("Open buckets"), to: "/manager/buckets" }}
           tone="warning"
         />
       ) : (
@@ -220,7 +245,7 @@ export default function ManagerMetricsPage() {
             activeTab={activeTab}
             onChange={(tab) => setActiveTab(tab as ManagerMetricsTab)}
             variant="line"
-            ariaLabel="Manager metrics sections"
+            ariaLabel={t("Manager metrics sections")}
             idPrefix="manager-metrics"
           />
 
@@ -229,41 +254,41 @@ export default function ManagerMetricsPage() {
             <>
               {managerMetricsMessage && !showUsageBreakdowns && (
                 <MetricsUnavailableCard
-                  eyebrow="Metrics"
-                  title="Storage analytics"
-                  description="Bucket volume and object counts for the active context."
+                  eyebrow={t("Metrics")}
+                  title={t("Storage analytics")}
+                  description={t("Bucket volume and object counts for the active context.")}
                   message={managerMetricsMessage}
                   tone="warning"
                 />
               )}
               {!managerMetricsMessage && showMetricsDisabledBanner && (
                 <MetricsUnavailableCard
-                  eyebrow="Metrics"
-                  title="Storage analytics"
-                  description="Bucket volume and object counts for the active context."
-                  message="Neither storage analytics nor traffic analytics are enabled on the selected endpoint."
+                  eyebrow={t("Metrics")}
+                  title={t("Storage analytics")}
+                  description={t("Bucket volume and object counts for the active context.")}
+                  message={t("Neither storage analytics nor traffic analytics are enabled on the selected endpoint.")}
                   tone="warning"
                 />
               )}
               {!managerMetricsMessage && !showMetricsDisabledBanner && showUsageDisabledBanner && (
                 <MetricsUnavailableCard
-                  title="Storage analytics"
-                  description="Bucket volume and object counts for the active context."
-                  message="Storage analytics are disabled for this endpoint."
+                  title={t("Storage analytics")}
+                  description={t("Bucket volume and object counts for the active context.")}
+                  message={t("Storage analytics are disabled for this endpoint.")}
                 />
               )}
               {!managerMetricsMessage && !showMetricsDisabledBanner && error && (
                 <MetricsUnavailableCard
-                  title="Storage analytics"
-                  description="Bucket volume and object counts for the active context."
-                  message={error}
+                  title={t("Storage analytics")}
+                  description={t("Bucket volume and object counts for the active context.")}
+                  message={t(error)}
                   tone="error"
                 />
               )}
               {!managerMetricsMessage && !showMetricsDisabledBanner && showUsageBreakdowns && (
                 <div className="grid gap-6 lg:grid-cols-2">
                   <UsageBreakdown
-                    title="Bucket breakdown (storage)"
+                    title={t("Bucket breakdown (storage)")}
                     loading={loading}
                     metric="bytes"
                     items={(stats?.bucket_usage ?? []).map((bucket) => ({
@@ -272,10 +297,11 @@ export default function ManagerMetricsPage() {
                       usedBytes: bucket.used_bytes ?? null,
                       objectCount: bucket.object_count ?? null,
                     }))}
-                    emptyMessage="No bucket storage metrics available."
+                    emptyMessage={t("No bucket storage metrics available.")}
+                    objectUnitLabel={t("objects")}
                   />
                   <UsageBreakdown
-                    title="Bucket breakdown (objects)"
+                    title={t("Bucket breakdown (objects)")}
                     loading={loading}
                     metric="objects"
                     items={(stats?.bucket_usage ?? []).map((bucket) => ({
@@ -284,7 +310,8 @@ export default function ManagerMetricsPage() {
                       usedBytes: bucket.used_bytes ?? null,
                       objectCount: bucket.object_count ?? null,
                     }))}
-                    emptyMessage="No bucket object metrics available."
+                    emptyMessage={t("No bucket object metrics available.")}
+                    objectUnitLabel={t("objects")}
                   />
                 </div>
               )}
@@ -295,38 +322,38 @@ export default function ManagerMetricsPage() {
 
           {activeTab === "usage-history" && showUsageHistoryTrends && (
             <UsageHistoryTrendsSection
-              trends={usageHistoryTrends}
+              trends={localizedUsageHistoryTrends}
               window={usageHistoryWindow}
               onWindowChange={setUsageHistoryWindow}
               loading={usageHistoryLoading}
-              error={usageHistoryError}
-              description="Stored usage snapshots for the active execution context."
+              error={usageHistoryError ? t(usageHistoryError) : usageHistoryError}
+              description={t("Stored usage snapshots for the active execution context.")}
             />
           )}
 
           {activeTab === "traffic" && managerMetricsMessage && !showTrafficAnalytics ? (
             <MetricsUnavailableCard
-              eyebrow="Metrics"
-              title="Traffic"
-              description="Ingress/egress volume, request types, and busiest buckets."
+              eyebrow={t("Metrics")}
+              title={t("Traffic")}
+              description={t("Ingress/egress volume, request types, and busiest buckets.")}
               message={managerMetricsMessage}
               tone="warning"
             />
           ) : null}
           {activeTab === "traffic" && !managerMetricsMessage && showMetricsDisabledBanner ? (
             <MetricsUnavailableCard
-              eyebrow="Metrics"
-              title="Traffic"
-              description="Ingress/egress volume, request types, and busiest buckets."
-              message="Neither storage analytics nor traffic analytics are enabled on the selected endpoint."
+              eyebrow={t("Metrics")}
+              title={t("Traffic")}
+              description={t("Ingress/egress volume, request types, and busiest buckets.")}
+              message={t("Neither storage analytics nor traffic analytics are enabled on the selected endpoint.")}
               tone="warning"
             />
           ) : null}
           {activeTab === "traffic" && !managerMetricsMessage && !showMetricsDisabledBanner && showTrafficDisabledBanner ? (
             <MetricsUnavailableCard
-              title="Traffic"
-              description="Ingress/egress volume, request types, and busiest buckets."
-              message="Traffic analytics are disabled for this endpoint."
+              title={t("Traffic")}
+              description={t("Ingress/egress volume, request types, and busiest buckets.")}
+              message={t("Traffic analytics are disabled for this endpoint.")}
             />
           ) : null}
           {showTrafficAnalytics && (

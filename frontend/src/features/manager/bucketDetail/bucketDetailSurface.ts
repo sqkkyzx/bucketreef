@@ -68,15 +68,27 @@ export function resolveBucketDetailTabs({
   return [...baseTabs.slice(0, insertAt), "ceph", ...baseTabs.slice(insertAt)];
 }
 
-export function buildBucketDetailBreadcrumbs(mode: BucketDetailMode, bucketName: string | null | undefined) {
+export function buildBucketDetailBreadcrumbs(
+  mode: BucketDetailMode,
+  bucketName: string | null | undefined,
+  locale: "en" | "fr" | "de" | "zh" = "en",
+) {
   const surface = resolveBucketDetailSurface(mode);
+  const localizedRootLabel =
+    locale === "zh"
+      ? mode === "manager"
+        ? "管理控制台"
+        : "Ceph 管理"
+      : surface.rootLabel;
+  const localizedBucketsLabel = locale === "zh" ? "存储桶" : null;
   return [
-    { label: surface.rootLabel, to: surface.rootPath },
+    { label: localizedRootLabel, to: surface.rootPath },
     {
       label:
-        mode === "manager"
+        localizedBucketsLabel ??
+        (mode === "manager"
           ? MANAGER_PAGE_CONTRACTS.buckets.label
-          : CEPH_ADMIN_PAGE_CONTRACTS.buckets.label,
+          : CEPH_ADMIN_PAGE_CONTRACTS.buckets.label),
       to: surface.bucketListPath,
     },
     { label: bucketName ?? "" },

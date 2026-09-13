@@ -134,7 +134,7 @@ const WINDOW_OPTIONS: { label: string; value: UsageHistoryTrendWindow; helper: s
       description={subtitle}
       actions={
         <UiSegmentedControl
-          ariaLabel={`${title} window`}
+          ariaLabel={translate({ en: `${title} window`, zh: `${title}时间范围` }, locale)}
           options={WINDOW_OPTIONS}
           value={window}
           onChange={onWindowChange}

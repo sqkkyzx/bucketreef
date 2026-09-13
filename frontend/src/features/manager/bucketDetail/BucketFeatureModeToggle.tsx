@@ -3,6 +3,7 @@
  * Licensed under the Apache License, Version 2.0
  */
 import UiButton from "../../../components/ui/UiButton";
+import { useManagerBucketDetailText } from "../managerBucketDetailMessages";
 
 type BucketFeatureModeOption<T extends string> = {
   value: T;
@@ -22,6 +23,8 @@ export default function BucketFeatureModeToggle<T extends string>({
   onChange,
   disabled = false,
 }: BucketFeatureModeToggleProps<T>) {
+  const { t } = useManagerBucketDetailText();
+
   return (
     <div className="flex flex-wrap gap-2">
       {options.map((option) => (
@@ -34,7 +37,7 @@ export default function BucketFeatureModeToggle<T extends string>({
           className="px-3"
           disabled={disabled}
         >
-          {option.label}
+          {t(option.label)}
         </UiButton>
       ))}
     </div>

@@ -16,6 +16,7 @@ type BucketOperationResultProps = {
   contextLabel?: string | null;
   status: ReactNode;
   durationSeconds: number;
+  durationLabel?: string;
   metrics: ReadonlyArray<{ label: string; value: ReactNode }>;
   children: ReactNode;
 };
@@ -28,7 +29,7 @@ function formatSeconds(value?: number | null): string {
 
 /** Native disclosure keeps keyboard behavior and the bucket's open state together. */
 export default function BucketOperationResult({
-  bucketName, contextLabel, status, durationSeconds, metrics, children,
+  bucketName, contextLabel, status, durationSeconds, durationLabel = "Duration", metrics, children,
 }: BucketOperationResultProps) {
   return (
     <UiDetails className="bucket-operation-result">
@@ -42,7 +43,7 @@ export default function BucketOperationResult({
           {status}
           <InlineSummary items={[
             ...metrics,
-            { label: "Duration", value: formatSeconds(durationSeconds) },
+            { label: durationLabel, value: formatSeconds(durationSeconds) },
           ]} />
         </div>
       </summary>
@@ -60,7 +61,20 @@ type BucketOperationFailureRow = {
 };
 
 export function BucketOperationFailures({
-  bucketName, title, targetLabel, total, failures, showCount = false, emptyMessage,
+  bucketName,
+  title,
+  targetLabel,
+  total,
+  failures,
+  showCount = false,
+  emptyMessage,
+  visibleErrorSummary,
+  partialErrorMessage,
+  stageLabel = "Stage",
+  versionLabel = "Version",
+  countLabel = "Count",
+  messageLabel = "Message",
+  unavailableMessage = "Error details are unavailable for this bucket.",
 }: {
   bucketName: string;
   title: string;
@@ -69,19 +83,30 @@ export function BucketOperationFailures({
   failures: readonly BucketOperationFailureRow[];
   showCount?: boolean;
   emptyMessage: string;
+  visibleErrorSummary?: ReactNode;
+  partialErrorMessage?: ReactNode;
+  stageLabel?: string;
+  versionLabel?: string;
+  countLabel?: string;
+  messageLabel?: string;
+  unavailableMessage?: ReactNode;
 }) {
   const tableLabel = `${title}: ${bucketName}`;
+  const resolvedVisibleErrorSummary = visibleErrorSummary ?? (
+    <>{formatNumber(failures.length)} visible / {formatNumber(total)} total error(s)</>
+  );
+  const resolvedPartialErrorMessage = partialErrorMessage ?? (
+    <>Only {formatNumber(failures.length)} of {formatNumber(total)} error(s) are visible.</>
+  );
   return (
     <>
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 ui-caption">
         <p className="font-medium text-[var(--ui-text)]">{title}</p>
-        <p className={uiMutedTextClass}>
-          {formatNumber(failures.length)} visible / {formatNumber(total)} total error(s)
-        </p>
+        <p className={uiMutedTextClass}>{resolvedVisibleErrorSummary}</p>
       </div>
       {total > failures.length ? (
         <UiInlineMessage tone="warning">
-          Only {formatNumber(failures.length)} of {formatNumber(total)} error(s) are visible.
+          {resolvedPartialErrorMessage}
         </UiInlineMessage>
       ) : null}
       {failures.length > 0 ? (
@@ -89,11 +114,11 @@ export function BucketOperationFailures({
           <table className="ui-data-table" aria-label={tableLabel}>
             <thead>
               <tr>
-                <th scope="col">Stage</th>
+                <th scope="col">{stageLabel}</th>
                 <th scope="col">{targetLabel}</th>
-                <th scope="col">Version</th>
-                {showCount ? <th scope="col">Count</th> : null}
-                <th scope="col">Message</th>
+                <th scope="col">{versionLabel}</th>
+                {showCount ? <th scope="col">{countLabel}</th> : null}
+                <th scope="col">{messageLabel}</th>
               </tr>
             </thead>
             <tbody>
@@ -111,7 +136,7 @@ export function BucketOperationFailures({
         </div>
       ) : (
         <UiInlineMessage>
-          {total > 0 ? "Error details are unavailable for this bucket." : emptyMessage}
+          {total > 0 ? unavailableMessage : emptyMessage}
         </UiInlineMessage>
       )}
     </>

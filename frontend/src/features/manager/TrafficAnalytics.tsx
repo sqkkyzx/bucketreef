@@ -25,6 +25,11 @@ import UiSegmentedControl from "../../components/ui/UiSegmentedControl";
 import { formatBytes, formatCompactNumber, formatPercentage } from "../../utils/format";
 import { extractApiError } from "../../utils/apiError";
 import {
+  formatManagerMessage,
+  managerDashboardZhMessages,
+} from "./managerDashboardMessages";
+import { useManagerText } from "./managerI18n";
+import {
   Bar,
   BarChart,
   CartesianGrid,
@@ -70,6 +75,7 @@ export default function TrafficAnalytics({
   enabled = true,
   visible = true,
 }: TrafficAnalyticsProps) {
+  const { t } = useManagerText(managerDashboardZhMessages);
   const [window, setWindow] = useState<TrafficWindow>("week");
   const [traffic, setTraffic] = useState<ManagerTrafficStats | null>(null);
   const [loading, setLoading] = useState(false);
@@ -126,6 +132,14 @@ export default function TrafficAnalytics({
   const primaryBuckets = useMemo(() => (traffic?.bucket_rankings ?? []).slice(0, 5), [traffic]);
   const topCategories = useMemo(() => (traffic?.category_breakdown ?? []).slice(0, 6), [traffic]);
   const requestPieData = useMemo(() => prepareRequestPie(traffic?.request_breakdown ?? []), [traffic]);
+  const windowOptions = useMemo(
+    () => WINDOW_OPTIONS.map((option) => ({
+      ...option,
+      label: t(option.label),
+      helper: t(option.helper),
+    })),
+    [t]
+  );
 
   if (!visible) {
     return null;
@@ -133,38 +147,38 @@ export default function TrafficAnalytics({
 
   return (
     <MetricsCard
-      title="Traffic"
-      description="Ingress/egress volume, request types, and busiest buckets."
+      title={t("Traffic")}
+      description={t("Ingress/egress volume, request types, and busiest buckets.")}
       actions={
         <UiSegmentedControl
-          ariaLabel="Traffic window"
-          options={WINDOW_OPTIONS}
+          ariaLabel={t("Traffic window")}
+          options={windowOptions}
           value={window}
           onChange={setWindow}
         />
       }
     >
 
-      {error && <PageBanner tone="warning">{error}</PageBanner>}
+      {error && <PageBanner tone="warning">{t(error)}</PageBanner>}
 
       {!hideMetrics && (
         <div className="grid gap-4 md:grid-cols-3">
           <TrafficTotalCard
-            label="Egress traffic"
+            label={t("Egress traffic")}
             value={formatBytes(totals?.bytes_out ?? 0)}
-            hint="Bytes sent"
+            hint={t("Bytes sent")}
             loading={loading}
           />
           <TrafficTotalCard
-            label="Ingress traffic"
+            label={t("Ingress traffic")}
             value={formatBytes(totals?.bytes_in ?? 0)}
-            hint="Bytes received"
+            hint={t("Bytes received")}
             loading={loading}
           />
           <TrafficTotalCard
-            label="Success rate"
+            label={t("Success rate")}
             value={totals?.success_rate != null ? formatPercentage(totals.success_rate * 100) : "—"}
-            hint={`${formatCompactNumber(totals?.ops ?? 0)} requests`}
+            hint={formatManagerMessage(t("{count} requests"), { count: formatCompactNumber(totals?.ops ?? 0) })}
             loading={loading}
           />
         </div>
@@ -174,8 +188,8 @@ export default function TrafficAnalytics({
         <div className="grid gap-4 lg:grid-cols-3">
           <div className="lg:col-span-2">
             <ChartCard
-              title={window === "week" || window === "month" ? "Daily traffic" : "Hourly traffic"}
-              subtitle="Ingress vs egress comparison"
+              title={t(window === "week" || window === "month" ? "Daily traffic" : "Hourly traffic")}
+              subtitle={t("Ingress vs egress comparison")}
               loading={loading}
               hasData={hasSeries}
             >
@@ -189,7 +203,7 @@ export default function TrafficAnalytics({
             </ChartCard>
           </div>
           <div>
-            <ChartCard title="Request breakdown" subtitle="By functional group" loading={loading} hasData={requestPieData.length > 0}>
+            <ChartCard title={t("Request breakdown")} subtitle={t("By functional group")} loading={loading} hasData={requestPieData.length > 0}>
               <div className="flex flex-col items-center gap-4 sm:flex-row sm:items-start">
                 <ResponsiveContainer width="60%" height={280}>
                   <PieChart>
@@ -213,7 +227,7 @@ export default function TrafficAnalytics({
                     key: entry.group,
                     label: entry.group,
                     color: REQUEST_COLORS[entry.group] ?? "#94A3B8",
-                    value: `${formatCompactNumber(entry.ops)} ops`,
+                    value: formatManagerMessage(t("{count} ops"), { count: formatCompactNumber(entry.ops) }),
                   }))}
                 />
               </div>
@@ -252,8 +266,9 @@ type ChartCardProps = {
 };
 
 function ChartCard({ title, subtitle, loading, children, hasData }: ChartCardProps) {
+  const { t } = useManagerText(managerDashboardZhMessages);
   return (
-    <MetricsChartPanel title={title} description={subtitle} loading={loading} hasData={hasData} emptyMessage="No usable measurements yet for this time window.">
+    <MetricsChartPanel title={title} description={subtitle} loading={loading} hasData={hasData} emptyMessage={t("No usable measurements yet for this time window.")}>
       {children}
     </MetricsChartPanel>
   );
@@ -277,6 +292,7 @@ type BucketRankingProps = {
 };
 
 function BucketRanking({ rankings, loading }: BucketRankingProps) {
+  const { t } = useManagerText(managerDashboardZhMessages);
   const maxComponent = Math.max(
     ...rankings.map((entry) => Math.max(entry.bytes_in ?? 0, entry.bytes_out ?? 0)),
     0
@@ -284,8 +300,8 @@ function BucketRanking({ rankings, loading }: BucketRankingProps) {
   const safeMaxComponent = maxComponent || 1;
   return (
     <ChartCard
-      title="Most active buckets"
-      subtitle="Top 5 for the selected window"
+      title={t("Most active buckets")}
+      subtitle={t("Top 5 for the selected window")}
       loading={loading}
       hasData={rankings.length > 0}
     >
@@ -296,16 +312,17 @@ function BucketRanking({ rankings, loading }: BucketRankingProps) {
               <div className="min-w-0">
                 <p className="truncate font-semibold text-[var(--ui-text)]" title={entry.bucket}>{entry.bucket}</p>
                 <p className="ui-caption text-[var(--ui-text-muted)]">
-                  {`${formatCompactNumber(entry.ops)} ops · success ${
-                    entry.success_ratio != null ? formatPercentage(entry.success_ratio * 100) : "n/a"
-                  }`}
+                  {formatManagerMessage(t("{ops} ops · success {success}"), {
+                    ops: formatCompactNumber(entry.ops),
+                    success: entry.success_ratio != null ? formatPercentage(entry.success_ratio * 100) : t("n/a"),
+                  })}
                 </p>
               </div>
               <p className="shrink-0 ui-caption font-semibold text-[var(--ui-text-muted)]">{formatBytes(entry.bytes_total)}</p>
             </div>
             <div className="space-y-1">
-              <BucketBar label="In" color="#0EA5E9" value={entry.bytes_in ?? 0} max={safeMaxComponent} />
-              <BucketBar label="Out" color="#4F46E5" value={entry.bytes_out ?? 0} max={safeMaxComponent} />
+              <BucketBar label={t("In")} color="#0EA5E9" value={entry.bytes_in ?? 0} max={safeMaxComponent} />
+              <BucketBar label={t("Out")} color="#4F46E5" value={entry.bytes_out ?? 0} max={safeMaxComponent} />
             </div>
           </li>
         ))}
@@ -320,12 +337,13 @@ type CategoryChartProps = {
 };
 
 function CategoryChart({ categories, loading }: CategoryChartProps) {
+  const { t } = useManagerText(managerDashboardZhMessages);
   const chartData = categories.map((entry) => ({
     ...entry,
     total: entry.bytes_in + entry.bytes_out,
   }));
   return (
-    <ChartCard title="Top request categories" subtitle="By transferred volume" loading={loading} hasData={chartData.length > 0}>
+    <ChartCard title={t("Top request categories")} subtitle={t("By transferred volume")} loading={loading} hasData={chartData.length > 0}>
       <ResponsiveContainer width="100%" height={240}>
         <BarChart data={chartData} layout="vertical" margin={{ left: 60 }}>
           <CartesianGrid strokeDasharray="3 3" opacity={0.2} />

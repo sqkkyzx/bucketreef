@@ -33,7 +33,7 @@ import type {
 } from "../../api/bucketContracts";
 import { S3AccountSelector } from "../../api/accountParams";
 import { useS3AccountContext } from "./S3AccountContext";
-import { managerPageBreadcrumbs } from "./managerBreadcrumbs";
+import { localizedManagerPageBreadcrumbs } from "./managerBreadcrumbs";
 import PageHeader from "../../components/PageHeader";
 import PageBanner from "../../components/PageBanner";
 import WorkflowPage, { workflowPageHostClass } from "../../components/WorkflowPage";
@@ -79,6 +79,16 @@ import {
   buildWebsiteSummaryLines,
 } from "../shared/bucketFeatureSummaries";
 import ManagerToolbarSearch from "./ManagerToolbarSearch";
+import { useManagerText } from "./managerI18n";
+import {
+  managerBucketCountLabel,
+  managerBucketDeleteConflict,
+  managerBucketDeleteFallback,
+  managerBucketDeleteNotEmptyMessage,
+  managerBucketFeatureState,
+  managerBucketPurgeFinishedMessage,
+  managerBucketsZhMessages,
+} from "./managerBucketsMessages";
 
 type BucketForm = {
   name: string;
@@ -95,9 +105,10 @@ const defaultForm: BucketForm = {
 const buildDefaultForm = (): BucketForm => ({
   ...defaultForm,
 });
-const extractError = (err: unknown, fallback = "Unexpected error"): string => extractApiError(err, fallback);
+const extractError = (err: unknown, fallback: string): string => extractApiError(err, fallback);
 
 function QuotaBar({ usedBytes, quotaBytes }: { usedBytes?: number | null; quotaBytes?: number | null }) {
+  const { t } = useManagerText(managerBucketsZhMessages);
   if (!quotaBytes || quotaBytes <= 0) {
     return <span className="ui-body text-slate-500 dark:text-slate-400">-</span>;
   }
@@ -109,7 +120,7 @@ function QuotaBar({ usedBytes, quotaBytes }: { usedBytes?: number | null; quotaB
     <div className="flex items-center gap-2" title={`${usedDisplay} / ${quotaDisplay}`}>
       <UiMeterBar
         value={ratio}
-        label="Storage quota usage"
+        label={t("Storage quota usage")}
         className="h-2.5 flex-1 overflow-hidden bg-slate-200 dark:bg-slate-800"
         barClassName="bg-primary-500"
       />
@@ -119,16 +130,22 @@ function QuotaBar({ usedBytes, quotaBytes }: { usedBytes?: number | null; quotaB
 }
 
 function QuotaObjectsBar({ usedObjects, quotaObjects }: { usedObjects?: number | null; quotaObjects?: number | null }) {
+  const { locale, t } = useManagerText(managerBucketsZhMessages);
   if (!quotaObjects || quotaObjects <= 0) {
     return <span className="ui-body text-slate-500 dark:text-slate-400">-</span>;
   }
   const used = usedObjects ?? 0;
   const ratio = Math.min(100, Math.round((used / quotaObjects) * 100));
   return (
-    <div className="flex items-center gap-2" title={`${formatNumber(used)} / ${formatNumber(quotaObjects)} objects`}>
+    <div
+      className="flex items-center gap-2"
+      title={locale === "zh"
+        ? `${formatNumber(used)} / ${formatNumber(quotaObjects)} 个对象`
+        : `${formatNumber(used)} / ${formatNumber(quotaObjects)} objects`}
+    >
       <UiMeterBar
         value={ratio}
-        label="Object quota usage"
+        label={t("Object quota usage")}
         className="h-2.5 flex-1 overflow-hidden bg-slate-200 dark:bg-slate-800"
         barClassName="bg-primary-500"
       />
@@ -136,11 +153,6 @@ function QuotaObjectsBar({ usedObjects, quotaObjects }: { usedObjects?: number |
     </div>
   );
 }
-
-const formatObjectCountLabel = (value: number) => {
-  const suffix = value === 1 ? "object" : "objects";
-  return `${formatNumber(value)} ${suffix}`;
-};
 
 type BucketListRow = Bucket & {
   tags?: BucketTag[] | null;
@@ -222,6 +234,7 @@ const persistVisibleColumns = (value: ColumnId[]) => {
 };
 
 export default function BucketsPage() {
+  const { locale, t } = useManagerText(managerBucketsZhMessages);
   const {
     accounts,
     selectedS3AccountId,
@@ -267,7 +280,9 @@ export default function BucketsPage() {
     direction: "desc",
   });
   const [enrichingColumns, setEnrichingColumns] = useState(false);
-  const invalidBucketNameMessage = "Invalid name. 3-63 characters, lowercase letters, numbers, dots or hyphens.";
+  const invalidBucketNameMessage = t(
+    "Invalid name. 3-63 characters, lowercase letters, numbers, dots or hyphens.",
+  );
 
   const selectedS3Account = useMemo(
     () => accounts.find((a) => a.id === selectedS3AccountId),
@@ -280,44 +295,44 @@ export default function BucketsPage() {
   const quotaFeatureEnabled = selectedS3Account?.endpoint_provider === "ceph";
   const metricColumnOptions = useMemo(
     () => [
-      { id: "used_bytes" as const, label: "Used" },
-      { id: "object_count" as const, label: "Objects" },
+      { id: "used_bytes" as const, label: t("Used") },
+      { id: "object_count" as const, label: t("Objects") },
       ...(quotaFeatureEnabled
         ? ([
-            { id: "quota_max_size_bytes" as const, label: "Quota" },
-            { id: "quota_max_objects" as const, label: "Object quota" },
-            { id: "quota_status" as const, label: "Quota status" },
+            { id: "quota_max_size_bytes" as const, label: t("Quota") },
+            { id: "quota_max_objects" as const, label: t("Object quota") },
+            { id: "quota_status" as const, label: t("Quota status") },
           ] as const)
         : []),
-      { id: "creation_date" as const, label: "Created on" },
-      { id: "tags" as const, label: "Tags" },
+      { id: "creation_date" as const, label: t("Created on") },
+      { id: "tags" as const, label: t("Tags") },
     ],
-    [quotaFeatureEnabled]
+    [quotaFeatureEnabled, t]
   );
   const featureColumnOptions = useMemo(
     () =>
       ([
-        { id: "versioning", label: "Versioning", key: "versioning" },
-        { id: "object_lock", label: "Object Lock", key: "object_lock" },
-        { id: "block_public_access", label: "Block public access", key: "block_public_access" },
-        { id: "lifecycle_rules", label: "Lifecycle rules", key: "lifecycle_rules" },
-        { id: "static_website", label: "Static website", key: "static_website" },
-        { id: "bucket_policy", label: "Bucket policy", key: "bucket_policy" },
-        { id: "cors", label: "CORS", key: "cors" },
-        { id: "access_logging", label: "Access logging", key: "access_logging" },
-        { id: "notifications", label: "Notifications", key: "notifications" },
+        { id: "versioning", label: t("Versioning"), key: "versioning" },
+        { id: "object_lock", label: t("Object Lock"), key: "object_lock" },
+        { id: "block_public_access", label: t("Block public access"), key: "block_public_access" },
+        { id: "lifecycle_rules", label: t("Lifecycle rules"), key: "lifecycle_rules" },
+        { id: "static_website", label: t("Static website"), key: "static_website" },
+        { id: "bucket_policy", label: t("Bucket policy"), key: "bucket_policy" },
+        { id: "cors", label: t("CORS"), key: "cors" },
+        { id: "access_logging", label: t("Access logging"), key: "access_logging" },
+        { id: "notifications", label: t("Notifications"), key: "notifications" },
       ].filter(
         (option) =>
           (option.id !== "static_website" || staticWebsiteFeatureEnabled) &&
           (option.id !== "notifications" || snsFeatureEnabled)
       ) as Array<{ id: ManagerFeatureKey; label: string; key: ManagerFeatureKey }>),
-    [snsFeatureEnabled, staticWebsiteFeatureEnabled]
+    [snsFeatureEnabled, staticWebsiteFeatureEnabled, t]
   );
   const accountLabel = selectedS3Account
-    ? formatAccountLabel(selectedS3Account)
+    ? formatAccountLabel(selectedS3Account, true, locale)
     : requiresS3AccountSelection
-      ? "Not selected"
-      : sessionS3AccountName || "S3 session";
+      ? t("Not selected")
+      : sessionS3AccountName || t("S3 session");
   const needsS3AccountSelection = requiresS3AccountSelection && !accountIdForApi;
   const canDeleteBucketWithPurge =
     Boolean(generalSettings.bucket_purge_enabled) && Boolean(managerToolAccess?.bucket_purge);
@@ -350,7 +365,7 @@ export default function BucketsPage() {
 
   const bucketTooltipCacheKey = (bucket: BucketListRow) => bucket.name;
   const featureTooltipCacheKey = (bucket: BucketListRow, featureKey: ManagerFeatureKey) =>
-    `${bucketTooltipCacheKey(bucket)}:${featureKey}`;
+    `${bucketTooltipCacheKey(bucket)}:${featureKey}:${locale}`;
   const tagsTooltipCacheKey = (bucketName: string) => `${bucketName}:tags`;
 
   const getBucketPropertiesCached = async (bucket: BucketListRow): Promise<BucketProperties> => {
@@ -377,53 +392,56 @@ export default function BucketsPage() {
 
     if (featureKey === "versioning") {
       const properties = await getBucketPropertiesCached(bucket);
-      return buildVersioningSummaryLines(properties.versioning_status);
+      return buildVersioningSummaryLines(properties.versioning_status, locale);
     }
 
     if (featureKey === "object_lock") {
       const properties = await getBucketPropertiesCached(bucket);
-      return buildObjectLockSummaryLines(properties.object_lock_enabled, properties.object_lock);
+      return buildObjectLockSummaryLines(properties.object_lock_enabled, properties.object_lock, locale);
     }
 
     if (featureKey === "block_public_access") {
       const properties = await getBucketPropertiesCached(bucket);
-      return buildPublicAccessBlockSummaryLines(properties.public_access_block as Record<string, unknown> | null | undefined);
+      return buildPublicAccessBlockSummaryLines(
+        properties.public_access_block as Record<string, unknown> | null | undefined,
+        locale,
+      );
     }
 
     if (featureKey === "lifecycle_rules") {
       const properties = await getBucketPropertiesCached(bucket);
-      return buildLifecycleRuleSummaryLines(properties.lifecycle_rules as unknown[]);
+      return buildLifecycleRuleSummaryLines(properties.lifecycle_rules as unknown[], locale);
     }
 
     if (featureKey === "cors") {
       const properties = await getBucketPropertiesCached(bucket);
       const inlineRules = Array.isArray(properties.cors_rules) ? properties.cors_rules : null;
-      if (inlineRules) return buildCorsRuleSummaryLines(inlineRules);
+      if (inlineRules) return buildCorsRuleSummaryLines(inlineRules, locale);
       const cors = await getBucketCors(accountId, bucket.name);
-      return buildCorsRuleSummaryLines(cors.rules);
+      return buildCorsRuleSummaryLines(cors.rules, locale);
     }
 
     if (featureKey === "static_website") {
       const website = await getBucketWebsite(accountId, bucket.name);
-      return buildWebsiteSummaryLines(website as Record<string, unknown>);
+      return buildWebsiteSummaryLines(website as Record<string, unknown>, locale);
     }
 
     if (featureKey === "bucket_policy") {
       const policy = await getBucketPolicy(accountId, bucket.name);
-      return buildBucketPolicySummaryLines(policy.policy);
+      return buildBucketPolicySummaryLines(policy.policy, locale);
     }
 
     if (featureKey === "access_logging") {
       const logging = await getBucketLogging(accountId, bucket.name);
-      return buildLoggingSummaryLines(logging as Record<string, unknown>);
+      return buildLoggingSummaryLines(logging as Record<string, unknown>, locale);
     }
 
     if (featureKey === "notifications") {
       const notifications = await getBucketNotifications(accountId, bucket.name);
-      return buildNotificationSummaryLines(notifications.configuration);
+      return buildNotificationSummaryLines(notifications.configuration, locale);
     }
 
-    return ["No additional details available."];
+    return [t("No additional details available.")];
   };
 
   const loadFeatureTooltip = (bucket: BucketListRow, featureKey: ManagerFeatureKey) => {
@@ -441,7 +459,10 @@ export default function BucketsPage() {
       } catch (err) {
         setFeatureTooltipState((prev) => ({
           ...prev,
-          [key]: { status: "error", message: extractError(err, "Unable to load bucket feature details.") },
+          [key]: {
+            status: "error",
+            message: extractError(err, t("Unable to load bucket feature details.")),
+          },
         }));
       } finally {
         delete featureTooltipInflightRef.current[key];
@@ -457,10 +478,13 @@ export default function BucketsPage() {
     const shown = safeTags.slice(0, maxShown);
     const remaining = safeTags.length - shown.length;
     const tagKey = tagsTooltipCacheKey(bucketName);
-    const tooltip: BucketFeatureTooltipState = { status: "ready", lines: buildBucketTagSummaryLines(safeTags) };
+    const tooltip: BucketFeatureTooltipState = {
+      status: "ready",
+      lines: buildBucketTagSummaryLines(safeTags, locale),
+    };
     return (
       <BucketSummaryTooltip
-        label="S3 tags"
+        label={t("S3 tags")}
         tooltip={tooltip}
         open={activeTagsTooltipKey === tagKey}
         onOpen={() => setActiveTagsTooltipKey(tagKey)}
@@ -493,8 +517,8 @@ export default function BucketsPage() {
     const tooltipKey = featureTooltipCacheKey(bucket, featureKey);
     return (
       <BucketFeatureSummaryChip
-        label={MANAGER_FEATURE_LABELS[featureKey]}
-        state={status.state}
+        label={t(MANAGER_FEATURE_LABELS[featureKey])}
+        state={managerBucketFeatureState(locale, status.state)}
         tone={status.tone}
         tooltip={featureTooltipState[tooltipKey]}
         open={activeFeatureTooltipKey === tooltipKey}
@@ -542,7 +566,7 @@ export default function BucketsPage() {
         setBuckets(enrichedData);
       } catch (err) {
         if (fetchRequestRef.current !== requestId) return;
-        setError(extractError(err, "Unable to update selected bucket details."));
+        setError(extractError(err, t("Unable to update selected bucket details.")));
       } finally {
         if (fetchRequestRef.current === requestId) {
           setEnrichingColumns(false);
@@ -550,7 +574,7 @@ export default function BucketsPage() {
       }
     } catch (err) {
       if (fetchRequestRef.current !== requestId || controller.signal.aborted) return;
-      setError(extractError(err, "Unable to load buckets from the storage endpoint."));
+      setError(extractError(err, t("Unable to load buckets from the storage endpoint.")));
       setBaseLoadFailed(true);
       setDataStale(true);
       setEnrichingColumns(false);
@@ -559,7 +583,7 @@ export default function BucketsPage() {
         setLoading(false);
       }
     }
-  }, [includeParams, requiresStats]);
+  }, [includeParams, requiresStats, t]);
 
   useEffect(() => {
     fetchAbortRef.current?.abort();
@@ -593,7 +617,7 @@ export default function BucketsPage() {
     bucketPropertiesCacheRef.current = {};
     bucketPropertiesInflightRef.current = {};
     setActiveTagsTooltipKey(null);
-  }, [accountIdForApi]);
+  }, [accountIdForApi, locale]);
 
   useEffect(() => {
     persistVisibleColumns(visibleColumns);
@@ -643,7 +667,7 @@ export default function BucketsPage() {
     locationConstraint?: string
   ): Promise<{ created: boolean }> => {
     if (needsS3AccountSelection) {
-      setActionError("Select an account before creating a bucket.");
+      setActionError(t("Select an account before creating a bucket."));
       return { created: false };
     }
     setCreating(true);
@@ -654,11 +678,11 @@ export default function BucketsPage() {
         versioning,
         locationConstraint,
       });
-      setActionMessage("Bucket created");
+      setActionMessage(t("Bucket created"));
       await fetchBuckets(accountIdForApi ?? null);
       return { created: true };
     } catch (err) {
-      setActionError(extractError(err, "Unable to create the bucket."));
+      setActionError(extractError(err, t("Unable to create the bucket.")));
       return { created: false };
     } finally {
       setCreating(false);
@@ -668,12 +692,12 @@ export default function BucketsPage() {
   const handleCreate = async (event: FormEvent) => {
     event.preventDefault();
     if (needsS3AccountSelection) {
-      setActionError("Select an account before creating a bucket.");
+      setActionError(t("Select an account before creating a bucket."));
       return;
     }
     const normalizedBucketName = normalizeS3BucketName(bucketForm.name);
     if (!normalizedBucketName) {
-      setActionError("Bucket name is required.");
+      setActionError(t("Bucket name is required."));
       return;
     }
     if (!isValidS3BucketName(normalizedBucketName)) {
@@ -702,9 +726,7 @@ export default function BucketsPage() {
         return;
       }
       setActionMessage(null);
-      setActionError(
-        `Bucket '${name}' is not empty (${formatObjectCountLabel(objectCount ?? 0)}). Empty it before deleting, or enable bucket purge access to delete it from Manager.`
-      );
+      setActionError(managerBucketDeleteNotEmptyMessage(locale, name, objectCount ?? 0));
       return;
     }
     setActionError(null);
@@ -720,15 +742,15 @@ export default function BucketsPage() {
     setActionMessage(null);
     try {
       await deleteBucket(name, accountIdForApi);
-      setActionMessage("Bucket deleted");
+      setActionMessage(t("Bucket deleted"));
       await fetchBuckets(accountIdForApi ?? null);
       return;
     } catch (err) {
-      const msg = extractError(err, `Unable to delete bucket '${name}'.`);
+      const msg = extractError(err, managerBucketDeleteFallback(locale, name));
       const notEmpty = msg.toLowerCase().includes("not empty");
       const conflict = isApiError(err) && err.response?.status === 409;
       if (notEmpty || conflict) {
-        setActionError(`Bucket '${name}' is not empty. Empty it before deleting.`);
+        setActionError(managerBucketDeleteConflict(locale, name));
         return;
       }
       setActionError(msg);
@@ -741,9 +763,8 @@ export default function BucketsPage() {
   const handleDeleteWithPurgeFinished = async (result: { bucket_deleted?: boolean; deleted_objects?: number; deleted_versions?: number }) => {
     if (!result.bucket_deleted) return;
     const deletedEntries = (result.deleted_objects ?? 0) + (result.deleted_versions ?? 0);
-    const entryLabel = deletedEntries === 1 ? "entry" : "entries";
     setActionError(null);
-    setActionMessage(`Bucket deleted after removing ${deletedEntries.toLocaleString()} ${entryLabel}.`);
+    setActionMessage(managerBucketPurgeFinishedMessage(locale, deletedEntries));
     await fetchBuckets(accountIdForApi ?? null);
   };
 
@@ -751,7 +772,7 @@ export default function BucketsPage() {
     const cols: ColumnDef[] = [
       {
         id: "name",
-        label: "Name",
+        label: t("Name"),
         field: "name",
         primary: true,
         mobileRole: "primary",
@@ -763,7 +784,7 @@ export default function BucketsPage() {
     if (visible.has("used_bytes")) {
       cols.push({
         id: "used_bytes",
-        label: "Used",
+        label: t("Used"),
         field: "used_bytes",
         render: (bucket) => formatBytes(bucket.used_bytes),
       });
@@ -771,7 +792,7 @@ export default function BucketsPage() {
     if (quotaFeatureEnabled && visible.has("quota_max_size_bytes")) {
       cols.push({
         id: "quota_max_size_bytes",
-        label: "Quota",
+        label: t("Quota"),
         field: "quota_max_size_bytes",
         render: (bucket) => <QuotaBar usedBytes={bucket.used_bytes} quotaBytes={bucket.quota_max_size_bytes ?? null} />,
       });
@@ -779,7 +800,7 @@ export default function BucketsPage() {
     if (visible.has("object_count")) {
       cols.push({
         id: "object_count",
-        label: "Objects",
+        label: t("Objects"),
         field: "object_count",
         render: (bucket) => formatNumber(bucket.object_count),
       });
@@ -787,7 +808,7 @@ export default function BucketsPage() {
     if (quotaFeatureEnabled && visible.has("quota_max_objects")) {
       cols.push({
         id: "quota_max_objects",
-        label: "Object quota",
+        label: t("Object quota"),
         field: "quota_max_objects",
         render: (bucket) => <QuotaObjectsBar usedObjects={bucket.object_count} quotaObjects={bucket.quota_max_objects ?? null} />,
       });
@@ -795,15 +816,19 @@ export default function BucketsPage() {
     if (visible.has("creation_date")) {
       cols.push({
         id: "creation_date",
-        label: "Created on",
+        label: t("Created on"),
         field: null,
-        render: (bucket) => (bucket.creation_date ? new Date(bucket.creation_date).toLocaleDateString() : "-"),
+        render: (bucket) => (
+          bucket.creation_date
+            ? new Date(bucket.creation_date).toLocaleDateString(locale === "zh" ? "zh-CN" : undefined)
+            : "-"
+        ),
       });
     }
     if (visible.has("tags")) {
       cols.push({
         id: "tags",
-        label: "Tags",
+        label: t("Tags"),
         field: null,
         render: (bucket) => renderTagList(bucket.tags, bucket.name),
       });
@@ -822,14 +847,14 @@ export default function BucketsPage() {
     if (quotaFeatureEnabled && visible.has("quota_status")) {
       cols.push({
         id: "quota_status",
-        label: "Quota status",
+        label: t("Quota status"),
         field: null,
         render: (bucket) => (
           <PropertySummaryChip
             compact
-            state={quotaConfigured(bucket) ? "Configured" : "Not set"}
+            state={quotaConfigured(bucket) ? t("Configured") : t("Not set")}
             tone={quotaConfigured(bucket) ? "active" : "inactive"}
-            title={`Quota: ${quotaConfigured(bucket) ? "Configured" : "Not set"}`}
+            title={`${t("Quota")}: ${quotaConfigured(bucket) ? t("Configured") : t("Not set")}`}
           />
         ),
       });
@@ -837,7 +862,7 @@ export default function BucketsPage() {
 
     cols.push({
       id: "actions",
-      label: "Actions",
+      label: t("Actions"),
       field: null,
       align: "right",
       headerClassName: "min-w-[13rem]",
@@ -848,16 +873,16 @@ export default function BucketsPage() {
         const containsObjects = (objectCount ?? 0) > 0;
         const deleteDisabledReason =
           containsObjects && !canDeleteBucketWithPurge
-            ? "Bucket is not empty. Empty it first, or enable bucket purge access to delete it from Manager."
+            ? t("Bucket is not empty. Empty it first, or enable bucket purge access to delete it from Manager.")
             : null;
-        const deleteLabel = containsObjects && canDeleteBucketWithPurge ? "Purge and Delete" : "Delete";
+        const deleteLabel = containsObjects && canDeleteBucketWithPurge ? t("Purge and Delete") : t("Delete");
         const deleteButton = (
           <ListActionButton
             onClick={() => requestDelete(bucket.name)}
              variant="danger" className={`whitespace-nowrap`}
             disabled={deletingBucket === bucket.name || Boolean(deleteDisabledReason)}
           >
-            {deletingBucket === bucket.name ? "Deleting..." : deleteLabel}
+            {deletingBucket === bucket.name ? t("Deleting...") : deleteLabel}
           </ListActionButton>
         );
         return (
@@ -867,7 +892,7 @@ export default function BucketsPage() {
                className={`whitespace-nowrap`}
               {...dataTableDefaultActionProps}
             >
-              Configure
+              {t("Configure")}
             </ListActionLink>
             {deleteDisabledReason ? <span title={deleteDisabledReason}>{deleteButton}</span> : deleteButton}
           </ListActions>
@@ -877,7 +902,7 @@ export default function BucketsPage() {
 
     return cols;
   })();
-  const stepTitles = ["General", "Protection"];
+  const stepTitles = [t("General"), t("Protection")];
   const isBucketNameValid = !bucketForm.name || isValidS3BucketName(bucketForm.name);
   const wizardCurrentSignature = useMemo(
     () => stableSignature({ bucketForm, useCustomLocationConstraint }),
@@ -894,6 +919,11 @@ export default function BucketsPage() {
     hasUnsavedChanges: showWizard && wizardCurrentSignature !== wizardInitialSignature,
     onClose: closeWizard,
     disabled: creating,
+    title: t("Discard changes?"),
+    description: t("You have unapplied changes. Closing this dialog will discard them."),
+    cancelLabel: t("Keep editing"),
+    confirmLabel: t("Discard changes"),
+    closeLabel: t("Close"),
   });
   const tableStatus = resolveListTableStatus({
     loading,
@@ -913,12 +943,13 @@ export default function BucketsPage() {
   return (
     <div className={workflowPageHostClass(Boolean(showWizard || pendingDeleteWithPurgeBucketName))}>
       <PageHeader actionPresentation="listing"
-        title="Buckets"
-        description="Bucket inventory and configuration for the active manager context."
-        breadcrumbs={managerPageBreadcrumbs("buckets")}
+        title={t("Buckets")}
+        description={t("Bucket inventory and configuration for the active manager context.")}
+        breadcrumbs={localizedManagerPageBreadcrumbs("buckets", locale)}
+        breadcrumbLabel={t("Breadcrumb")}
         actions={[
           {
-            label: "Create bucket",
+            label: t("Create bucket"),
             onClick: openAdvancedModal,
             disabled: baseLoadFailed || (loading && buckets.length === 0),
           },
@@ -929,16 +960,20 @@ export default function BucketsPage() {
         <PageBanner tone={buckets.length > 0 || !baseLoadFailed ? "warning" : "error"}>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <span>
-              {buckets.length > 0 && dataStale ? "Showing the last available bucket list. " : ""}
+              {buckets.length > 0 && dataStale ? t("Showing the last available bucket list. ") : ""}
               {error}
-              {lastUpdatedAt ? ` Last updated ${lastUpdatedAt.toLocaleTimeString()}.` : ""}
+              {lastUpdatedAt
+                ? locale === "zh"
+                  ? ` 上次更新时间：${lastUpdatedAt.toLocaleTimeString("zh-CN")}。`
+                  : ` Last updated ${lastUpdatedAt.toLocaleTimeString()}.`
+                : ""}
             </span>
             <button
               type="button"
               onClick={() => fetchBuckets(accountIdForApi ?? null)}
               className="font-semibold underline underline-offset-2"
             >
-              Retry
+              {t("Retry")}
             </button>
           </div>
         </PageBanner>
@@ -948,42 +983,55 @@ export default function BucketsPage() {
 
       {needsS3AccountSelection ? (
         <PageEmptyState
-          title="Select an account before managing buckets"
-          description="The bucket list, quota details, and destructive actions stay disabled until a manager execution context is selected."
-          primaryAction={{ label: "Open dashboard", to: "/manager" }}
-          secondaryAction={{ label: "Open browser", to: "/manager/browser" }}
+          title={t("Select an account before managing buckets")}
+          description={t("The bucket list, quota details, and destructive actions stay disabled until a manager execution context is selected.")}
+          primaryAction={{ label: t("Open dashboard"), to: "/manager" }}
+          secondaryAction={{ label: t("Open browser"), to: "/manager/browser" }}
           tone="warning"
         />
       ) : (
         <ListPageSection
           variant="page"
-          mobileSort={<TableSortControls columns={bucketTableColumns} sort={{ field: sort.field, direction: sort.direction, onSort: toggleSort }} />}
-            title="Buckets"
+          mobileSort={(
+            <TableSortControls
+              columns={bucketTableColumns}
+              sort={{ field: sort.field, direction: sort.direction, onSort: toggleSort }}
+              labels={{
+                sortBy: t("Sort by"),
+                direction: t("Direction"),
+                ascending: t("Ascending"),
+                descending: t("Descending"),
+              }}
+            />
+          )}
+            title={t("Buckets")}
             countLabel={
               buckets.length === 0 && (loading || baseLoadFailed)
-                ? "— buckets"
-                : `${filteredBuckets.length} bucket(s)`
+                ? t("— buckets")
+                : managerBucketCountLabel(locale, filteredBuckets.length)
             }
             search={
               <ManagerToolbarSearch
                 value={filter}
                 onChange={setFilter}
-                placeholder="Search by name"
+                placeholder={t("Search by name")}
                 className="w-full sm:w-64 md:w-72"
               />
             }
             columns={
               <>
                 {enrichingColumns ? (
-                  <span className="ui-caption text-slate-500 dark:text-slate-400">Updating selected columns...</span>
+                  <span className="ui-caption text-slate-500 dark:text-slate-400">
+                    {t("Updating selected columns...")}
+                  </span>
                 ) : null}
                 <ColumnVisibilityMenu
                   selectedCount={visibleColumns.length}
                   onReset={resetColumns}
                   resetDisabled={visibleColumns.length === defaultVisibleColumns.length && defaultVisibleColumns.every((id) => visibleColumns.includes(id))}
                   coreGroups={[
-                    { id: "metrics", label: "Metrics", options: metricColumnOptions },
-                    { id: "features", label: "Features", options: featureColumnOptions },
+                    { id: "metrics", label: t("Metrics"), options: metricColumnOptions },
+                    { id: "features", label: t("Features"), options: featureColumnOptions },
                   ].map((group) => ({
                     ...group,
                     options: group.options.map((option) => ({
@@ -992,7 +1040,7 @@ export default function BucketsPage() {
                       onToggle: () => toggleColumn(option.id),
                     })),
                   }))}
-                  footerNote="Feature checks run only when their column is enabled."
+                  footerNote={t("Feature checks run only when their column is enabled.")}
                 />
               </>
             }
@@ -1006,25 +1054,26 @@ export default function BucketsPage() {
             tableLayout="fixed"
             sort={{ field: sort.field, direction: sort.direction, onSort: toggleSort }}
             status={tableStatus}
-            loadingMessage="Loading buckets..."
-            errorMessage="Unable to load buckets."
-            emptyMessage="No buckets."
+            loadingMessage={t("Loading buckets...")}
+            errorMessage={t("Unable to load buckets.")}
+            emptyMessage={t("No buckets.")}
           />
         </ListPageSection>
       )}
 
       {pendingDeleteBucketName && (
         <ConfirmActionDialog
-          title="Delete bucket"
-          description="This permanently removes the bucket after server-side checks confirm it is empty."
-          confirmLabel="Delete bucket"
+          title={t("Delete bucket")}
+          description={t("This permanently removes the bucket after server-side checks confirm it is empty.")}
+          confirmLabel={t("Delete bucket")}
+          closeLabel={t("Close")}
           details={[
-            { label: "Bucket", value: pendingDeleteBucketName, mono: true },
-            { label: "Context", value: accountLabel },
+            { label: t("Bucket"), value: pendingDeleteBucketName, mono: true },
+            { label: t("Context"), value: accountLabel },
           ]}
           impacts={[
-            "Deletion is irreversible once the bucket is removed.",
-            "The bucket must remain empty until the operation completes.",
+            t("Deletion is irreversible once the bucket is removed."),
+            t("The bucket must remain empty until the operation completes."),
           ]}
           loading={deletingBucket === pendingDeleteBucketName}
           onCancel={() => setPendingDeleteBucketName(null)}
@@ -1045,10 +1094,11 @@ export default function BucketsPage() {
 
       {showWizard && (
         <WorkflowPage
-          title="Create bucket"
-          description="Define the bucket identity and initial protection settings for the active manager context."
-          breadcrumbs={managerPageBreadcrumbs("buckets", { label: "Create" })}
-          backLabel="Back to buckets"
+          title={t("Create bucket")}
+          description={t("Define the bucket identity and initial protection settings for the active manager context.")}
+          breadcrumbs={localizedManagerPageBreadcrumbs("buckets", locale, { label: t("Create") })}
+          breadcrumbLabel={t("Breadcrumb")}
+          backLabel={t("Back to buckets")}
           onBack={wizardCloseGuard.requestClose}
           width="narrow"
         >
@@ -1077,7 +1127,9 @@ export default function BucketsPage() {
             {wizardStep === 0 && (
               <div className="space-y-4">
                 <div className="flex flex-col gap-2">
-                  <label className="ui-body font-medium text-slate-700 dark:text-slate-200">Bucket name</label>
+                  <label className="ui-body font-medium text-slate-700 dark:text-slate-200">
+                    {t("Bucket name")}
+                  </label>
                   <input
                     value={bucketForm.name}
                     onChange={(e) => {
@@ -1091,14 +1143,14 @@ export default function BucketsPage() {
                         ? "border-slate-200 focus:border-primary focus:ring-primary/30 dark:border-slate-700 dark:text-slate-100"
                         : "border-rose-400 text-rose-700 focus:border-rose-500 focus:ring-rose-200 dark:border-rose-500 dark:text-rose-200 dark:focus:ring-rose-900/50"
                     } dark:bg-slate-900`}
-                    placeholder="ex: backups-prod"
+                    placeholder={t("ex: backups-prod")}
                     required
                   />
                   {bucketForm.name && !isBucketNameValid && (
                     <p className="ui-caption font-semibold text-rose-600 dark:text-rose-300">{invalidBucketNameMessage}</p>
                   )}
                   <p className="ui-caption text-slate-500 dark:text-slate-400">
-                    DNS compatible, lowercase, numbers, dots, and hyphens. The selected account will be used.
+                    {t("DNS compatible, lowercase, numbers, dots, and hyphens. The selected account will be used.")}
                   </p>
                 </div>
                 <div className="space-y-2">
@@ -1109,7 +1161,7 @@ export default function BucketsPage() {
                       onChange={(e) => setUseCustomLocationConstraint(e.target.checked)}
                       className={uiCheckboxClass}
                     />
-                    <span>Custom LocationConstraint</span>
+                    <span>{t("Custom LocationConstraint")}</span>
                   </label>
                   {useCustomLocationConstraint && (
                     <div className="flex flex-col gap-2">
@@ -1117,10 +1169,10 @@ export default function BucketsPage() {
                         value={bucketForm.locationConstraint}
                         onChange={(e) => setBucketForm((prev) => ({ ...prev, locationConstraint: e.target.value }))}
                         className="rounded-md border border-slate-200 px-3 py-2 ui-body focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
-                        placeholder="ex: eu-west-1"
+                        placeholder={t("ex: eu-west-1")}
                       />
                       <p className="ui-caption text-slate-500 dark:text-slate-400">
-                        Optional. Empty value uses the endpoint default region/placement.
+                        {t("Optional. Empty value uses the endpoint default region/placement.")}
                       </p>
                     </div>
                   )}
@@ -1132,8 +1184,10 @@ export default function BucketsPage() {
               <div className="space-y-4">
                 <label className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 ui-body text-slate-700 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-100">
                   <span>
-                    Versioning
-                    <span className="block ui-caption text-slate-500 dark:text-slate-400">Enables version retention.</span>
+                    {t("Versioning")}
+                    <span className="block ui-caption text-slate-500 dark:text-slate-400">
+                      {t("Enables version retention.")}
+                    </span>
                   </span>
                   <input
                     type="checkbox"
@@ -1147,7 +1201,7 @@ export default function BucketsPage() {
 
             <div className="flex items-center justify-between">
               <div className="ui-caption text-slate-500 dark:text-slate-400">
-                S3Account: {accountLabel}
+                {t("S3 account")}: {accountLabel}
               </div>
               <div className="flex items-center gap-3">
                 {wizardStep > 0 && (
@@ -1159,7 +1213,7 @@ export default function BucketsPage() {
                     }}
                     className="rounded-md border border-slate-200 px-4 py-2 ui-body font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-100 dark:hover:bg-slate-800"
                   >
-                    Previous
+                    {t("Previous")}
                   </button>
                 )}
                 {wizardStep < stepTitles.length - 1 ? (
@@ -1168,7 +1222,7 @@ export default function BucketsPage() {
                     onClick={(event) => {
                       event.preventDefault();
                       if (!bucketForm.name.trim()) {
-                        setActionError("Bucket name is required.");
+                        setActionError(t("Bucket name is required."));
                         return;
                       }
                       if (!isBucketNameValid) {
@@ -1181,7 +1235,7 @@ export default function BucketsPage() {
                     disabled={!bucketForm.name.trim() || !isBucketNameValid}
                     className={cx(uiButtonBaseClass, uiButtonVariants.primary, "rounded-md px-4 py-2 ui-body")}
                   >
-                    Continue
+                    {t("Continue")}
                   </button>
                 ) : (
                   <button
@@ -1189,7 +1243,7 @@ export default function BucketsPage() {
                     disabled={creating}
                     className={cx(uiButtonBaseClass, uiButtonVariants.primary, "rounded-md px-4 py-2 ui-body")}
                   >
-                    {creating ? "Creating..." : "Create bucket"}
+                    {creating ? t("Creating...") : t("Create bucket")}
                   </button>
                 )}
               </div>
