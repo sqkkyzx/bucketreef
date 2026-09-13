@@ -2,6 +2,8 @@
  * Copyright (c) 2026 Laurent Barbe
  * Licensed under the Apache License, Version 2.0
  */
+import { translate, useI18n } from "../i18n";
+import { infrastructureMessages } from "../infrastructureMessages";
 import type { ReactNode } from "react";
 
 import {
@@ -64,6 +66,7 @@ export function MetricsCard({
   children,
   className,
 }: MetricsCardProps) {
+  const { locale } = useI18n();
   const hasHeader = Boolean(title || eyebrow || description || updatedAt || actions);
   return (
     <section className={cx(uiCardClass, "space-y-5 p-5", className)}>
@@ -73,7 +76,7 @@ export function MetricsCard({
             {eyebrow && <p className="ui-caption font-semibold uppercase tracking-wide text-primary">{eyebrow}</p>}
             <h2 className={cx("ui-section", uiTitleTextClass)}>{title}</h2>
             {description && <p className={cx("ui-body", uiMutedTextClass)}>{description}</p>}
-            {updatedAt && <p className={cx("ui-caption", uiMutedTextClass)}>Updated:&nbsp;{new Date(updatedAt).toLocaleString()}</p>}
+            {updatedAt && <p className={cx("ui-caption", uiMutedTextClass)}>{translate(infrastructureMessages.updatednbsp, locale)}{new Date(updatedAt).toLocaleString()}</p>}
           </div>
           {actions && <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>}
         </header>
@@ -119,9 +122,11 @@ export function MetricsChartPanel({
   children,
   loading,
   hasData = true,
-  emptyMessage = "No usable metrics for this period yet.",
+  emptyMessage: emptyMessageOverride,
   className,
 }: MetricsChartPanelProps) {
+  const { locale } = useI18n();
+  const emptyMessage = emptyMessageOverride ?? translate(infrastructureMessages.noUsableMetricsForThisPeriodYet, locale);
   return (
     <div className={cx("rounded-lg bg-[var(--ui-surface-muted)] p-4", className)}>
       <p className={cx("ui-body", uiTitleTextClass)}>{title}</p>

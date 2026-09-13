@@ -2,6 +2,8 @@
  * Copyright (c) 2025 Laurent Barbe
  * Licensed under the Apache License, Version 2.0
  */
+import { translate, useI18n } from "../i18n";
+import { infrastructureMessages } from "../infrastructureMessages";
 import { MetricsChartPanel, MetricsLegendList } from "./MetricsCard";
 import { formatBytes, formatCompactNumber } from "../utils/format";
 
@@ -29,12 +31,14 @@ export default function UsageBreakdown({
   title,
   subtitle,
   items,
-  emptyMessage = "No data available.",
+  emptyMessage: emptyMessageOverride,
   loading,
   maxItems = 7,
   metric = "bytes",
   objectUnitLabel = "objects",
 }: UsageBreakdownProps) {
+  const { locale } = useI18n();
+  const emptyMessage = emptyMessageOverride ?? translate(infrastructureMessages.noDataAvailable, locale);
   const normalized = (items ?? []).map((item) => ({
     ...item,
     usedBytes: item.usedBytes ?? null,
@@ -67,7 +71,7 @@ export default function UsageBreakdown({
         ...primary,
         {
           id: "others",
-          label: "Others",
+          label: translate(infrastructureMessages.others, locale),
           usedBytes: remainder.usedBytes,
           objectCount: remainder.objectCount,
         },
@@ -140,7 +144,7 @@ export default function UsageBreakdown({
                 ).nodes}
               </svg>
               <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
-                <p className="ui-caption uppercase tracking-wide text-[var(--ui-text-muted)]">Total</p>
+                <p className="ui-caption uppercase tracking-wide text-[var(--ui-text-muted)]">{translate(infrastructureMessages.total, locale)}</p>
                 <p className="ui-subtitle font-semibold text-slate-900 dark:text-white">
                   {formatValue(total)}{" "}
                   {totalSuffix && (

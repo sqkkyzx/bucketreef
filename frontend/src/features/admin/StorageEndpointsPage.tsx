@@ -2,6 +2,9 @@
  * Copyright (c) 2025 Laurent Barbe
  * Licensed under the Apache License, Version 2.0
  */
+import { translate, useI18n } from "../../i18n";
+import type { UiLanguage } from "../../components/language";
+import { infrastructureMessages } from "../../infrastructureMessages";
 import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { cx, uiCheckboxClass } from "../../components/ui/styles";
@@ -22,7 +25,7 @@ import ConfirmActionDialog from "../../components/ConfirmActionDialog";
 import WorkflowPage, { WorkflowActions, WorkflowSection } from "../../components/WorkflowPage";
 import PageHeader from "../../components/PageHeader";
 import PageTabs from "../../components/PageTabs";
-import { adminPageBreadcrumbs } from "./adminBreadcrumbs";
+import { localizedAdminPageBreadcrumbs as adminPageBreadcrumbs } from "./adminBreadcrumbs";
 import PageBanner from "../../components/PageBanner";
 import UiTagBadgeList from "../../components/UiTagBadgeList";
 import UiTagEditor from "../../components/UiTagEditor";
@@ -84,8 +87,8 @@ const CEPH_ADMIN_COMMAND = [
   '  --admin',
 ].join("\n");
 
-function extractError(err: unknown): string {
-  return extractApiError(err, "An error occurred.");
+function extractError(err: unknown, locale: UiLanguage = "en"): string {
+  return extractApiError(err, translate(infrastructureMessages.anErrorOccurred, locale));
 }
 
 function isMethodNotAllowedError(message?: string | null): boolean {
@@ -95,17 +98,19 @@ function isMethodNotAllowedError(message?: string | null): boolean {
 }
 
 function StoredSecretStatus({ label, stored }: { label: string; stored: boolean }) {
+  const { locale } = useI18n();
   return (
     <div className="space-y-1">
       <p className="ui-caption font-semibold text-[var(--ui-text-muted)]">{label}</p>
       <div className="min-h-10 rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface-muted)] px-3 py-2 ui-body text-[var(--ui-text)]">
-        {stored ? "Stored — value hidden" : "Not configured"}
+        {stored ? translate(infrastructureMessages.storedValueHidden, locale) : translate(infrastructureMessages.notConfigured, locale)}
       </div>
     </div>
   );
 }
 
 export default function StorageEndpointsPage() {
+  const { locale } = useI18n();
   const navigate = useNavigate();
   const { endpointId: endpointIdParam } = useParams();
   const { generalSettings } = useGeneralSettings();
@@ -164,10 +169,10 @@ export default function StorageEndpointsPage() {
       setEnvManaged(Boolean(meta.value.managed_by_env));
       setMetadataReady(true);
     }
-    if (data.status === "rejected") setError(extractError(data.reason));
-    else if (meta.status === "rejected") setError(`Unable to load endpoint management mode. Changes are disabled. ${extractError(meta.reason)}`);
+    if (data.status === "rejected") setError(extractError(data.reason, locale));
+    else if (meta.status === "rejected") setError(translate({ en: `Unable to load endpoint management mode. Changes are disabled. ${extractError(meta.reason, locale)}`, zh: `无法加载端点管理模式，已禁用修改。${extractError(meta.reason, locale)}` }, locale));
     setLoading(false);
-  }, []);
+  }, [locale]);
 
   useEffect(() => {
     loadEndpoints();
@@ -259,20 +264,20 @@ export default function StorageEndpointsPage() {
         }
         const errorParts: string[] = [];
         if (hasAdminCredentials && !detection.admin && detection.admin_error) {
-          errorParts.push(`Admin: ${detection.admin_error}`);
+          errorParts.push(`${translate(infrastructureMessages.administration, locale)}: ${detection.admin_error}`);
         }
         if (hasAdminCredentials && !detection.account && detection.account_error) {
           if (isMethodNotAllowedError(detection.account_error)) {
-            warnings.push("Account API is not available on this endpoint (optional capability).");
+            warnings.push(translate(infrastructureMessages.accountAPIIsNotAvailableOnThisEndpointOptionalCapability, locale));
           } else {
-            errorParts.push(`Account API: ${detection.account_error}`);
+            errorParts.push(`${translate(infrastructureMessages.accountAPI, locale)}: ${detection.account_error}`);
           }
         }
         if (hasSupervisionCredentials && !detection.metrics && detection.metrics_error) {
-          errorParts.push(`Metrics: ${detection.metrics_error}`);
+          errorParts.push(`${translate(infrastructureMessages.metrics, locale)}: ${detection.metrics_error}`);
         }
         if (hasSupervisionCredentials && !detection.usage && detection.usage_error) {
-          errorParts.push(`Usage Log: ${detection.usage_error}`);
+          errorParts.push(`${translate(infrastructureMessages.usageLog, locale)}: ${detection.usage_error}`);
         }
         setFeatureDetectWarnings(warnings);
         setFeatureDetectError(errorParts.length > 0 ? errorParts.join(" | ") : null);
@@ -301,7 +306,7 @@ export default function StorageEndpointsPage() {
       } catch (err) {
         if (!cancelled) {
           setFeatureDetectWarnings([]);
-          setFeatureDetectError(extractError(err));
+          setFeatureDetectError(extractError(err, locale));
         }
       } finally {
         if (!cancelled) {
@@ -314,23 +319,7 @@ export default function StorageEndpointsPage() {
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [
-    cephMode,
-    editingId,
-    form.admin_access_key,
-    form.admin_secret_key,
-    form.endpoint_url,
-    form.features.admin.endpoint,
-    form.has_admin_secret,
-    form.has_supervision_secret,
-    form.region,
-    form.verify_tls,
-    form.supervision_access_key,
-    form.supervision_secret_key,
-    showForm,
-    canEditEndpoints,
-    configurationReadOnly,
-  ]);
+  }, [cephMode, editingId, form.admin_access_key, form.admin_secret_key, form.endpoint_url, form.features.admin.endpoint, form.has_admin_secret, form.has_supervision_secret, form.region, form.verify_tls, form.supervision_access_key, form.supervision_secret_key, showForm, canEditEndpoints, configurationReadOnly, locale]);
 
   const awsMode = form.provider === "aws";
   const computedAwsRegion = normalizeAwsRegion(form.region);
@@ -487,10 +476,10 @@ export default function StorageEndpointsPage() {
     try {
       await deleteStorageEndpoint(deleteTarget.id);
       setDeleteTarget(null);
-      setActionMessage("Endpoint deleted.");
+      setActionMessage(translate(infrastructureMessages.endpointDeleted, locale));
       await loadEndpoints();
     } catch (err) {
-      setDeleteError(extractError(err));
+      setDeleteError(extractError(err, locale));
     } finally {
       mutationPending.current = false;
       setDeleteBusy(false);
@@ -505,10 +494,10 @@ export default function StorageEndpointsPage() {
     setDefaultBusyId(endpoint.id);
     try {
       await setDefaultStorageEndpoint(endpoint.id);
-      setActionMessage("Default endpoint updated.");
+      setActionMessage(translate(infrastructureMessages.defaultEndpointUpdated, locale));
       await loadEndpoints();
     } catch (err) {
-      setDefaultError(extractError(err));
+      setDefaultError(extractError(err, locale));
     } finally {
       mutationPending.current = false;
       setDefaultBusyId(null);
@@ -542,18 +531,18 @@ export default function StorageEndpointsPage() {
     const usageMetricsEnabled = constrainedFeatures.usage.enabled || constrainedFeatures.metrics.enabled;
 
     if (!trimmedName) {
-      setFormError("Endpoint name is required.");
+      setFormError(translate(infrastructureMessages.endpointNameIsRequired, locale));
       return null;
     }
     if (!trimmedEndpoint) {
-      setFormError("Endpoint URL is required.");
+      setFormError(translate(infrastructureMessages.endpointURLIsRequired, locale));
       return null;
     }
     try {
-      latitude = parseCoordinateInput(form.latitude, "Latitude", -90, 90);
-      longitude = parseCoordinateInput(form.longitude, "Longitude", -180, 180);
+      latitude = parseCoordinateInput(form.latitude, translate(infrastructureMessages.latitude, locale), -90, 90, locale);
+      longitude = parseCoordinateInput(form.longitude, translate(infrastructureMessages.longitude, locale), -180, 180, locale);
     } catch (err) {
-      setFormError(err instanceof Error ? err.message : "Invalid coordinates.");
+      setFormError(err instanceof Error ? err.message : translate(infrastructureMessages.invalidCoordinates, locale));
       return null;
     }
 
@@ -571,11 +560,11 @@ export default function StorageEndpointsPage() {
 
     if (form.provider === "ceph") {
       if (adminEnabled && !trimmedAdminAccess) {
-        setFormError("Admin access key is required when admin is enabled.");
+        setFormError(translate(infrastructureMessages.adminAccessKeyIsRequiredWhenAdminIsEnabled, locale));
         return null;
       }
       if (usageMetricsEnabled && !trimmedSupervisionAccess) {
-        setFormError("Supervision access key is required when usage log or metrics is enabled.");
+        setFormError(translate(infrastructureMessages.supervisionAccessKeyIsRequiredWhenUsageLogOrMetrics, locale));
         return null;
       }
       if (editingId) {
@@ -608,11 +597,11 @@ export default function StorageEndpointsPage() {
         payload.ceph_admin_access_key = trimmedCephAdminAccess || null;
         payload.ceph_admin_secret_key = trimmedCephAdminSecret || null;
         if (adminEnabled && (!payload.admin_access_key || !payload.admin_secret_key)) {
-          setFormError("Admin credentials are required for a Ceph endpoint.");
+          setFormError(translate(infrastructureMessages.adminCredentialsAreRequiredForACephEndpoint, locale));
           return null;
         }
         if (usageMetricsEnabled && (!payload.supervision_access_key || !payload.supervision_secret_key)) {
-          setFormError("Supervision credentials are required for usage log/metrics on a Ceph endpoint.");
+          setFormError(translate(infrastructureMessages.supervisionCredentialsAreRequiredForUsageLogmetricsOnACeph, locale));
           return null;
         }
       }
@@ -638,7 +627,7 @@ export default function StorageEndpointsPage() {
           await updateStorageEndpoint(editingId, payload);
         }
         await updateStorageEndpointTags(editingId, { tags: normalizedTags });
-        setActionMessage(configurationReadOnly ? "Endpoint tags updated." : "Endpoint updated.");
+        setActionMessage(configurationReadOnly ? translate(infrastructureMessages.endpointTagsUpdated, locale) : translate(infrastructureMessages.endpointUpdated, locale));
       } else {
         if (envManaged) return;
         const payload = buildPayload();
@@ -650,7 +639,7 @@ export default function StorageEndpointsPage() {
         if (normalizedTags.length > 0) {
           await updateStorageEndpointTags(created.id, { tags: normalizedTags });
         }
-        setActionMessage("Endpoint added.");
+        setActionMessage(translate(infrastructureMessages.endpointAdded, locale));
       }
       setShowForm(false);
       resetForm();
@@ -659,7 +648,7 @@ export default function StorageEndpointsPage() {
         navigate("/admin/storage-endpoints");
       }
     } catch (err) {
-      setFormError(extractError(err));
+      setFormError(extractError(err, locale));
     } finally {
       setSaving(false);
     }
@@ -676,19 +665,19 @@ export default function StorageEndpointsPage() {
     form.supervision_access_key.trim() && (form.supervision_secret_key.trim() || form.has_supervision_secret)
   );
   const editorTabs = [
-    { id: "general", label: "Connection" },
-    { id: "credentials", label: "Credentials" },
-    { id: "capabilities", label: "Capabilities & health" },
+    { id: "general", label: translate(infrastructureMessages.connection, locale) },
+    { id: "credentials", label: translate(infrastructureMessages.credentials, locale) },
+    { id: "capabilities", label: translate(infrastructureMessages.capabilitiesHealth, locale) },
   ];
   const signedProbeBlockedReason = !cephMode
-    ? "S3 signed probe is available only for Ceph endpoints."
+    ? translate({ en: "S3 signed probe is available only for Ceph endpoints.", zh: "仅 Ceph 端点支持 S3 签名探针。" }, locale)
     : !hasSupervisionCredentialsForSignedProbe
-    ? "S3 signed probe requires Supervision credentials (access key + secret key)."
+    ? translate({ en: "S3 signed probe requires Supervision credentials (access key + secret key).", zh: "S3 签名探针需要监控凭据（访问密钥和秘密密钥）。" }, locale)
     : null;
-  const editorEndpointName = form.name.trim() || editingEndpoint?.name || "Endpoint";
+  const editorEndpointName = form.name.trim() || editingEndpoint?.name || translate(infrastructureMessages.endpoint, locale);
   const editorTitle = editingId
-    ? `${configurationReadOnly ? "Storage endpoint" : "Edit storage endpoint"} · ${editorEndpointName}`
-    : "New storage endpoint";
+    ? `${configurationReadOnly ? translate(infrastructureMessages.storageEndpoint, locale) : translate(infrastructureMessages.editStorageEndpoint, locale)} · ${editorEndpointName}`
+    : translate(infrastructureMessages.newStorageEndpoint, locale);
   const providerOptionClass = cx(
     "flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 ui-body font-semibold text-slate-700 shadow-sm transition dark:border-slate-700 dark:text-slate-100",
     configurationReadOnly
@@ -712,42 +701,40 @@ export default function StorageEndpointsPage() {
     <div className="space-y-4 ui-caption leading-relaxed">
       {routeEndpointLoading ? (
         <WorkflowPage
-          title="Loading storage endpoint"
-          description="Retrieving endpoint configuration and access mode."
-          breadcrumbs={adminPageBreadcrumbs("storage-endpoints", { label: "Loading" })}
+          title={translate(infrastructureMessages.loadingStorageEndpoint, locale)}
+          description={translate(infrastructureMessages.retrievingEndpointConfigurationAndAccessMode, locale)}
+          breadcrumbs={adminPageBreadcrumbs("storage-endpoints", locale, { label: translate(infrastructureMessages.loadingText, locale) })}
           width="narrow"
         >
-          <PageBanner tone="info">Loading endpoint configuration...</PageBanner>
+          <PageBanner tone="info">{translate(infrastructureMessages.loadingEndpointConfiguration, locale)}</PageBanner>
         </WorkflowPage>
       ) : routeEndpointMissing ? (
         <WorkflowPage
-          title="Storage endpoint not found"
-          description="The requested endpoint does not exist or is no longer available."
-          breadcrumbs={adminPageBreadcrumbs("storage-endpoints", { label: "Not found" })}
-          backLabel="Back to endpoints"
+          title={translate(infrastructureMessages.storageEndpointNotFound, locale)}
+          description={translate(infrastructureMessages.theRequestedEndpointDoesNotExistOrIsNoLonger, locale)}
+          breadcrumbs={adminPageBreadcrumbs("storage-endpoints", locale, { label: translate(infrastructureMessages.notFound, locale) })}
+          backLabel={translate(infrastructureMessages.backToEndpoints, locale)}
           onBack={() => navigate("/admin/storage-endpoints")}
           width="narrow"
         >
-          <PageBanner tone="warning">Select an endpoint from the current storage endpoint list.</PageBanner>
+          <PageBanner tone="warning">{translate(infrastructureMessages.selectAnEndpointFromTheCurrentStorageEndpointList, locale)}</PageBanner>
         </WorkflowPage>
       ) : !showForm ? (
         <>
       <PageHeader
-        title="S3 Endpoints"
-        description="Manage the S3/Ceph endpoints used by the console."
-        breadcrumbs={adminPageBreadcrumbs("storage-endpoints")}
-        rightContent={metadataReady && !loading && !envManaged && canEditEndpoints ? <ListActionButton variant="primary" onClick={startCreate}>New endpoint</ListActionButton> : undefined}
+        title={translate(infrastructureMessages.s3Endpoints, locale)}
+        description={translate(infrastructureMessages.manageTheS3CephEndpointsUsedByTheConsole, locale)}
+        breadcrumbs={adminPageBreadcrumbs("storage-endpoints", locale)}
+        rightContent={metadataReady && !loading && !envManaged && canEditEndpoints ? <ListActionButton variant="primary" onClick={startCreate}>{translate(infrastructureMessages.newEndpoint, locale)}</ListActionButton> : undefined}
       />
 
       {envManaged && (
         <PageBanner tone="info">
-          Storage endpoints are managed by environment variables (ENV_STORAGE_ENDPOINTS). Configuration changes are disabled.
-        </PageBanner>
+          {translate(infrastructureMessages.storageEndpointsAreManagedByEnvironmentVariablesENVSTORAGEENDPOINTSConfigurationChanges, locale)}</PageBanner>
       )}
       {!envManaged && !canEditEndpoints && (
         <PageBanner tone="info">
-          Endpoint editing is restricted to superadmin users. You currently have read-only access.
-        </PageBanner>
+          {translate(infrastructureMessages.endpointEditingIsRestrictedToSuperadminUsersYouCurrentlyHave, locale)}</PageBanner>
       )}
       {defaultError && <PageBanner tone="error">{defaultError}</PageBanner>}
       {actionMessage && <PageBanner tone="success">{actionMessage}</PageBanner>}
@@ -763,11 +750,11 @@ export default function StorageEndpointsPage() {
       {showForm && (
         <WorkflowPage
           title={editorTitle}
-          description="Manage connection settings, operational credentials, capabilities, and health checks for this endpoint."
-          breadcrumbs={adminPageBreadcrumbs("storage-endpoints", {
-            label: editingId ? editingEndpoint?.name ?? "Endpoint" : "Create",
+          description={translate(infrastructureMessages.manageConnectionSettingsOperationalCredentialsCapabilitiesAndHealthChecksFor, locale)}
+          breadcrumbs={adminPageBreadcrumbs("storage-endpoints", locale, {
+            label: editingId ? editingEndpoint?.name ?? translate(infrastructureMessages.endpoint, locale) : translate(infrastructureMessages.create, locale),
           })}
-          backLabel="Back to endpoints"
+          backLabel={translate(infrastructureMessages.backToEndpoints, locale)}
           onBack={formCloseGuard.requestClose}
           contentVariant="plain"
           width="wide"
@@ -776,10 +763,10 @@ export default function StorageEndpointsPage() {
             {formError && <PageBanner tone="error">{formError}</PageBanner>}
             {configurationReadOnly && (
               <PageBanner tone="info">
-                Endpoint configuration is read-only. {!metadataReady
-                  ? "Management mode is unavailable. Return to endpoints and retry before making changes."
-                  : canEditEndpoints ? "You can still update the tags associated with this endpoint."
-                    : "All settings and tags are available for consultation only."}
+                {translate(infrastructureMessages.endpointConfigurationIsReadonly, locale)}{!metadataReady
+                  ? translate(infrastructureMessages.managementModeIsUnavailableReturnToEndpointsAndRetryBefore, locale)
+                  : canEditEndpoints ? translate(infrastructureMessages.youCanStillUpdateTheTagsAssociatedWithThisEndpoint, locale)
+                    : translate(infrastructureMessages.allSettingsAndTagsAreAvailableForConsultationOnly, locale)}
               </PageBanner>
             )}
             {endpointTagCatalogError && <PageBanner tone="warning">{endpointTagCatalogError}</PageBanner>}
@@ -788,7 +775,7 @@ export default function StorageEndpointsPage() {
               activeTab={activeTab}
               onChange={(tab) => setActiveTab(tab as EndpointEditorTab)}
               variant="line"
-              ariaLabel="Endpoint configuration sections"
+              ariaLabel={translate(infrastructureMessages.endpointConfigurationSections, locale)}
               idPrefix="endpoint-editor"
             />
 
@@ -799,12 +786,12 @@ export default function StorageEndpointsPage() {
                 aria-labelledby="endpoint-editor-tab-general"
               >
                 <WorkflowSection
-                  title="Identity and connection"
-                  description="Name the backend, identify its provider and define how BucketReef reaches it."
+                  title={translate(infrastructureMessages.identityAndConnection, locale)}
+                  description={translate(infrastructureMessages.nameTheBackendIdentifyItsProviderAndDefineHowBucketReef, locale)}
                 >
                   <div className="grid gap-4 sm:grid-cols-2">
                     <UiInput
-                      label="Endpoint name"
+                      label={translate(infrastructureMessages.endpointName, locale)}
                       value={form.name}
                       onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
                       className={endpointReadOnlyInputClass}
@@ -813,21 +800,21 @@ export default function StorageEndpointsPage() {
                     />
 
                     <div>
-                      <p className="mb-1 ui-caption font-semibold text-[var(--ui-text-muted)]">Endpoint tags</p>
+                      <p className="mb-1 ui-caption font-semibold text-[var(--ui-text-muted)]">{translate(infrastructureMessages.endpointTags, locale)}</p>
                       {canEditEndpoints ? (
                         <UiTagEditor
-                          label="Endpoint tags"
+                          label={translate(infrastructureMessages.endpointTags, locale)}
                           tags={form.tags}
                           catalog={endpointTagCatalog}
                           onChange={(tags) => setForm((prev) => ({ ...prev, tags }))}
-                          placeholder="Add a tag for this endpoint"
-                          hint={endpointTagCatalogLoading ? "Loading existing endpoint tags..." : undefined}
+                          placeholder={translate(infrastructureMessages.addATagForThisEndpoint, locale)}
+                          hint={endpointTagCatalogLoading ? translate(infrastructureMessages.loadingExistingEndpointTags, locale) : undefined}
                           hideLabel
                           compact
                         />
                       ) : (
                         <div className="min-h-10 rounded-lg border border-[color:var(--ui-border)] bg-[var(--ui-surface-muted)] px-3 py-2">
-                          <UiTagBadgeList items={buildUiTagItems(form.tags)} emptyLabel="No tags" />
+                          <UiTagBadgeList items={buildUiTagItems(form.tags)} emptyLabel={translate(infrastructureMessages.noTags, locale)} />
                         </div>
                       )}
                     </div>
@@ -835,7 +822,7 @@ export default function StorageEndpointsPage() {
 
                   <div className="space-y-4">
             <div className="space-y-2">
-              <span className="ui-body font-semibold text-slate-700 dark:text-slate-100">Provider</span>
+              <span className="ui-body font-semibold text-slate-700 dark:text-slate-100">{translate(infrastructureMessages.provider, locale)}</span>
               <div className="flex gap-3">
                 <label className={providerOptionClass}>
                   <input
@@ -868,14 +855,14 @@ export default function StorageEndpointsPage() {
                     onChange={() => handleProviderChange("other")}
                     disabled={configurationReadOnly}
                   />
-                  <span>Other</span>
+                  <span>{translate(infrastructureMessages.other, locale)}</span>
                 </label>
               </div>
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
               <UiInput
-                label="S3 endpoint URL"
+                label={translate({ en: "S3 endpoint URL", zh: "S3 端点 URL" }, locale)}
                 value={awsMode ? computedAwsS3Endpoint : form.endpoint_url}
                 onChange={(e) => {
                   if (!awsMode) {
@@ -888,7 +875,7 @@ export default function StorageEndpointsPage() {
                 required
               />
               <UiInput
-                label="Region (optional)"
+                label={translate(infrastructureMessages.regionOptional, locale)}
                 value={form.region}
                 onChange={(e) => handleRegionChange(e.target.value)}
                 className={endpointReadOnlyInputClass}
@@ -896,7 +883,7 @@ export default function StorageEndpointsPage() {
                 placeholder="us-east-1"
               />
               <UiInput
-                label="Latitude (optional)"
+                label={translate(infrastructureMessages.latitudeOptional, locale)}
                 type="number"
                 value={form.latitude}
                 onChange={(e) => setForm((prev) => ({ ...prev, latitude: e.target.value }))}
@@ -908,7 +895,7 @@ export default function StorageEndpointsPage() {
                 step="any"
               />
               <UiInput
-                label="Longitude (optional)"
+                label={translate(infrastructureMessages.longitudeOptional, locale)}
                 type="number"
                 value={form.longitude}
                 onChange={(e) => setForm((prev) => ({ ...prev, longitude: e.target.value }))}
@@ -923,8 +910,7 @@ export default function StorageEndpointsPage() {
 
             <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-700 dark:bg-slate-800/60">
               <label className="flex items-center justify-between gap-4 ui-body font-semibold text-slate-700 dark:text-slate-100">
-                Force path style
-                <input
+                {translate(infrastructureMessages.forcePathStyle, locale)}<input
                   type="checkbox"
                   checked={form.force_path_style}
                   onChange={(e) => setForm((prev) => ({ ...prev, force_path_style: e.target.checked }))}
@@ -936,8 +922,7 @@ export default function StorageEndpointsPage() {
 
             <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-700 dark:bg-slate-800/60">
               <label className="flex items-center justify-between gap-4 ui-body font-semibold text-slate-700 dark:text-slate-100">
-                Insecure SSL (skip certificate validation)
-                <input
+                {translate(infrastructureMessages.insecureSSLSkipCertificateValidation, locale)}<input
                   type="checkbox"
                   checked={!form.verify_tls}
                   onChange={(e) => setForm((prev) => ({ ...prev, verify_tls: !e.target.checked }))}
@@ -947,8 +932,7 @@ export default function StorageEndpointsPage() {
               </label>
               {!form.verify_tls && (
                 <p className="mt-2 ui-caption text-amber-700 dark:text-amber-300">
-                  TLS certificate validation is disabled for this endpoint. Use only in trusted environments.
-                </p>
+                  {translate(infrastructureMessages.tLSCertificateValidationIsDisabledForThisEndpointUseOnly, locale)}</p>
               )}
             </div>
 
@@ -964,105 +948,97 @@ export default function StorageEndpointsPage() {
                 aria-labelledby="endpoint-editor-tab-credentials"
               >
                 <WorkflowSection
-                  title="Operational credentials"
-                  description="Keep administrative, monitoring and cluster-wide identities isolated by purpose."
+                  title={translate(infrastructureMessages.operationalCredentials, locale)}
+                  description={translate(infrastructureMessages.keepAdministrativeMonitoringAndClusterwideIdentitiesIsolatedByPurpose, locale)}
                 >
                   <div className="space-y-4">
             {cephMode ? (
               <div className="space-y-4">
                 <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 ui-body text-slate-700 shadow-sm dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-100">
-                  <p className="ui-caption font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Management</p>
+                  <p className="ui-caption font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{translate(infrastructureMessages.management, locale)}</p>
                   <div className="mt-3 grid gap-4 sm:grid-cols-2">
                     <div className="space-y-1 ui-body font-semibold text-slate-700 dark:text-slate-100">
-                      <p>Administration (Admin Ops)</p>
+                      <p>{translate(infrastructureMessages.administrationAdminOps, locale)}</p>
                       <div className="grid gap-3">
                         <UiInput
-                          label="Admin access key"
+                          label={translate(infrastructureMessages.adminAccessKey, locale)}
                           value={form.admin_access_key}
                           onChange={(e) => setForm((prev) => ({ ...prev, admin_access_key: e.target.value }))}
                           className={endpointReadOnlyInputClass}
                           readOnly={configurationReadOnly}
-                          placeholder="Access key admin"
+                          placeholder={translate(infrastructureMessages.accessKeyAdmin, locale)}
                           required={form.features.admin.enabled}
                         />
                         {configurationReadOnly ? (
-                          <StoredSecretStatus label="Admin secret key" stored={form.has_admin_secret} />
+                          <StoredSecretStatus label={translate(infrastructureMessages.adminSecretKey, locale)} stored={form.has_admin_secret} />
                         ) : (
                           <UiInput
-                            label="Admin secret key"
+                            label={translate(infrastructureMessages.adminSecretKey, locale)}
                             type="password"
                             value={form.admin_secret_key}
                             onChange={(e) => setForm((prev) => ({ ...prev, admin_secret_key: e.target.value }))}
-                            placeholder={editingId ? "Secret key admin (leave blank to keep)" : "Secret key admin"}
+                            placeholder={editingId ? translate(infrastructureMessages.secretKeyAdminLeaveBlankToKeep, locale) : translate(infrastructureMessages.secretKeyAdmin, locale)}
                             required={!editingId && form.features.admin.enabled}
                           />
                         )}
                       </div>
                       {!configurationReadOnly && <p className="ui-caption font-normal text-slate-500 dark:text-slate-400">
-                        {editingId ? "Leave the secret key empty to keep the current one." : "Required when admin is enabled."}
+                        {editingId ? translate(infrastructureMessages.leaveTheSecretKeyEmptyToKeepTheCurrentOne, locale) : translate(infrastructureMessages.requiredWhenAdminIsEnabled, locale)}
                       </p>}
                     </div>
                     <div className="space-y-1 ui-body font-semibold text-slate-700 dark:text-slate-100">
-                      <p>Monitoring (Supervision Ops)</p>
+                      <p>{translate(infrastructureMessages.monitoringSupervisionOps, locale)}</p>
                       <div className="grid gap-3">
                         <UiInput
-                          label="Supervision access key"
+                          label={translate(infrastructureMessages.supervisionAccessKey, locale)}
                           value={form.supervision_access_key}
                           onChange={(e) => setForm((prev) => ({ ...prev, supervision_access_key: e.target.value }))}
                           className={endpointReadOnlyInputClass}
                           readOnly={configurationReadOnly}
-                          placeholder="Access key supervision"
+                          placeholder={translate(infrastructureMessages.accessKeySupervision, locale)}
                           required={form.features.usage.enabled || form.features.metrics.enabled}
                         />
                         {configurationReadOnly ? (
-                          <StoredSecretStatus label="Supervision secret key" stored={form.has_supervision_secret} />
+                          <StoredSecretStatus label={translate(infrastructureMessages.supervisionSecretKey, locale)} stored={form.has_supervision_secret} />
                         ) : (
                           <UiInput
-                            label="Supervision secret key"
+                            label={translate(infrastructureMessages.supervisionSecretKey, locale)}
                             type="password"
                             value={form.supervision_secret_key}
                             onChange={(e) => setForm((prev) => ({ ...prev, supervision_secret_key: e.target.value }))}
-                            placeholder="Secret key supervision"
+                            placeholder={translate(infrastructureMessages.secretKeySupervision, locale)}
                             required={!editingId && (form.features.usage.enabled || form.features.metrics.enabled)}
                           />
                         )}
                       </div>
                       <p className="ui-caption font-normal text-slate-500 dark:text-slate-400">
-                        Use these keys for read-only monitoring actions.
-                      </p>
+                        {translate(infrastructureMessages.useTheseKeysForReadonlyMonitoringActions, locale)}</p>
                     </div>
                   </div>
                 </div>
                 <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 ui-caption text-slate-600 shadow-sm dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
                   <div className="flex items-center justify-between gap-2">
                     <p className="ui-body font-semibold text-slate-700 dark:text-slate-100">
-                      What are Admin Ops and Supervision Ops?
-                    </p>
+                      {translate(infrastructureMessages.whatAreAdminOpsAndSupervisionOps, locale)}</p>
                     <UiButton
                       size="xs"
                       variant="secondary"
                       onClick={() => setShowOpsHelp((prev) => !prev)}
                       aria-expanded={showOpsHelp}
                     >
-                      {showOpsHelp ? "Hide" : "Show"}
+                      {showOpsHelp ? translate(infrastructureMessages.hide, locale) : translate(infrastructureMessages.show, locale)}
                     </UiButton>
                   </div>
                   {showOpsHelp && (
                     <>
                       <p className="mt-2">
-                        <span className="font-semibold">Admin Ops</span> keys let BucketReef create RGW accounts and S3 users, and apply
-                        explicitly delegated Manager bucket quota changes. Individual bucket quota changes require the
-                        <code> buckets=write</code> capability included in the example below. If you do not provide Admin Ops keys, you must
-                        create accounts/users outside of BucketReef and import them manually (or via the API).
-                      </p>
+                        <span className="font-semibold">{translate(infrastructureMessages.adminOps, locale)}</span> {translate(infrastructureMessages.keysLetBucketReefCreateRGWAccountsAndS3UsersAnd, locale)}<code> buckets=write</code> {translate(infrastructureMessages.capabilityIncludedInTheExampleBelowIfYouDoNot, locale)}</p>
                       <p className="mt-2">
-                        <span className="font-semibold">Supervision Ops</span> keys are read-only credentials used for usage logs and metrics
-                        collection.
-                      </p>
-                      <p className="mt-3 font-semibold text-slate-700 dark:text-slate-100">Ceph (radosgw-admin) examples</p>
+                        <span className="font-semibold">Supervision Ops</span> {translate(infrastructureMessages.keysAreReadonlyCredentialsUsedForUsageLogsAndMetrics, locale)}</p>
+                      <p className="mt-3 font-semibold text-slate-700 dark:text-slate-100">{translate(infrastructureMessages.cephRadosgwadminExamples, locale)}</p>
                       <div className="mt-2 space-y-3">
                         <div>
-                          <p className="mb-1 font-semibold text-slate-600 dark:text-slate-300">Admin Ops</p>
+                          <p className="mb-1 font-semibold text-slate-600 dark:text-slate-300">{translate(infrastructureMessages.adminOps, locale)}</p>
                           <pre className="overflow-x-auto whitespace-pre rounded-lg bg-slate-900 px-3 py-2 text-xs text-slate-100">
                             {ADMIN_OPS_COMMAND}
                           </pre>
@@ -1079,45 +1055,41 @@ export default function StorageEndpointsPage() {
                 </div>
                 {cephAdminConfigEnabled && (
                   <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 ui-caption text-amber-900 shadow-sm dark:border-amber-900/40 dark:bg-amber-950/60 dark:text-amber-100">
-                    <p className="ui-body font-semibold">Ceph Admin dedicated credentials</p>
+                    <p className="ui-body font-semibold">{translate(infrastructureMessages.cephAdminDedicatedCredentials, locale)}</p>
                     <p className="mt-2">
-                      These credentials are used only by the <code>/ceph-admin</code> workspace (advanced
-                      cluster-wide operations). They are isolated from Admin Ops credentials.
-                    </p>
+                      {translate(infrastructureMessages.theseCredentialsAreUsedOnlyByThe, locale)}<code>/ceph-admin</code> {translate(infrastructureMessages.workspaceAdvancedClusterwideOperationsTheyAreIsolatedFromAdminOps, locale)}</p>
                     <p className="mt-1 ui-caption opacity-80">
-                      Note: access to <code>/ceph-admin</code> uses these dedicated credentials and does not depend on the
-                      <code> admin.enabled</code> endpoint feature flag.
-                    </p>
+                      {translate(infrastructureMessages.noteAccessTo, locale)}<code>/ceph-admin</code> {translate(infrastructureMessages.usesTheseDedicatedCredentialsAndDoesNotDependOnThe, locale)}<code> admin.enabled</code> {translate(infrastructureMessages.endpointFeatureFlag, locale)}</p>
                     <div className="mt-3 grid gap-3 sm:grid-cols-2">
                       <UiInput
-                        label="Ceph Admin access key"
+                        label={translate(infrastructureMessages.cephAdminAccessKey, locale)}
                         value={form.ceph_admin_access_key}
                         onChange={(e) => setForm((prev) => ({ ...prev, ceph_admin_access_key: e.target.value }))}
                         className={endpointReadOnlyInputClass}
                         readOnly={configurationReadOnly}
-                        placeholder="Ceph Admin access key"
+                        placeholder={translate(infrastructureMessages.cephAdminAccessKey, locale)}
                       />
                       {configurationReadOnly ? (
                         <StoredSecretStatus
-                          label="Ceph Admin secret key"
+                          label={translate(infrastructureMessages.cephAdminSecretKey, locale)}
                           stored={Boolean(editingEndpoint?.has_ceph_admin_secret)}
                         />
                       ) : (
                         <UiInput
-                          label="Ceph Admin secret key"
+                          label={translate(infrastructureMessages.cephAdminSecretKey, locale)}
                           type="password"
                           value={form.ceph_admin_secret_key}
                           onChange={(e) => setForm((prev) => ({ ...prev, ceph_admin_secret_key: e.target.value }))}
-                          placeholder={editingId ? "Ceph Admin secret key (leave blank to keep)" : "Ceph Admin secret key"}
+                          placeholder={editingId ? translate(infrastructureMessages.cephAdminSecretKeyLeaveBlankToKeep, locale) : translate(infrastructureMessages.cephAdminSecretKey, locale)}
                         />
                       )}
                     </div>
                     {!configurationReadOnly && <p className="mt-2">
                       {editingId
-                        ? "Leave the secret key empty to keep the current one."
-                        : "Recommended: keep this account dedicated to ceph-admin only."}
+                        ? translate(infrastructureMessages.leaveTheSecretKeyEmptyToKeepTheCurrentOne, locale)
+                        : translate(infrastructureMessages.recommendedKeepThisAccountDedicatedToCephadminOnly, locale)}
                     </p>}
-                    <p className="mt-3 font-semibold text-amber-900 dark:text-amber-100">Ceph (radosgw-admin) example</p>
+                    <p className="mt-3 font-semibold text-amber-900 dark:text-amber-100">{translate(infrastructureMessages.cephRadosgwadminExample, locale)}</p>
                     <pre className="mt-2 overflow-x-auto whitespace-pre rounded-lg bg-slate-900 px-3 py-2 text-xs text-slate-100">
                       {CEPH_ADMIN_COMMAND}
                     </pre>
@@ -1127,8 +1099,8 @@ export default function StorageEndpointsPage() {
             ) : (
               <PageBanner tone="info">
                 {form.provider === "aws"
-                  ? "AWS endpoints use the active execution identity and do not require dedicated management credentials here."
-                  : "This provider does not use dedicated operational credentials in BucketReef."}
+                  ? translate(infrastructureMessages.aWSEndpointsUseTheActiveExecutionIdentityAndDoNot, locale)
+                  : translate(infrastructureMessages.thisProviderDoesNotUseDedicatedOperationalCredentialsInBucketReef, locale)}
               </PageBanner>
             )}
                   </div>
@@ -1143,13 +1115,13 @@ export default function StorageEndpointsPage() {
                 aria-labelledby="endpoint-editor-tab-capabilities"
               >
                 <WorkflowSection
-                  title="Capabilities and health"
-                  description="Review detected Ceph services, S3 capabilities and the probe used to monitor this endpoint."
+                  title={translate(infrastructureMessages.capabilitiesAndHealth, locale)}
+                  description={translate(infrastructureMessages.reviewDetectedCephServicesS3CapabilitiesAndTheProbeUsed, locale)}
                 >
                   <div className="space-y-4">
             <div className="space-y-4">
               <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 ui-body text-slate-700 shadow-sm dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100">
-                <p className="ui-caption font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Features</p>
+                <p className="ui-caption font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{translate(infrastructureMessages.features, locale)}</p>
                 <div className="mt-3 space-y-4">
                   {cephMode && (
                     <div className="space-y-3">
@@ -1161,8 +1133,7 @@ export default function StorageEndpointsPage() {
                         <div className="space-y-2">
                           {featureDetectBusy && (
                             <p className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 ui-caption text-blue-900 dark:border-blue-900/40 dark:bg-blue-950/40 dark:text-blue-100">
-                              Feature detection in progress from entered credentials.
-                            </p>
+                              {translate(infrastructureMessages.featureDetectionInProgressFromEnteredCredentials, locale)}</p>
                           )}
                           {featureDetectError && (
                             <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 ui-caption text-red-900 dark:border-red-900/40 dark:bg-red-950/50 dark:text-red-100">
@@ -1179,18 +1150,16 @@ export default function StorageEndpointsPage() {
                           ))}
                           {showUsageLogUnavailableWarning && (
                               <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 ui-caption text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/60 dark:text-amber-100">
-                                Usage Log does not seem enabled on RGW (`rgw_enable_usage_log`), so activity stats will not be populated.
-                              </p>
+                                {translate(infrastructureMessages.usageLogDoesNotSeemEnabledOnRGWRgwenableusagelogSo, locale)}</p>
                             )}
                         </div>
                       )}
                       <div className="grid gap-3 sm:grid-cols-2">
                         <label
-                          title="This option is automatically detected from credentials and cannot be manually changed."
+                          title={translate(infrastructureMessages.thisOptionIsAutomaticallyDetectedFromCredentialsAndCannotBe, locale)}
                           className={endpointToggleCardDisabledClass}
                         >
-                          Admin enabled
-                          <input
+                          {translate(infrastructureMessages.adminEnabled, locale)}<input
                             type="checkbox"
                             checked={form.features.admin.enabled}
                             readOnly
@@ -1199,11 +1168,10 @@ export default function StorageEndpointsPage() {
                           />
                         </label>
                         <label
-                          title="This option is automatically detected from credentials and cannot be manually changed."
+                          title={translate(infrastructureMessages.thisOptionIsAutomaticallyDetectedFromCredentialsAndCannotBe, locale)}
                           className={endpointToggleCardDisabledClass}
                         >
-                          Accounts enabled
-                          <input
+                          {translate(infrastructureMessages.accountsEnabled, locale)}<input
                             type="checkbox"
                             checked={form.features.account.enabled}
                             readOnly
@@ -1212,11 +1180,10 @@ export default function StorageEndpointsPage() {
                           />
                         </label>
                         <label
-                          title="This option is automatically detected from credentials and cannot be manually changed."
+                          title={translate(infrastructureMessages.thisOptionIsAutomaticallyDetectedFromCredentialsAndCannotBe, locale)}
                           className={endpointToggleCardDisabledClass}
                         >
-                          Usage Log enabled
-                          <input
+                          {translate(infrastructureMessages.usageLogEnabled, locale)}<input
                             type="checkbox"
                             checked={form.features.usage.enabled}
                             readOnly
@@ -1225,11 +1192,10 @@ export default function StorageEndpointsPage() {
                           />
                         </label>
                         <label
-                          title="This option is automatically detected from credentials and cannot be manually changed."
+                          title={translate(infrastructureMessages.thisOptionIsAutomaticallyDetectedFromCredentialsAndCannotBe, locale)}
                           className={endpointToggleCardDisabledClass}
                         >
-                          Metrics enabled
-                          <input
+                          {translate(infrastructureMessages.metricsEnabled, locale)}<input
                             type="checkbox"
                             checked={form.features.metrics.enabled}
                             readOnly
@@ -1238,8 +1204,7 @@ export default function StorageEndpointsPage() {
                           />
                         </label>
                         <label className={endpointToggleCardClass}>
-                          SNS topics enabled
-                          <input
+                          {translate(infrastructureMessages.sNSTopicsEnabled, locale)}<input
                             type="checkbox"
                             checked={form.features.sns.enabled}
                             onChange={(e) =>
@@ -1253,8 +1218,7 @@ export default function StorageEndpointsPage() {
                           />
                         </label>
                         <label className={endpointToggleCardClass}>
-                          Bucket replication enabled
-                          <input
+                          {translate(infrastructureMessages.bucketReplicationEnabled, locale)}<input
                             type="checkbox"
                             checked={form.features.replication.enabled}
                             onChange={(e) =>
@@ -1270,7 +1234,7 @@ export default function StorageEndpointsPage() {
                       </div>
                       <div className="mt-4 grid gap-3 sm:grid-cols-2">
                         <UiInput
-                          label="Ceph admin endpoint override (optional)"
+                          label={translate(infrastructureMessages.cephAdminEndpointOverrideOptional, locale)}
                           value={form.features.admin.endpoint}
                           onChange={(e) =>
                             updateFeatures((current) => ({
@@ -1284,16 +1248,14 @@ export default function StorageEndpointsPage() {
                         />
                       </div>
                       <p className="ui-caption text-slate-500 dark:text-slate-400">
-                        Admin, account API, usage log, and metrics are auto-detected from credentials. Usage log/metrics require supervision credentials.
-                      </p>
+                        {translate(infrastructureMessages.adminAccountAPIUsageLogAndMetricsAreAutodetectedFrom, locale)}</p>
                     </div>
                   )}
                   <div className="space-y-2">
                     <p className="ui-caption font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">S3</p>
                     <div className="grid gap-3 sm:grid-cols-2">
                       <label className={endpointToggleCardClass}>
-                        STS enabled
-                        <input
+                        {translate(infrastructureMessages.sTSEnabled, locale)}<input
                           type="checkbox"
                           checked={form.features.sts.enabled}
                           onChange={(e) =>
@@ -1307,8 +1269,7 @@ export default function StorageEndpointsPage() {
                         />
                       </label>
                       <label className={endpointToggleCardClass}>
-                        Static website enabled
-                        <input
+                        {translate(infrastructureMessages.staticWebsiteEnabled, locale)}<input
                           type="checkbox"
                           checked={form.features.static_website.enabled}
                           onChange={(e) =>
@@ -1322,8 +1283,7 @@ export default function StorageEndpointsPage() {
                         />
                       </label>
                       <label className={endpointToggleCardClass}>
-                        IAM enabled
-                        <input
+                        {translate(infrastructureMessages.iAMEnabled, locale)}<input
                           type="checkbox"
                           checked={form.features.iam.enabled}
                           onChange={(e) =>
@@ -1337,8 +1297,7 @@ export default function StorageEndpointsPage() {
                         />
                       </label>
                       <label className={endpointToggleCardClass}>
-                        Server-Side Encryption (SSE) enabled
-                        <input
+                        {translate(infrastructureMessages.serverSideEncryptionSSEEnabled, locale)}<input
                           type="checkbox"
                           checked={form.features.sse.enabled}
                           onChange={(e) =>
@@ -1356,7 +1315,7 @@ export default function StorageEndpointsPage() {
                 </div>
                 <div className="mt-4 grid gap-3 sm:grid-cols-2">
                   <UiInput
-                    label={awsMode ? "STS endpoint" : "STS endpoint override (optional)"}
+                    label={awsMode ? translate(infrastructureMessages.sTSEndpoint, locale) : translate(infrastructureMessages.sTSEndpointOverrideOptional, locale)}
                     value={awsMode ? computedAwsStsEndpoint : form.features.sts.endpoint}
                     onChange={(e) => {
                       if (!awsMode) {
@@ -1370,10 +1329,10 @@ export default function StorageEndpointsPage() {
                     placeholder={awsMode ? computedAwsStsEndpoint : "https://sts.example.com"}
                     disabled={!form.features.sts.enabled}
                     readOnly={configurationReadOnly || awsMode}
-                    title={!form.features.sts.enabled ? "Enable STS first to define a dedicated STS endpoint." : undefined}
+                    title={!form.features.sts.enabled ? translate(infrastructureMessages.enableSTSFirstToDefineADedicatedSTSEndpoint, locale) : undefined}
                   />
                   <UiInput
-                    label={awsMode ? "IAM endpoint" : "IAM endpoint override (optional)"}
+                    label={awsMode ? translate(infrastructureMessages.iAMEndpoint, locale) : translate(infrastructureMessages.iAMEndpointOverrideOptional, locale)}
                     value={awsMode ? computedAwsIamEndpoint : form.features.iam.endpoint}
                     onChange={(e) => {
                       if (!awsMode) {
@@ -1387,10 +1346,10 @@ export default function StorageEndpointsPage() {
                     placeholder={awsMode ? computedAwsIamEndpoint : "https://iam.example.com"}
                     disabled={!form.features.iam.enabled}
                     readOnly={configurationReadOnly || awsMode}
-                    title={!form.features.iam.enabled ? "Enable IAM first to define a dedicated IAM endpoint." : undefined}
+                    title={!form.features.iam.enabled ? translate(infrastructureMessages.enableIAMFirstToDefineADedicatedIAMEndpoint, locale) : undefined}
                   />
                   <UiSelect
-                    label="Healthcheck mode"
+                    label={translate(infrastructureMessages.healthcheckMode, locale)}
                     value={form.features.healthcheck.mode ?? "http"}
                     onChange={(e) =>
                       updateFeatures((current) => ({
@@ -1402,15 +1361,15 @@ export default function StorageEndpointsPage() {
                       }))
                     }
                     disabled={configurationReadOnly || !cephMode}
-                    title={!cephMode ? "Healthcheck signed mode is available only for Ceph endpoints." : signedProbeBlockedReason ?? undefined}
+                    title={!cephMode ? translate(infrastructureMessages.healthcheckSignedModeIsAvailableOnlyForCephEndpoints, locale) : signedProbeBlockedReason ?? undefined}
                   >
-                    <option value="http">HTTP probe</option>
+                    <option value="http">{translate(infrastructureMessages.hTTPProbe, locale)}</option>
                     <option value="s3" disabled={Boolean(signedProbeBlockedReason)} title={signedProbeBlockedReason ?? undefined}>
-                      S3 signed probe{signedProbeBlockedReason ? " (requires supervision credentials)" : ""}
+                      {translate(infrastructureMessages.s3SignedProbe, locale)}{signedProbeBlockedReason ? translate({ en: " (requires supervision credentials)", zh: "（需要监控凭据）" }, locale) : ""}
                     </option>
                   </UiSelect>
                   <UiInput
-                    label="Healthcheck URL override (optional)"
+                    label={translate(infrastructureMessages.healthcheckURLOverrideOptional, locale)}
                     fieldClassName="sm:col-span-2"
                     value={form.features.healthcheck.endpoint}
                     onChange={(e) =>
@@ -1422,7 +1381,7 @@ export default function StorageEndpointsPage() {
                     className={endpointReadOnlyInputClass}
                     readOnly={configurationReadOnly}
                     placeholder="https://rgw.example.com/healthz"
-                    hint="Empty value uses the endpoint URL. S3 mode signs a lightweight request with endpoint credentials."
+                    hint={translate(infrastructureMessages.emptyValueUsesTheEndpointURLS3ModeSignsA, locale)}
                   />
                 </div>
               </div>
@@ -1436,15 +1395,15 @@ export default function StorageEndpointsPage() {
             {(!configurationReadOnly || canEditEndpoints) && (
               <WorkflowActions className="ui-page-sticky-actions bg-[var(--ui-surface)] py-3 shadow-[0_-8px_18px_-16px_rgba(15,23,42,0.45)]">
                 <UiButton variant="secondary" size="sm" onClick={formCloseGuard.requestClose}>
-                  {configurationReadOnly ? "Back to endpoints" : "Cancel"}
+                  {configurationReadOnly ? translate(infrastructureMessages.backToEndpoints, locale) : translate(infrastructureMessages.cancel, locale)}
                 </UiButton>
                 <UiButton
                   type="submit"
                   size="sm"
                   disabled={!metadataReady || saving || !hasFormChanges}
-                  title={!metadataReady ? "Management mode is unavailable." : saving ? "Save in progress." : !hasFormChanges ? "No changes to save." : undefined}
+                  title={!metadataReady ? translate(infrastructureMessages.managementModeIsUnavailable, locale) : saving ? translate(infrastructureMessages.saveInProgress, locale) : !hasFormChanges ? translate(infrastructureMessages.noChangesToSave, locale) : undefined}
                 >
-                  {saving ? "Saving..." : editingId ? (configurationReadOnly ? "Save tags" : "Update endpoint") : "Create endpoint"}
+                  {saving ? translate(infrastructureMessages.saving, locale) : editingId ? (configurationReadOnly ? translate(infrastructureMessages.saveTags, locale) : translate(infrastructureMessages.updateEndpoint, locale)) : translate(infrastructureMessages.createEndpoint, locale)}
                 </UiButton>
               </WorkflowActions>
             )}
@@ -1455,10 +1414,10 @@ export default function StorageEndpointsPage() {
 
       {deleteTarget && (
         <ConfirmActionDialog
-          title="Delete endpoint"
-          description={<>Are you sure you want to delete <strong>{deleteTarget.name}</strong>? This action cannot be undone.</>}
-          confirmLabel="Delete"
-          processingLabel="Deleting..."
+          title={translate(infrastructureMessages.deleteEndpoint, locale)}
+          description={<>{translate(infrastructureMessages.areYouSureYouWantToDelete, locale)}{" "}<strong>{deleteTarget.name}</strong>{translate(infrastructureMessages.thisActionCannotBeUndone, locale)}</>}
+          confirmLabel={translate(infrastructureMessages.delete, locale)}
+          processingLabel={translate(infrastructureMessages.deleting, locale)}
           loading={deleteBusy}
           error={deleteError}
           onCancel={() => setDeleteTarget(null)}

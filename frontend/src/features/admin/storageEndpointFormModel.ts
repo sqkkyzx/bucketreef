@@ -158,12 +158,13 @@ export function parseCoordinateInput(
   label: string,
   min: number,
   max: number,
+  locale: "en" | "fr" | "de" | "zh" = "en",
 ): number | null {
   const trimmed = value.trim();
   if (!trimmed) return null;
   const parsed = Number(trimmed);
   if (!Number.isFinite(parsed) || parsed < min || parsed > max) {
-    throw new Error(`${label} must be a number between ${min} and ${max}.`);
+    throw new Error(locale === "zh" ? `${label}必须是 ${min} 到 ${max} 之间的数字。` : `${label} must be a number between ${min} and ${max}.`);
   }
   return parsed;
 }

@@ -2,6 +2,8 @@
  * Copyright (c) 2026 Laurent Barbe
  * Licensed under the Apache License, Version 2.0
  */
+import { translate, useI18n } from "../i18n";
+import { infrastructureMessages } from "../infrastructureMessages";
 import { Link } from "react-router-dom";
 import { WorkspaceDashboardActionLink, WorkspaceDashboardCard } from "./WorkspaceDashboardKit";
 import UiBadge from "./ui/UiBadge";
@@ -23,8 +25,9 @@ type WorkspaceIncidentsCardProps = {
   unavailableReason?: string | null;
 };
 
-function formatIncidentWindow(minutes?: number | null) {
+function formatIncidentWindow(minutes?: number | null, locale = "en") {
   const value = Math.max(1, Number(minutes ?? 720));
+  if (locale === "zh") return value % 1440 === 0 ? `${value / 1440} 天` : value % 60 === 0 ? `${value / 60} 小时` : `${value} 分钟`;
   if (value % (24 * 60) === 0) {
     const days = value / (24 * 60);
     return `${days} day${days > 1 ? "s" : ""}`;
@@ -71,6 +74,7 @@ export default function WorkspaceIncidentsCard({
   presentation,
   unavailableReason,
 }: WorkspaceIncidentsCardProps) {
+  const { locale } = useI18n();
   const orderedIncidents = sortIncidents(incidents);
   const visibleIncidents = orderedIncidents.slice(0, MAX_INCIDENT_ROWS);
   const hiddenIncidentCount = Math.max(0, orderedIncidents.length - MAX_INCIDENT_ROWS);
@@ -79,23 +83,23 @@ export default function WorkspaceIncidentsCard({
 
   if (presentation === "compact") {
     return (
-      <WorkspaceDashboardCard title="Ongoing / Recent Incidents" presentation="compact" className={className}>
-        <p className="ui-dashboard-note">Ongoing incidents and incidents ended in the last {formatIncidentWindow(incidentHighlightMinutes)}.</p>
-        {loading ? <p className="ui-dashboard-note" role="status">Loading incidents…</p> : unavailableReason ? <p className="ui-dashboard-note" role="status">{unavailableReason}</p> : orderedIncidents.length === 0 ? <p className="ui-dashboard-note">No ongoing or recent incidents.</p> : (
+      <WorkspaceDashboardCard title={translate(infrastructureMessages.ongoingRecentIncidents, locale)} presentation="compact" className={className}>
+        <p className="ui-dashboard-note">{translate(infrastructureMessages.ongoingIncidentsAndIncidentsEndedInTheLast, locale)}{" "}{formatIncidentWindow(incidentHighlightMinutes, locale)}.</p>
+        {loading ? <p className="ui-dashboard-note" role="status">{translate(infrastructureMessages.loadingIncidents, locale)}</p> : unavailableReason ? <p className="ui-dashboard-note" role="status">{unavailableReason}</p> : orderedIncidents.length === 0 ? <p className="ui-dashboard-note">{translate(infrastructureMessages.noOngoingOrRecentIncidents, locale)}</p> : (
           <div className="ui-dashboard-incidents">
             {visibleIncidents.map((incident, index) => (
               <div key={`${incident.endpoint_id}-${incident.start}-${index}`} data-incident-state={incident.ongoing ? "ongoing" : "resolved"} className="ui-dashboard-incident">
                 <div className="ui-dashboard-incident-description">
                   <p className="ui-dashboard-label">{incident.endpoint_name}</p>
-                  <p className="ui-dashboard-note">{incident.ongoing ? "Ongoing since" : "From"} {formatLocalDateTime(incident.start)}{incident.end ? ` to ${formatLocalDateTime(incident.end)}` : ""}</p>
+                  <p className="ui-dashboard-note">{incident.ongoing ? translate(infrastructureMessages.ongoingSince, locale) : translate(infrastructureMessages.from, locale)} {formatLocalDateTime(incident.start)}{incident.end ? ` to ${formatLocalDateTime(incident.end)}` : ""}</p>
                 </div>
-                <UiBadge tone={incident.ongoing ? "warning" : "neutral"} className="ui-dashboard-badge">{incident.ongoing ? "In progress" : "Resolved"}</UiBadge>
+                <UiBadge tone={incident.ongoing ? "warning" : "neutral"} className="ui-dashboard-badge">{incident.ongoing ? translate(infrastructureMessages.inProgress, locale) : translate(infrastructureMessages.resolved, locale)}</UiBadge>
               </div>
             ))}
           </div>
         )}
         <div className="ui-dashboard-panel-footer">
-          {hiddenIncidentCount > 0 && <p className="ui-dashboard-note">+ {hiddenIncidentCount} more incident(s)</p>}
+          {hiddenIncidentCount > 0 && <p className="ui-dashboard-note">+ {hiddenIncidentCount} {" "}{translate(infrastructureMessages.moreIncidents, locale)}</p>}
           {action && <WorkspaceDashboardActionLink to={action.to}>{action.label}<OpenIcon className="h-3.5 w-3.5" /></WorkspaceDashboardActionLink>}
         </div>
       </WorkspaceDashboardCard>
@@ -105,9 +109,9 @@ export default function WorkspaceIncidentsCard({
   return (
     <section className={cx(uiCardClass, "p-4", className)}>
       <div>
-        <h2 className="ui-body font-semibold text-[var(--ui-text)]">Ongoing / Recent Incidents</h2>
+        <h2 className="ui-body font-semibold text-[var(--ui-text)]">{translate(infrastructureMessages.ongoingRecentIncidents, locale)}</h2>
         <p className={cx("mt-0.5 ui-caption", uiMutedTextClass)}>
-          Ongoing incidents and incidents ended in the last {formatIncidentWindow(incidentHighlightMinutes)}.
+          {translate(infrastructureMessages.ongoingIncidentsAndIncidentsEndedInTheLast, locale)}{formatIncidentWindow(incidentHighlightMinutes, locale)}.
         </p>
       </div>
 
@@ -115,8 +119,7 @@ export default function WorkspaceIncidentsCard({
         <div className={cx(uiCardMutedClass, "mt-4 h-48 animate-pulse")} />
       ) : orderedIncidents.length === 0 ? (
         <div className={cx(uiCardMutedClass, "mt-4 border-dashed px-3 py-6 text-center ui-caption", uiMutedTextClass)}>
-          No ongoing or recent incidents.
-        </div>
+          {translate(infrastructureMessages.noOngoingOrRecentIncidents, locale)}</div>
       ) : (
         <>
           <div className="mt-4 space-y-2">
@@ -137,7 +140,7 @@ export default function WorkspaceIncidentsCard({
                   <div className="min-w-0">
                     <p className="truncate ui-caption font-semibold text-[var(--ui-text)]">{incident.endpoint_name}</p>
                     <p className={cx("mt-0.5 truncate ui-caption", uiMutedTextClass)}>
-                      {incident.ongoing ? "Ongoing since" : "From"} {formatLocalDateTime(incident.start)}
+                      {incident.ongoing ? translate(infrastructureMessages.ongoingSince, locale) : translate(infrastructureMessages.from, locale)} {formatLocalDateTime(incident.start)}
                       {incident.end ? ` to ${formatLocalDateTime(incident.end)}` : ""}
                     </p>
                   </div>
@@ -148,7 +151,7 @@ export default function WorkspaceIncidentsCard({
                     incidentBadgeClass(incident.ongoing)
                   )}
                 >
-                  {incident.ongoing ? "In progress" : "Resolved"}
+                  {incident.ongoing ? translate(infrastructureMessages.inProgress, locale) : translate(infrastructureMessages.resolved, locale)}
                 </span>
               </div>
             ))}
@@ -157,7 +160,7 @@ export default function WorkspaceIncidentsCard({
           {(hiddenIncidentCount > 0 || action) && (
             <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
               {hiddenIncidentCount > 0 ? (
-                <p className="ui-caption font-medium text-primary">+ {hiddenIncidentCount} more incident(s)</p>
+                <p className="ui-caption font-medium text-primary">+ {hiddenIncidentCount} {" "}{translate(infrastructureMessages.moreIncidents, locale)}</p>
               ) : (
                 <span />
               )}

@@ -67,3 +67,21 @@ export function adminPageBreadcrumbs(
     ...trailingBreadcrumbs,
   );
 }
+
+/** Localize navigation labels while preserving route and trailing entity names. */
+export function localizedAdminPageBreadcrumbs(
+  pageId: AdminPageId,
+  locale: "en" | "fr" | "de" | "zh",
+  ...trailingBreadcrumbs: PageBreadcrumb[]
+): PageBreadcrumb[] {
+  const crumbs = adminPageBreadcrumbs(pageId, ...trailingBreadcrumbs);
+  if (locale !== "zh") return crumbs;
+  const labels: Partial<Record<AdminPageId, string>> = {
+    dashboard: "管理概览",
+    metrics: "用量与指标",
+    "storage-endpoints": "S3 端点",
+  };
+  return crumbs.map((crumb, index) => ({ ...crumb,
+    label: index === 0 ? "管理后台" : index === 1 ? labels[pageId] ?? crumb.label : crumb.label,
+  }));
+}
