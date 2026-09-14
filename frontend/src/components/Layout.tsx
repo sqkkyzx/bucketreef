@@ -12,6 +12,7 @@ import Topbar from "./Topbar";
 import type { TopbarControlDescriptor } from "./topbarControlsLayout";
 import { clearAuthStorage } from "../utils/clientStorage";
 import { readStoredUser } from "../utils/workspaces";
+import { useI18n } from "../i18n";
 
 type LayoutProps = {
   navLinks?: SidebarLink[];
@@ -66,6 +67,7 @@ export default function Layout({
   fullHeight = false,
   children,
 }: LayoutProps) {
+  const { locale } = useI18n();
   const location = useLocation();
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [desktopSidebarCompact, setDesktopSidebarCompact] = useState(false);
@@ -170,7 +172,7 @@ export default function Layout({
               <button
                 type="button"
                 tabIndex={mobileSidebarOpen ? 0 : -1}
-                aria-label="Close mobile navigation"
+                aria-label={locale === "zh" ? "关闭移动导航" : "Close mobile navigation"}
                 onClick={() => setMobileSidebarOpen(false)}
                 className={`absolute inset-0 bg-slate-950/45 transition-opacity duration-200 ${
                   mobileSidebarOpen ? "opacity-100" : "opacity-0"

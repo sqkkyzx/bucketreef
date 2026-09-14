@@ -10,6 +10,7 @@ import UiInput from "../../components/ui/UiInput";
 import UiSelect from "../../components/ui/UiSelect";
 import { cx, uiCheckboxClass } from "../../components/ui/styles";
 import type { S3ConnectionEndpointMode } from "./s3ConnectionFormModel";
+import { useS3ConnectionText } from "./s3ConnectionMessages";
 
 const S3_CONNECTION_PROVIDER_HINT_OPTIONS = [
   { value: "", label: "(auto)" },
@@ -57,14 +58,15 @@ export default function S3ConnectionEndpointFields({
   endpointIdError,
   endpointUrlError,
 }: S3ConnectionEndpointFieldsProps) {
+  const { locale, t } = useS3ConnectionText();
   const hasConfiguredEndpoints = endpoints.length > 0;
 
   return (
-    <SettingsSection title="Endpoint" presentation="compact"
-      description="Choose a configured endpoint or enter an operator-approved public HTTPS custom endpoint.">
+    <SettingsSection title={t("Endpoint")} presentation="compact"
+      description={t("Choose a configured endpoint or enter an operator-approved public HTTPS custom endpoint.")}>
       <div className="settings-fields">
         <fieldset className="flex min-w-0 flex-wrap gap-x-4 gap-y-2">
-          <legend className="sr-only">Endpoint source</legend>
+          <legend className="sr-only">{t("Endpoint source")}</legend>
           <label className="settings-choice">
             <input
               type="radio"
@@ -75,7 +77,7 @@ export default function S3ConnectionEndpointFields({
               disabled={!hasConfiguredEndpoints}
               className={cx(uiCheckboxClass, "rounded-full disabled:opacity-60")}
             />
-            Configured endpoint
+            {t("Configured endpoint")}
           </label>
           <label className="settings-choice">
             <input
@@ -86,26 +88,26 @@ export default function S3ConnectionEndpointFields({
               onChange={() => onModeChange("custom")}
               className={cx(uiCheckboxClass, "rounded-full")}
             />
-            Custom endpoint
+            {t("Custom endpoint")}
           </label>
         </fieldset>
         {mode === "preset" ? (
           <UiSelect
-            label="Configured endpoint"
+            label={t("Configured endpoint")}
             value={endpointId}
             onChange={(event) => onEndpointIdChange(event.target.value)}
             disabled={loadingEndpoints}
-            error={endpointIdError}
+            error={endpointIdError ? t(endpointIdError) : undefined}
           >
             <option value="">
               {loadingEndpoints
-                ? "Loading endpoints..."
+                ? t("Loading endpoints...")
                 : hasConfiguredEndpoints
-                  ? "Select endpoint"
-                  : "No configured endpoint"}
+                  ? t("Select endpoint")
+                  : t("No configured endpoint")}
             </option>
             {endpointId && !endpoints.some((endpoint) => String(endpoint.id) === endpointId) && (
-              <option value={endpointId} disabled>{loadingEndpoints ? "Loading endpoint..." : `Unavailable endpoint (#${endpointId})`}</option>
+              <option value={endpointId} disabled>{loadingEndpoints ? t("Loading endpoint...") : locale === "zh" ? `不可用的端点（#${endpointId}）` : `Unavailable endpoint (#${endpointId})`}</option>
             )}
             {endpoints.map((endpoint) => (
               <option key={endpoint.id} value={endpoint.id}>
@@ -116,27 +118,27 @@ export default function S3ConnectionEndpointFields({
         ) : (
           <div className="settings-fields sm:grid-cols-2">
             <UiSelect
-              label="Provider"
+              label={t("Provider")}
               value={form.provider_hint}
               onChange={(event) => onFormChange("provider_hint", event.target.value)}
             >
               {S3_CONNECTION_PROVIDER_HINT_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>
-                  {option.label}
+                  {option.value === "" || option.value === "other" ? t(option.label) : option.label}
                 </option>
               ))}
             </UiSelect>
             <UiInput
               type="text"
-              label="Region"
+              label={t("Region")}
               value={form.region}
               onChange={(event) => onFormChange("region", event.target.value)}
               placeholder="us-east-1"
             />
             <UiInput
               type="url"
-              label="Endpoint URL"
-              error={endpointUrlError}
+              label={t("Endpoint URL")}
+              error={endpointUrlError ? t(endpointUrlError) : undefined}
               fieldClassName="sm:col-span-2"
               value={form.endpoint_url}
               onChange={(event) => onFormChange("endpoint_url", event.target.value)}
@@ -148,19 +150,19 @@ export default function S3ConnectionEndpointFields({
                 onChange={(event) => onFormChange("force_path_style", event.target.checked)}
                 className="settings-choice"
               >
-                Force path style
+                {t("Force path style")}
               </UiCheckboxField>
               <UiCheckboxField
                 checked={form.verify_tls}
                 onChange={(event) => onFormChange("verify_tls", event.target.checked)}
                 className="settings-choice"
               >
-                Verify TLS
+                {t("Verify TLS")}
               </UiCheckboxField>
             </div>
           </div>
         )}
-        {errorMessage && <UiInlineMessage tone="warning">{errorMessage}</UiInlineMessage>}
+        {errorMessage && <UiInlineMessage tone="warning">{t(errorMessage)}</UiInlineMessage>}
       </div>
     </SettingsSection>
   );

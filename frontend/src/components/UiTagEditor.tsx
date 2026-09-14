@@ -13,6 +13,7 @@ import {
   UiTagSettingsPopover,
 } from "./UiTagSettings";
 import { cx, uiLabelClass } from "./ui/styles";
+import { useUiTagText } from "./uiTagMessages";
 
 type UiTagEditorProps = {
   label?: string;
@@ -43,6 +44,9 @@ export default function UiTagEditor({
   compact = false,
   disabled = false,
 }: UiTagEditorProps) {
+  const { locale, t } = useUiTagText();
+  const resolvedLabel = label === "Tags" ? t(label) : label;
+  const resolvedPlaceholder = placeholder === "Add a tag" ? t(placeholder) : placeholder;
   const [draft, setDraft] = useState("");
   const [activeTagKey, setActiveTagKey] = useState<string | null>(null);
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -150,18 +154,18 @@ export default function UiTagEditor({
 
   const sharedModeHelp =
     catalogMode === "private"
-      ? "This tag belongs to your private-connection tag catalog."
-      : "This tag is shared across the current domain.";
+      ? t("This tag belongs to your private-connection tag catalog.")
+      : t("This tag is shared across the current domain.");
   const scopeHelp =
     catalogMode === "private"
-      ? "Administrative tags stay in your private-connection management views. Standard tags can also appear in selectors."
-      : "Administrative tags stay in management views. Standard tags can also appear in selectors.";
+      ? t("Administrative tags stay in your private-connection management views. Standard tags can also appear in selectors.")
+      : t("Administrative tags stay in management views. Standard tags can also appear in selectors.");
 
   return (
     <div className="ui-tag-editor flex flex-col gap-1">
       {!hideLabel && (
         <label htmlFor={inputId} className={uiLabelClass}>
-          {label}
+          {resolvedLabel}
         </label>
       )}
       <div className="space-y-2">
@@ -188,11 +192,11 @@ export default function UiTagEditor({
                     label={tag.label}
                     colorKey={tag.color_key}
                     active={isActive}
-                    ariaLabel={`Edit tag ${tag.label}`}
-                    title={`${tag.label} • ${getUiTagScopeOption(tag.scope).label}`}
+                    ariaLabel={locale === "zh" ? `编辑标签 ${tag.label}` : `Edit tag ${tag.label}`}
+                    title={`${tag.label} • ${getUiTagScopeOption(tag.scope, locale).label}`}
                     onClick={() => openPopoverForTag(tag)}
                     onRemove={() => removeTag(tag.label)}
-                    removeAriaLabel={`Remove tag ${tag.label}`}
+                    removeAriaLabel={locale === "zh" ? `移除标签 ${tag.label}` : `Remove tag ${tag.label}`}
                   />
                 </span>
               );
@@ -214,9 +218,9 @@ export default function UiTagEditor({
                   }, 120);
                 }}
                 onKeyDown={handleInputKeyDown}
-                placeholder={normalizedTags.length === 0 ? placeholder : "+"}
+                placeholder={normalizedTags.length === 0 ? resolvedPlaceholder : "+"}
                 className="w-full border-0 bg-transparent p-0 ui-caption text-slate-600 placeholder:text-slate-400 focus:outline-none focus:ring-0 dark:text-slate-200 dark:placeholder:text-slate-500"
-                aria-label={placeholder}
+                aria-label={resolvedPlaceholder}
               />
             </div>
           </div>
@@ -229,13 +233,13 @@ export default function UiTagEditor({
                 <button
                   key={`${tag.id ?? tag.label}-${tag.color_key}-${tag.scope}`}
                   type="button"
-                  aria-label={`Add tag ${tag.label}`}
+                  aria-label={locale === "zh" ? `添加标签 ${tag.label}` : `Add tag ${tag.label}`}
                   onClick={() => addTag(tag)}
                   className="flex w-full items-center justify-between gap-2 rounded-md px-2 py-1 text-left ui-caption font-semibold text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
                 >
                   <UiTagBadge label={tag.label} colorKey={tag.color_key} />
                   <span className="shrink-0 text-[10px] uppercase tracking-wide text-slate-400 dark:text-slate-500">
-                    {getUiTagScopeOption(tag.scope).label}
+                    {getUiTagScopeOption(tag.scope, locale).label}
                   </span>
                 </button>
               ))}
@@ -254,7 +258,7 @@ export default function UiTagEditor({
           activeTag
             ? typeof activeTag.id === "number"
               ? sharedModeHelp
-              : "This new tag stays local to the form until you save."
+              : t("This new tag stays local to the form until you save.")
             : ""
         }
         onDismiss={() => setActiveTagKey(null)}
@@ -273,7 +277,7 @@ export default function UiTagEditor({
               onChange={(scope) => updateTag(activeTag.label, { scope })}
               help={
                 <>
-                  {getUiTagScopeOption(activeTag.scope).description} {scopeHelp}
+                  {getUiTagScopeOption(activeTag.scope, locale).description} {scopeHelp}
                 </>
               }
             />

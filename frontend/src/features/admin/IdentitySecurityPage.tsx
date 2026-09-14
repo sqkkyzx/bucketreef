@@ -27,6 +27,10 @@ import { cx, type UiTone, uiMutedTextClass, uiTitleTextClass } from "../../compo
 import { extractApiError } from "../../utils/apiError";
 import { adminPageBreadcrumbs } from "./adminBreadcrumbs";
 import { uiPrincipalRoleLabel } from "./AssociationSummary";
+import {
+  localizeAdminIdentityConnectionBreadcrumbs,
+  useAdminIdentityConnectionText,
+} from "./adminIdentityConnectionMessages";
 
 type PendingLinkDecision = {
   request: ExternalLinkRequest;
@@ -45,11 +49,11 @@ const AUTH_TYPE_LABELS: Record<string, string> = {
   webauthn: "Passkey",
 };
 
-function formatDate(value: string): string {
+function formatDate(value: string, locale: string): string {
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime())
     ? value
-    : new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(parsed);
+    : new Intl.DateTimeFormat(locale === "zh" ? "zh-CN" : undefined, { dateStyle: "medium", timeStyle: "short" }).format(parsed);
 }
 
 function roleTone(role?: string | null): UiTone {
@@ -58,8 +62,9 @@ function roleTone(role?: string | null): UiTone {
   return "neutral";
 }
 
-function authenticationLabel(authType: string): string {
-  return AUTH_TYPE_LABELS[authType.toLowerCase()] ?? authType.replaceAll("_", " ");
+function authenticationLabel(authType: string, t: (message: string) => string): string {
+  const label = AUTH_TYPE_LABELS[authType.toLowerCase()];
+  return label ? t(label) : authType.replaceAll("_", " ");
 }
 
 function providerLabel(providerType: string): string {
@@ -69,11 +74,11 @@ function providerLabel(providerType: string): string {
   return providerType.toUpperCase();
 }
 
-function sessionPrincipalLabel(session: AdminSecuritySession): string {
+function sessionPrincipalLabel(session: AdminSecuritySession, locale: string): string {
   if (session.user_full_name) return session.user_full_name;
   if (session.user_email) return session.user_email;
-  if (session.user_id) return `User #${session.user_id}`;
-  return "S3 session";
+  if (session.user_id) return locale === "zh" ? `用户 #${session.user_id}` : `User #${session.user_id}`;
+  return locale === "zh" ? "S3 会话" : "S3 session";
 }
 
 export default function IdentitySecurityPage() {
@@ -86,7 +91,16 @@ export default function IdentitySecurityPage() {
   const [pendingLinkDecision, setPendingLinkDecision] = useState<PendingLinkDecision | null>(null);
   const [pendingSession, setPendingSession] = useState<AdminSecuritySession | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
-  const { runWithStepUp, verificationDialog } = useRecentWebAuthnStepUp();
+  const { locale, t } = useAdminIdentityConnectionText();
+  const stepUpLabels = useMemo(() => locale === "zh" ? {
+    title: t("Verify with passkey"),
+    description: t("Confirm your identity to continue this sensitive action in the current session."),
+    cancel: t("Cancel"),
+    close: t("Close"),
+    cancelled: t("Passkey verification was cancelled or timed out. Please try again."),
+    failure: (stepUpError: unknown) => t(extractApiError(stepUpError, "Passkey verification failed. Please try again.")),
+  } : undefined, [locale, t]);
+  const { runWithStepUp, verificationDialog } = useRecentWebAuthnStepUp(stepUpLabels);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -134,18 +148,18 @@ export default function IdentitySecurityPage() {
     () => [
       {
         id: "account",
-        label: "Local account",
+        label: t("Local account"),
         primary: true,
         render: (request) => (
           <div className="min-w-0 space-y-1">
             <p className={cx("break-all", uiTitleTextClass)}>{request.user_email}</p>
-            <UiBadge tone={roleTone(request.user_role)}>{uiPrincipalRoleLabel(request.user_role)}</UiBadge>
+            <UiBadge tone={roleTone(request.user_role)}>{t(uiPrincipalRoleLabel(request.user_role))}</UiBadge>
           </div>
         ),
       },
       {
         id: "provider",
-        label: "Provider",
+        label: t("Provider"),
         render: (request) => (
           <div className="min-w-0 space-y-1">
             <UiBadge tone="info">{providerLabel(request.provider_type)}</UiBadge>
@@ -155,17 +169,17 @@ export default function IdentitySecurityPage() {
       },
       {
         id: "claimed-email",
-        label: "Claimed email",
+        label: t("Claimed email"),
         render: (request) => <span className="break-all">{request.email}</span>,
       },
       {
         id: "expires",
-        label: "Expires",
-        render: (request) => <time dateTime={request.expires_at}>{formatDate(request.expires_at)}</time>,
+        label: t("Expires"),
+        render: (request) => <time dateTime={request.expires_at}>{formatDate(request.expires_at, locale)}</time>,
       },
       {
         id: "actions",
-        label: "Actions",
+        label: t("Actions"),
         align: "right",
         mobileRole: "actions",
         render: (request) => (
@@ -174,33 +188,33 @@ export default function IdentitySecurityPage() {
               disabled={busy === request.id}
               onClick={() => setPendingLinkDecision({ request, approve: true })}
             >
-              Approve
+              {t("Approve")}
             </ListActionButton>
             <ListActionButton
               variant="danger"
               disabled={busy === request.id}
               onClick={() => setPendingLinkDecision({ request, approve: false })}
             >
-              Reject
+              {t("Reject")}
             </ListActionButton>
           </div>
         ),
       },
     ],
-    [busy],
+    [busy, locale, t],
   );
 
   const sessionColumns = useMemo<Array<DataTableColumn<AdminSecuritySession>>>(
     () => [
       {
         id: "user",
-        label: "User",
+        label: t("User"),
         primary: true,
         render: (session) => (
           <div className="min-w-0 space-y-1">
             <div className="flex min-w-0 flex-wrap items-center gap-2">
-              <p className={cx("truncate", uiTitleTextClass)}>{sessionPrincipalLabel(session)}</p>
-              {session.current ? <UiBadge tone="success">Current</UiBadge> : null}
+              <p className={cx("truncate", uiTitleTextClass)}>{sessionPrincipalLabel(session, locale)}</p>
+              {session.current ? <UiBadge tone="success">{t("Current")}</UiBadge> : null}
             </div>
             <p className={cx("break-all ui-caption", uiMutedTextClass)}>
               {session.user_full_name && session.user_email
@@ -212,46 +226,46 @@ export default function IdentitySecurityPage() {
       },
       {
         id: "authentication",
-        label: "Authentication",
-        mobileLabel: "Auth method",
+        label: t("Authentication"),
+        mobileLabel: t("Auth method"),
         render: (session) => (
           <span className="inline-flex justify-self-start">
-            <UiBadge tone="info">{authenticationLabel(session.auth_type)}</UiBadge>
+            <UiBadge tone="info">{authenticationLabel(session.auth_type, t)}</UiBadge>
           </span>
         ),
       },
       {
         id: "role",
-        label: "Role",
+        label: t("Role"),
         render: (session) => session.user_role
           ? (
               <span className="inline-flex justify-self-start">
-                <UiBadge tone={roleTone(session.user_role)}>{uiPrincipalRoleLabel(session.user_role)}</UiBadge>
+                <UiBadge tone={roleTone(session.user_role)}>{t(uiPrincipalRoleLabel(session.user_role))}</UiBadge>
               </span>
             )
-          : <span className={uiMutedTextClass}>Not applicable</span>,
+          : <span className={uiMutedTextClass}>{t("Not applicable")}</span>,
       },
       {
         id: "network",
-        label: "Network",
-        render: (session) => session.ip_address ?? <span className={uiMutedTextClass}>Unknown</span>,
+        label: t("Network"),
+        render: (session) => session.ip_address ?? <span className={uiMutedTextClass}>{t("Unknown")}</span>,
       },
       {
         id: "activity",
-        label: "Last activity",
-        render: (session) => <time dateTime={session.last_activity_at}>{formatDate(session.last_activity_at)}</time>,
+        label: t("Last activity"),
+        render: (session) => <time dateTime={session.last_activity_at}>{formatDate(session.last_activity_at, locale)}</time>,
       },
       {
         id: "actions",
-        label: "Actions",
+        label: t("Actions"),
         align: "right",
         mobileRole: "actions",
         render: (session) => session.revoked_at
-          ? <UiBadge>Revoked</UiBadge>
-          : <ListActionButton  variant="danger" onClick={() => setPendingSession(session)}>Revoke</ListActionButton>,
+          ? <UiBadge>{t("Revoked")}</UiBadge>
+          : <ListActionButton  variant="danger" onClick={() => setPendingSession(session)}>{t("Revoke")}</ListActionButton>,
       },
     ],
-    [],
+    [locale, t],
   );
 
   const revokeSession = async () => {
@@ -272,21 +286,22 @@ export default function IdentitySecurityPage() {
 
   return (
     <PageShell actionPresentation="listing"
-      title="Identity Security"
-      description="Review external identity link requests and manage active platform sessions within your administrative scope."
-      breadcrumbs={adminPageBreadcrumbs("identity-security")}
+      title={t("Identity Security")}
+      description={t("Review external identity link requests and manage active platform sessions within your administrative scope.")}
+      breadcrumbs={localizeAdminIdentityConnectionBreadcrumbs(adminPageBreadcrumbs("identity-security"), locale)}
+      breadcrumbLabel={t("Breadcrumb")}
 
     >
       {error ? (
         <PageBanner tone="error">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <span>{error}</span>
-            <UiButton size="xs" variant="secondary" onClick={() => void load()}>Retry</UiButton>
+            <span>{t(error)}</span>
+            <UiButton size="xs" variant="secondary" onClick={() => void load()}>{t("Retry")}</UiButton>
           </div>
         </PageBanner>
       ) : null}
-      {message ? <PageBanner tone="success">{message}</PageBanner> : null}
-      {loading ? <PageBanner tone="info">Loading identity security data...</PageBanner> : null}
+      {message ? <PageBanner tone="success">{t(message)}</PageBanner> : null}
+      {loading ? <PageBanner tone="info">{t("Loading identity security data...")}</PageBanner> : null}
 
       {showData ? (
         <>
@@ -294,27 +309,27 @@ export default function IdentitySecurityPage() {
             activeTab={activeView}
             onChange={(view) => setActiveView(view as IdentitySecurityView)}
             variant="line"
-            ariaLabel="Identity security views"
+            ariaLabel={t("Identity security views")}
             idPrefix="identity-security"
             tabs={[
               {
                 id: "requests",
-                label: `Link requests (${requests.length})`,
+                label: t(`Link requests (${requests.length})`),
                 content: (
                   <ListPageSection
-                    title="External identity link requests"
-                    secondaryContent={<p>Decide only when the external identity and local account have been verified through a trusted channel.</p>}
+                    title={t("External identity link requests")}
+                    secondaryContent={<p>{t("Decide only when the external identity and local account have been verified through a trusted channel.")}</p>}
                     variant="page"
-                    actions={<ListActionButton loading={loading} onClick={() => void load()}>Refresh</ListActionButton>}
+                    actions={<ListActionButton loading={loading} onClick={() => void load()}>{t("Refresh")}</ListActionButton>}
                   >
                     <DataTableShell
                       columns={requestColumns}
                       rows={requests}
                       rowKey={(request) => request.id}
                       status={resolveListTableStatus({ loading, error, rowCount: requests.length })}
-                      loadingMessage="Loading identity link requests..."
-                      errorMessage="Unable to load identity link requests."
-                      emptyMessage="No pending identity link requests."
+                      loadingMessage={t("Loading identity link requests...")}
+                      errorMessage={t("Unable to load identity link requests.")}
+                      emptyMessage={t("No pending identity link requests.")}
                       primaryColumnId="account"
                       responsiveCards
                       tableClassName="ui-data-table"
@@ -325,22 +340,22 @@ export default function IdentitySecurityPage() {
               },
               {
                 id: "sessions",
-                label: `Active sessions (${sessions.length})`,
+                label: t(`Active sessions (${sessions.length})`),
                 content: (
                   <ListPageSection
-                    title="Platform sessions"
-                    secondaryContent={<p>Revoke a session to remove its access immediately. Only sessions inside your administrative scope are shown.</p>}
+                    title={t("Platform sessions")}
+                    secondaryContent={<p>{t("Revoke a session to remove its access immediately. Only sessions inside your administrative scope are shown.")}</p>}
                     variant="page"
-                    actions={<ListActionButton loading={loading} onClick={() => void load()}>Refresh</ListActionButton>}
+                    actions={<ListActionButton loading={loading} onClick={() => void load()}>{t("Refresh")}</ListActionButton>}
                   >
                     <DataTableShell
                       columns={sessionColumns}
                       rows={sessions}
                       rowKey={(session) => session.id}
                       status={resolveListTableStatus({ loading, error, rowCount: sessions.length })}
-                      loadingMessage="Loading platform sessions..."
-                      errorMessage="Unable to load platform sessions."
-                      emptyMessage="No active sessions."
+                      loadingMessage={t("Loading platform sessions...")}
+                      errorMessage={t("Unable to load platform sessions.")}
+                      emptyMessage={t("No active sessions.")}
                       primaryColumnId="user"
                       responsiveCards
                       tableClassName="ui-data-table"
@@ -356,17 +371,18 @@ export default function IdentitySecurityPage() {
 
       {pendingLinkDecision ? (
         <ConfirmActionDialog
-          title={pendingLinkDecision.approve ? "Approve identity link" : "Reject identity link request"}
+          title={t(pendingLinkDecision.approve ? "Approve identity link" : "Reject identity link request")}
           description={pendingLinkDecision.approve
-            ? "This external identity will be linked to the selected local account."
-            : "This request will be closed without linking the external identity."}
-          confirmLabel={pendingLinkDecision.approve ? "Approve link" : "Reject request"}
+            ? t("This external identity will be linked to the selected local account.")
+            : t("This request will be closed without linking the external identity.")}
+          confirmLabel={t(pendingLinkDecision.approve ? "Approve link" : "Reject request")}
+          closeLabel={locale === "zh" ? t("Close") : undefined}
           tone={pendingLinkDecision.approve ? "primary" : "danger"}
           loading={busy === pendingLinkDecision.request.id}
           details={[
-            { label: "Local account", value: pendingLinkDecision.request.user_email },
-            { label: "Provider", value: `${pendingLinkDecision.request.provider_type}:${pendingLinkDecision.request.provider_id}` },
-            { label: "Claimed email", value: pendingLinkDecision.request.email },
+            { label: t("Local account"), value: pendingLinkDecision.request.user_email },
+            { label: t("Provider"), value: `${pendingLinkDecision.request.provider_type}:${pendingLinkDecision.request.provider_id}` },
+            { label: t("Claimed email"), value: pendingLinkDecision.request.email },
           ]}
           onCancel={() => setPendingLinkDecision(null)}
           onConfirm={() => void decide()}
@@ -375,11 +391,12 @@ export default function IdentitySecurityPage() {
 
       {pendingSession ? (
         <ConfirmActionDialog
-          title="Revoke session"
-          description="This session will lose access immediately."
-          confirmLabel="Revoke session"
+          title={t("Revoke session")}
+          description={t("This session will lose access immediately.")}
+          confirmLabel={t("Revoke session")}
+          closeLabel={locale === "zh" ? t("Close") : undefined}
           loading={busy === pendingSession.id}
-          details={[{ label: "Session", value: pendingSession.id }]}
+          details={[{ label: t("Session"), value: pendingSession.id }]}
           onCancel={() => setPendingSession(null)}
           onConfirm={() => void revokeSession()}
         />

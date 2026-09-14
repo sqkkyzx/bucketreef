@@ -5,6 +5,7 @@
 import { useId } from "react";
 import UiInput from "../../components/ui/UiInput";
 import { cx } from "../../components/ui/styles";
+import { useS3ConnectionText } from "./s3ConnectionMessages";
 
 type S3ConnectionCredentialFieldsProps = {
   accessKeyId: string;
@@ -33,9 +34,10 @@ export default function S3ConnectionCredentialFields({
   className,
   error,
 }: S3ConnectionCredentialFieldsProps) {
+  const { t } = useS3ConnectionText();
   const errorId = useId();
-  const resolvedAccessKeyLabel = accessKeyLabel || `Access key ID${required ? " *" : ""}`;
-  const resolvedSecretAccessKeyLabel = secretAccessKeyLabel || `Secret access key${required ? " *" : ""}`;
+  const resolvedAccessKeyLabel = accessKeyLabel || `${t("Access key ID")}${required ? " *" : ""}`;
+  const resolvedSecretAccessKeyLabel = secretAccessKeyLabel || `${t("Secret access key")}${required ? " *" : ""}`;
 
   return (
     <div className={cx("settings-fields sm:grid-cols-2", className)}>
@@ -58,7 +60,7 @@ export default function S3ConnectionCredentialFields({
         aria-invalid={error && !secretAccessKey.trim() ? true : undefined}
         aria-describedby={error ? errorId : undefined}
       />
-      {error && <p id={errorId} role="alert" className="ui-caption text-rose-600 dark:text-rose-200 sm:col-span-2">{error}</p>}
+      {error && <p id={errorId} role="alert" className="ui-caption text-rose-600 dark:text-rose-200 sm:col-span-2">{t(error)}</p>}
     </div>
   );
 }

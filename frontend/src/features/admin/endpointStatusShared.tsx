@@ -109,8 +109,17 @@ function parseTimestampMs(value?: string | null) {
   return parsed;
 }
 
-export function formatDurationShort(durationMs: number) {
+export function formatDurationShort(durationMs: number, locale: "en" | "fr" | "de" | "zh" = "en") {
   const minutes = Math.max(0, Math.round(durationMs / 60000));
+  if (locale === "zh") {
+    if (minutes < 60) return `${minutes} 分钟`;
+    const hours = Math.floor(minutes / 60);
+    const remainingMinutes = minutes % 60;
+    if (hours < 24) return remainingMinutes > 0 ? `${hours} 小时 ${remainingMinutes} 分钟` : `${hours} 小时`;
+    const days = Math.floor(hours / 24);
+    const remainingHours = hours % 24;
+    return remainingHours > 0 ? `${days} 天 ${remainingHours} 小时` : `${days} 天`;
+  }
   if (minutes < 60) return `${minutes} min`;
   const hours = Math.floor(minutes / 60);
   const remainingMinutes = minutes % 60;
@@ -245,7 +254,7 @@ export function EndpointTimelineBar({
           `${t(STATUS_LABELS[segmentDetail.status])}`,
           `${t("Start")}: ${formatTimestamp(segmentDetail.startTimestamp, locale)}`,
           `${t("End")}: ${formatTimestamp(segmentDetail.endTimestamp, locale)}`,
-          `${t("Duration")}: ${formatDurationShort(segmentDetail.durationMs)}`,
+          `${t("Duration")}: ${formatDurationShort(segmentDetail.durationMs, locale)}`,
         ];
         if (segmentDetail.cause) lines.push(`${t("Cause")}: ${segmentDetail.cause}`);
         return (

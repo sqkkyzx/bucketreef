@@ -5,6 +5,7 @@
 import { ListActionButton } from "./list/ListControls";
 import { cx, uiDividerClass, uiLabelClass, uiMutedTextClass } from "./ui/styles";
 import { toolbarCompactSelectClasses } from "./toolbarControlClasses";
+import { useI18n } from "../i18n";
 
 type PaginationControlsProps = {
   page: number;
@@ -25,6 +26,7 @@ export default function PaginationControls({
   pageSizeOptions = [10, 25, 50, 100],
   disabled = false,
 }: PaginationControlsProps) {
+  const { locale } = useI18n();
   const totalPages = Math.max(1, Math.ceil(total / (pageSize || 1)));
   const safePage = Math.min(Math.max(page, 1), totalPages);
   const canPrev = safePage > 1;
@@ -38,22 +40,24 @@ export default function PaginationControls({
           onClick={() => onPageChange(safePage - 1)}
           disabled={!canPrev || disabled}
         >
-          Previous
+          {locale === "zh" ? "上一页" : "Previous"}
         </ListActionButton>
         <ListActionButton
           type="button"
           onClick={() => onPageChange(safePage + 1)}
           disabled={!canNext || disabled}
         >
-          Next
+          {locale === "zh" ? "下一页" : "Next"}
         </ListActionButton>
         <span className={cx("ui-caption", uiMutedTextClass)}>
-          Page {safePage} of {totalPages} · {total} result{total === 1 ? "" : "s"}
+          {locale === "zh"
+            ? `第 ${safePage} / ${totalPages} 页 · 共 ${total} 条结果`
+            : `Page ${safePage} of ${totalPages} · ${total} result${total === 1 ? "" : "s"}`}
         </span>
       </div>
       {onPageSizeChange && (
         <label className={cx("flex items-center gap-2", uiLabelClass)}>
-          Page size
+          {locale === "zh" ? "每页数量" : "Page size"}
           <select
             className={cx(toolbarCompactSelectClasses, "ui-list-control")}
             value={pageSize}

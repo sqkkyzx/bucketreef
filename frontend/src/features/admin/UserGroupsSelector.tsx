@@ -6,6 +6,7 @@ import type { Dispatch, SetStateAction } from "react";
 import type { UiGroupSummary } from "../../api/groups";
 import { formInlineDeleteClasses } from "../../components/formInlineActionClasses";
 import { AdminAssociationLinkedTable, AdminAssociationPickerPanel, adminAssociationCheckboxClass, adminAssociationOptionLabelClass, adminAssociationOptionRowClass } from "./AdminAssociationPicker";
+import { useAdminControlText } from "./adminControlMessages";
 
 type UserGroupsSelectorProps = {
   groups: UiGroupSummary[];
@@ -38,23 +39,24 @@ export default function UserGroupsSelector({
   selections,
   setSelections,
 }: UserGroupsSelectorProps) {
+  const { locale, t } = useAdminControlText();
   const groupById = new Map(groups.map((group) => [group.id, group]));
 
   return (
     <AdminAssociationLinkedTable
-      title="Linked UI groups"
+      title={t("Linked UI groups")}
       toolbar={{
-        countLabel: `${selectedIds.length} linked`,
-        actionLabel: showPanel ? "Close" : "Add UI groups",
+        countLabel: locale === "zh" ? `已关联 ${selectedIds.length} 个` : `${selectedIds.length} linked`,
+        actionLabel: showPanel ? t("Close") : t("Add UI groups"),
         onAction: () => setShowPanel((current) => !current),
       }}
-      headers={[{ label: "Group" }, { label: "Actions", align: "right" }]}
+      headers={[{ label: t("Group") }, { label: t("Actions"), align: "right" }]}
       hasItems={selectedIds.length > 0}
-      emptyLabel="No linked groups yet."
+      emptyLabel={t("No linked groups yet.")}
       rows={selectedIds.map((groupId) => (
         <tr key={groupId}>
           <td className="ui-table-primary">
-            {groupById.get(groupId)?.name ?? `Group #${groupId}`}
+            {groupById.get(groupId)?.name ?? (locale === "zh" ? `用户组 #${groupId}` : `Group #${groupId}`)}
           </td>
           <td className="ui-table-actions-cell w-px text-right">
             <button
@@ -64,7 +66,7 @@ export default function UserGroupsSelector({
                 setSelectedIds((current) => current.filter((id) => id !== groupId))
               }
             >
-              Remove
+              {t("Remove")}
             </button>
           </td>
         </tr>
@@ -72,17 +74,17 @@ export default function UserGroupsSelector({
       picker={
         showPanel ? (
           <AdminAssociationPickerPanel
-            title="Add UI groups"
-            hint="(search by name)"
+            title={t("Add UI groups")}
+            hint={t("(search by name)")}
             search={search}
             onSearchChange={setSearch}
-            searchAriaLabel="Search UI groups"
+            searchAriaLabel={t("Search UI groups")}
             loading={groupsLoading}
             availableCount={visibleGroups.length}
             maxVisibleOptions={maxVisibleOptions}
             selectedCount={selections.length}
-            loadingLabel="Loading groups..."
-            emptyLabel={groupsLoaded ? "No UI groups available." : "No results."}
+            loadingLabel={t("Loading groups...")}
+            emptyLabel={groupsLoaded ? t("No UI groups available.") : t("No results.")}
             addDisabled={selections.length === 0}
             onCancel={() => {
               setShowPanel(false);

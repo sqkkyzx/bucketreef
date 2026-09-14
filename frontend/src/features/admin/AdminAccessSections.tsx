@@ -134,7 +134,7 @@ export function ManagerToolAccessSection({
         checked: Boolean(normalizedAccess[tool.key]),
         disabled: isToolDisabled ? isToolDisabled(tool) : !tool.enabled,
         onChange: (value) => onChange(tool.key, value),
-        ariaLabel: tool.title,
+        ariaLabel: t(tool.title),
         badge: { visible: !tool.enabled, label: t("Disabled globally"), tone: "neutral" },
       }))]}
     />

@@ -100,11 +100,40 @@ function resolveUiRoleLabel(user: StoredTopbarUser | null, t: ReturnType<typeof 
   return t(messageUnknown);
 }
 
-function compactWorkspaceLabel(label: string | null | undefined, t: ReturnType<typeof useI18n>["t"]): string {
+function compactWorkspaceLabel(
+  label: string | null | undefined,
+  t: ReturnType<typeof useI18n>["t"],
+  locale: ReturnType<typeof useI18n>["locale"],
+): string {
   const normalized = (label ?? "").replace(/\s*\([^)]*\)\s*$/, "").trim();
   if (!normalized) return t(messageWorkspace);
+  if (locale === "zh") {
+    const zhLabels: Record<string, string> = {
+      admin: "管理后台",
+      administration: "管理后台",
+      "ceph admin": "Ceph 管理",
+      "storage ops": "存储运维",
+      manager: "管理控制台",
+      portal: "自助门户",
+      browser: "对象浏览器",
+    };
+    return zhLabels[normalized.toLowerCase()] ?? normalized;
+  }
   if (normalized.toLowerCase() === "administration") return t(messageAdmin);
   return normalized;
+}
+
+function workspaceOptionLabel(value: string, label: string, locale: ReturnType<typeof useI18n>["locale"]): string {
+  if (locale !== "zh") return label;
+  const zhLabels: Record<string, string> = {
+    admin: "管理后台（平台）",
+    "ceph-admin": "Ceph 管理（RGW）",
+    "storage-ops": "存储运维",
+    manager: "管理控制台（管理租户）",
+    portal: "自助门户（自助服务）",
+    browser: "对象浏览器（对象）",
+  };
+  return zhLabels[value] ?? label;
 }
 
 function formatPercent(value: unknown): string | null {
@@ -534,8 +563,8 @@ export default function Topbar({
   };
 
   const workspaceTriggerLabel = workspaceSwitcher
-    ? compactWorkspaceLabel(workspaceSwitcher.currentWorkspaceLabel, t)
-    : compactWorkspaceLabel(section, t);
+    ? compactWorkspaceLabel(workspaceSwitcher.currentWorkspaceLabel, t, locale)
+    : compactWorkspaceLabel(section, t, locale);
   const showWorkspaceInTopbar = showWorkspaceSwitcher;
 
   const renderWorkspaceSelector = (placement: "sidebar" | "topbar") => {
@@ -625,7 +654,9 @@ export default function Topbar({
                           <span className="shell-icon-muted mt-0.5 h-4 w-4 shrink-0">{option.icon}</span>
                         )}
                         <span className="min-w-0">
-                          <span className="block truncate ui-caption font-semibold">{option.label}</span>
+                          <span className="block truncate ui-caption font-semibold">
+                            {workspaceOptionLabel(option.value, option.label, locale)}
+                          </span>
                         </span>
                       </button>
                     );

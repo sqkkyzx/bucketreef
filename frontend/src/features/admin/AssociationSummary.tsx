@@ -74,15 +74,27 @@ function isAccessProvenanceLabel(role: string): boolean {
   );
 }
 
-function tooltipDescription(label: string, entries: AssociationRoleTooltipEntry[], remaining: number): string {
+function tooltipDescription(
+  label: string,
+  entries: AssociationRoleTooltipEntry[],
+  remaining: number,
+  locale: string,
+  text: (value: string) => string,
+): string {
+  const isZh = locale === "zh";
   const lines = [
     `${label} (${entries.length + remaining})`,
     ...entries.map((entry) => {
-      const identity = `${entry.descriptionKindLabel ? `${entry.descriptionKindLabel}: ` : ""}${entry.identity}`;
-      return entry.roles.length > 0 ? `${identity} — Roles: ${entry.roles.join(", ")}` : identity;
+      const descriptionKindLabel = entry.descriptionKindLabel
+        ? (isZh ? text(entry.descriptionKindLabel) : entry.descriptionKindLabel)
+        : "";
+      const identity = `${descriptionKindLabel ? `${descriptionKindLabel}: ` : ""}${entry.identity}`;
+      const roles = isZh ? entry.roles.map(text) : entry.roles;
+      if (roles.length === 0) return identity;
+      return isZh ? `${identity} — 角色：${roles.join("、")}` : `${identity} — Roles: ${roles.join(", ")}`;
     }),
   ];
-  if (remaining > 0) lines.push(`… ${remaining} more`);
+  if (remaining > 0) lines.push(isZh ? `… 另有 ${remaining} 个` : `… ${remaining} more`);
   return lines.join("\n");
 }
 
@@ -109,7 +121,7 @@ export function AssociationRoleTooltip({
   const boundedLimit = Math.max(1, tooltipLimit);
   const listedEntries = useMemo(() => entries.slice(0, boundedLimit), [boundedLimit, entries]);
   const remaining = entries.length - listedEntries.length;
-  const description = tooltipDescription(label, listedEntries, remaining);
+  const description = tooltipDescription(label, listedEntries, remaining, locale, t);
 
   const cancelClose = () => {
     if (closeTimerRef.current != null) {
@@ -160,7 +172,7 @@ export function AssociationRoleTooltip({
       >
         <div
           role="tooltip"
-          aria-label={`${label} details`}
+          aria-label={locale === "zh" ? `${label}详情` : `${label} details`}
           onMouseEnter={openTooltip}
           onMouseLeave={scheduleClose}
         >

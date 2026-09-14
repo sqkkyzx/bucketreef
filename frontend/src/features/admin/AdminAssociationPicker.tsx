@@ -75,12 +75,13 @@ export function AdminAssociationTabs<T extends string>({
   onChange: (tab: T) => void;
 }) {
   const idPrefix = `admin-associations-${useId().replaceAll(":", "")}`;
+  const { locale } = useI18n();
   const active = tabs.find((tab) => tab.id === activeTab);
   return (
     <div className="admin-association-tabs min-w-0 space-y-3">
       <PageTabs
         variant="bar"
-        ariaLabel="Association types"
+        ariaLabel={locale === "zh" ? "关联类型" : "Association types"}
         idPrefix={idPrefix}
         tabs={tabs.map(({ id, label, count }) => ({ id, label: `${label} (${count})` }))}
         activeTab={activeTab}

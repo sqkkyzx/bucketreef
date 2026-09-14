@@ -5,6 +5,7 @@ import { SettingsButton } from "../../components/settings/SettingsControls";
 import { SettingsSection } from "../../components/settings/SettingsLayout";
 import UiInput from "../../components/ui/UiInput";
 import UiSelect from "../../components/ui/UiSelect";
+import { useAdminControlText } from "./adminControlMessages";
 
 type IdentityValues = Pick<UpdateUserPayload, "email" | "full_name" | "role"> & { password?: string };
 export type UserIdentityErrors = Partial<Record<"email" | "password", string>>;
@@ -36,31 +37,32 @@ export default function AdminUserIdentityFields({
   idPrefix: string;
   children?: ReactNode;
 }) {
+  const { t } = useAdminControlText();
   const helpId = `${idPrefix}-role-access-help`;
   return (
-    <SettingsSection title="Identity" presentation="compact">
+    <SettingsSection title={t("Identity")} presentation="compact">
       <div className="settings-fields">
-        <UiInput id={`${idPrefix}-email`} label="Email" type="email" required={creating}
+        <UiInput id={`${idPrefix}-email`} label={t("Email")} type="email" required={creating}
           value={values.email ?? ""} onChange={(event) => onChange({ email: event.target.value })}
-          autoComplete="off" placeholder={creating ? "jane.doe@example.com" : undefined} error={errors.email} />
-        {creating && <UiInput id={`${idPrefix}-password`} label="Password" type="password" required
+          autoComplete="off" placeholder={creating ? "jane.doe@example.com" : undefined} error={errors.email ? t(errors.email) : undefined} />
+        {creating && <UiInput id={`${idPrefix}-password`} label={t("Password")} type="password" required
           value={values.password ?? ""} onChange={(event) => onChange({ password: event.target.value })}
-          autoComplete="new-password" error={errors.password} />}
-        <UiInput label="Full name" value={values.full_name ?? ""}
-          onChange={(event) => onChange({ full_name: event.target.value })} placeholder="Jane Doe" />
-        <UiSelect label="Role" value={values.role ?? "ui_user"} onChange={(event) => onRoleChange(event.target.value as UiRole)}>
-          <option value="ui_none">No access</option>
-          <option value="ui_user">User</option>
-          <option value="ui_admin" disabled={!canAssignAdmin}>Admin{canAssignAdmin ? "" : " (restricted)"}</option>
-          <option value="ui_superadmin" disabled={!canAssignAdmin}>Superadmin{canAssignAdmin ? "" : " (restricted)"}</option>
+          autoComplete="new-password" error={errors.password ? t(errors.password) : undefined} />}
+        <UiInput label={t("Full name")} value={values.full_name ?? ""}
+          onChange={(event) => onChange({ full_name: event.target.value })} placeholder={t("Jane Doe")} />
+        <UiSelect label={t("Role")} value={values.role ?? "ui_user"} onChange={(event) => onRoleChange(event.target.value as UiRole)}>
+          <option value="ui_none">{t("No access")}</option>
+          <option value="ui_user">{t("User")}</option>
+          <option value="ui_admin" disabled={!canAssignAdmin}>{t("Admin")}{canAssignAdmin ? "" : t(" (restricted)")}</option>
+          <option value="ui_superadmin" disabled={!canAssignAdmin}>{t("Superadmin")}{canAssignAdmin ? "" : t(" (restricted)")}</option>
         </UiSelect>
         <div>
-          <SettingsButton variant="secondary" aria-label="Explain role access levels"
+          <SettingsButton variant="secondary" aria-label={t("Explain role access levels")}
             aria-expanded={helpOpen} aria-controls={helpId} onClick={onToggleHelp}>
-            About roles
+            {t("About roles")}
           </SettingsButton>
           {helpOpen && <div id={helpId} className="mt-2 settings-stack">
-            <p className="settings-label">Role access summary</p>
+            <p className="settings-label">{t("Role access summary")}</p>
             <dl className="settings-stack">
               {[
                 ["No Access", "No workspace access (profile only)"],
@@ -68,10 +70,10 @@ export default function AdminUserIdentityFields({
                 ["Admin", "User access + /admin"],
                 ["Superadmin", "Admin access + /admin settings"],
               ].map(([role, access]) => <div key={role} className="grid gap-1 sm:grid-cols-[7rem_minmax(0,1fr)]">
-                <dt className="settings-label">{role}</dt><dd className="settings-readonly">{access}</dd>
+                <dt className="settings-label">{t(role)}</dt><dd className="settings-readonly">{t(access)}</dd>
               </div>)}
             </dl>
-            <p className="settings-description">Ceph Admin and Storage Ops also require dedicated access flags.</p>
+            <p className="settings-description">{t("Ceph Admin and Storage Ops also require dedicated access flags.")}</p>
           </div>}
         </div>
       </div>

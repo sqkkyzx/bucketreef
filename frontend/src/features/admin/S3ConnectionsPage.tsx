@@ -63,6 +63,10 @@ import {
   type S3ConnectionEndpointMode,
 } from "../shared/s3ConnectionFormModel";
 import { useUnsavedChangesGuard } from "../../components/useUnsavedChangesGuard";
+import {
+  localizeAdminIdentityConnectionBreadcrumbs,
+  useAdminIdentityConnectionText,
+} from "./adminIdentityConnectionMessages";
 
 const credentialOwnerTypeOptions = [
   { value: "", label: "(none)" },
@@ -86,6 +90,8 @@ function getConnectionSearchCandidates(connection: S3ConnectionAdminItem): Array
 const selectionCheckboxClass = "h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary";
 
 export default function S3ConnectionsPage() {
+  const { locale, t } = useAdminIdentityConnectionText();
+  const localizeValidationError = (value?: string) => value ? t(value) : undefined;
   const [items, setItems] = useState<S3ConnectionAdminItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -361,7 +367,7 @@ export default function S3ConnectionsPage() {
       return {
         id: user.id,
         kind: "user",
-        label: user.full_name || user.email || `User #${user.id}`,
+        label: user.full_name || user.email || t(`User #${user.id}`),
         email: user.email,
         avatar: user.avatar,
       };
@@ -378,17 +384,17 @@ export default function S3ConnectionsPage() {
     () =>
       editLinkedUserIds.map((id) => ({
         id,
-        label: portalUserLabelById.get(id) ?? `User #${id}`,
+        label: portalUserLabelById.get(id) ?? t(`User #${id}`),
       })),
-    [editLinkedUserIds, portalUserLabelById]
+    [editLinkedUserIds, portalUserLabelById, t]
   );
   const linkedEditGroups = useMemo(
     () =>
       editLinkedGroupIds.map((id) => ({
         id,
-        label: groupLabelById.get(id) ?? `Group #${id}`,
+        label: groupLabelById.get(id) ?? t(`Group #${id}`),
       })),
-    [editLinkedGroupIds, groupLabelById]
+    [editLinkedGroupIds, groupLabelById, t]
   );
   const availableEditUsers = useMemo(() => {
     const query = editUserSearch.trim().toLowerCase();
@@ -420,6 +426,11 @@ export default function S3ConnectionsPage() {
     hasUnsavedChanges: Boolean(createInitialSignature) && createCurrentSignature !== createInitialSignature,
     disabled: creating,
     onClose: () => setShowCreateModal(false),
+    title: t("Discard changes?"),
+    description: t("You have unapplied changes. Closing this dialog will discard them."),
+    cancelLabel: t("Keep editing"),
+    confirmLabel: t("Discard changes"),
+    closeLabel: locale === "zh" ? t("Close") : undefined,
   });
   const editCurrentSignature = useMemo(
     () =>
@@ -437,6 +448,11 @@ export default function S3ConnectionsPage() {
     hasUnsavedChanges: Boolean(editing && editInitialSignature && editCurrentSignature !== editInitialSignature),
     disabled: editBusy,
     onClose: closeEditModal,
+    title: t("Discard changes?"),
+    description: t("You have unapplied changes. Closing this dialog will discard them."),
+    cancelLabel: t("Keep editing"),
+    confirmLabel: t("Discard changes"),
+    closeLabel: locale === "zh" ? t("Close") : undefined,
   });
   const createPrepared = prepareCreateAdminS3ConnectionPayload(createForm, createEndpointMode, createEndpointPresetId);
   const createFormValidation = useS3ConnectionFormValidation(createPrepared, createEndpointMode === "custom" ? createForm.endpoint_url : undefined);
@@ -805,14 +821,14 @@ export default function S3ConnectionsPage() {
   const connectionTableColumns: Array<DataTableColumn<S3ConnectionAdminItem>> = [
     {
       id: "select",
-      label: "Select",
+      label: t("Select"),
       headerClassName: "w-10 px-3",
       cellClassName: "w-10 px-3 py-4",
       header: (
         <input
           ref={selectionHeaderRef}
           type="checkbox"
-          aria-label="Select all filtered connections"
+          aria-label={t("Select all filtered connections")}
           checked={headerChecked}
           onChange={(e) => {
             void setSelectionForFilteredResults(e.target.checked);
@@ -824,7 +840,7 @@ export default function S3ConnectionsPage() {
       render: (connection) => (
         <label className="ui-list-selection"><input
           type="checkbox"
-          aria-label={`Select connection ${connection.name}`}
+          aria-label={t(`Select connection ${connection.name}`)}
           checked={selectedIdSet.has(connection.id)}
           onChange={() => toggleRowSelection(connection.id)}
           disabled={bulkActivateBusy || bulkDisableBusy || bulkDeleteBusy || selectAllFilteredBusy}
@@ -834,11 +850,13 @@ export default function S3ConnectionsPage() {
     },
     {
       id: "name",
-      label: "Name",
+      label: t("Name"),
       primary: true,
       cellClassName: "min-w-[240px]",
       render: (connection) => {
-        const tagItems = buildUiTagItems(connection.tags);
+        const tagItems = buildUiTagItems(connection.tags).map((item) =>
+          locale === "zh" ? { ...item, title: `标签：${item.label}` } : item,
+        );
         return (
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <p className="min-w-0 flex-1 truncate">{connection.name}</p>
@@ -857,18 +875,18 @@ export default function S3ConnectionsPage() {
     },
     {
       id: "endpoint",
-      label: "Endpoint",
+      label: t("Endpoint"),
       cellClassName: "min-w-[220px]",
       render: (connection) =>
         connection.storage_endpoint_id != null ? (
-          <span>{endpointNameById.get(connection.storage_endpoint_id) || `Endpoint #${connection.storage_endpoint_id}`}</span>
+          <span>{endpointNameById.get(connection.storage_endpoint_id) || t(`Endpoint #${connection.storage_endpoint_id}`)}</span>
         ) : (
           <span className="ui-mono">{connection.endpoint_url || "-"}</span>
         ),
     },
     {
       id: "status",
-      label: "Status",
+      label: t("Status"),
       render: (connection) => {
         const remediationRequired = connection.execution_status === "remediation_required";
         const isActive = connection.is_active !== false && !remediationRequired;
@@ -876,33 +894,33 @@ export default function S3ConnectionsPage() {
           <ListBadge
             tone={remediationRequired ? "warning" : isActive ? "success" : "neutral"}
           >
-            {remediationRequired ? "Remediation required" : isActive ? "Active" : "Inactive"}
+            {t(remediationRequired ? "Remediation required" : isActive ? "Active" : "Inactive")}
           </ListBadge>
         );
       },
     },
     {
       id: "created-by",
-      label: "Created by",
+      label: t("Created by"),
       render: (connection) => (
         <UserAvatar
           avatar={connection.created_by_avatar}
-          name={connection.created_by_full_name || connection.created_by_email || `User #${connection.created_by_user_id}`}
+          name={connection.created_by_full_name || connection.created_by_email || t(`User #${connection.created_by_user_id}`)}
           email={connection.created_by_email}
           size="sm"
-          title={[connection.created_by_full_name, connection.created_by_email].filter(Boolean).join(" · ") || `User #${connection.created_by_user_id}`}
+          title={[connection.created_by_full_name, connection.created_by_email].filter(Boolean).join(" · ") || t(`User #${connection.created_by_user_id}`)}
         />
       ),
     },
     {
       id: "associations",
-      label: "UI Users / Groups",
+      label: t("UI Users / Groups"),
       cellClassName: "min-w-[180px] max-w-[240px] align-middle",
       render: renderConnectionAssociations,
     },
     {
       id: "actions",
-      label: "Actions",
+      label: t("Actions"),
       align: "right",
       mobileRole: "actions",
       cellClassName: "min-w-[260px]",
@@ -923,26 +941,26 @@ export default function S3ConnectionsPage() {
               }
             >
               {statusBusyId === connection.id
-                ? "Saving..."
+                ? t("Saving...")
                 : remediationRequired
-                  ? "Activate in Manager"
+                  ? t("Activate in Manager")
                   : isActive
-                    ? "Deactivate"
-                    : "Activate"}
+                    ? t("Deactivate")
+                    : t("Activate")}
             </ListActionButton>
             <ListActionButton
               type="button"
               onClick={() => openEdit(connection)}
               {...dataTableDefaultActionProps}
             >
-              Edit
+              {t("Edit")}
             </ListActionButton>
             <ListActionButton
               type="button"
                variant="danger"
               onClick={() => setDeleteTarget(connection)}
             >
-              Delete
+              {t("Delete")}
             </ListActionButton>
           </ListActions>
         );
@@ -953,23 +971,24 @@ export default function S3ConnectionsPage() {
   return (
     <div className={workflowPageHostClass(showCreateModal || Boolean(editing))}>
       <PageHeader actionPresentation="listing"
-        title="Shared S3 Connections"
-        description="Admin-managed S3 connections shared with linked UI users."
-        breadcrumbs={adminPageBreadcrumbs("shared-connections")}
-        actions={[{ label: "Add connection", onClick: openCreateModal }]}
+        title={t("Shared S3 Connections")}
+        description={t("Admin-managed S3 connections shared with linked UI users.")}
+        breadcrumbs={localizeAdminIdentityConnectionBreadcrumbs(adminPageBreadcrumbs("shared-connections"), locale)}
+        breadcrumbLabel={t("Breadcrumb")}
+        actions={[{ label: t("Add connection"), onClick: openCreateModal }]}
       />
 
-      {actionMessage && <PageBanner tone="success">{actionMessage}</PageBanner>}
-      {error && <PageBanner tone="error">{error}</PageBanner>}
+      {actionMessage && <PageBanner tone="success">{t(actionMessage)}</PageBanner>}
+      {error && <PageBanner tone="error">{t(error)}</PageBanner>}
 
       <ListPageSection variant="page"
-          title="Shared S3 Connections"
-          countLabel={`${total} entr${total === 1 ? "y" : "ies"}`}
+          title={t("Shared S3 Connections")}
+          countLabel={t(`${total} entr${total === 1 ? "y" : "ies"}`)}
           search={
             <ToolbarSearchInput
               value={filter}
               onChange={handleFilterChange}
-              placeholder="Search name, endpoint, created by, group, or tag..."
+              placeholder={t("Search name, endpoint, created by, group, or tag...")}
               className="w-full sm:w-64"
               active={quickFilterActive}
               matchMode={quickFilterMode}
@@ -979,14 +998,15 @@ export default function S3ConnectionsPage() {
           secondaryContent={
             quickFilterActive ? (
               <ActiveFiltersBar
-                label="Active filters summary"
+                label={t("Active filters summary")}
                 items={[
                   {
                     id: "search",
-                    label: `Search ${quickFilterMode === "exact" ? "exact" : "contains"}: ${filter.trim()}`,
+                    label: t(`Search ${quickFilterMode === "exact" ? "exact" : "contains"}: ${filter.trim()}`),
                   },
                 ]}
                 onClearAll={clearAllFilters}
+                clearLabel={t("Clear all")}
               />
             ) : null
           }
@@ -994,8 +1014,7 @@ export default function S3ConnectionsPage() {
         {selectedIds.length > 0 && (
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-700 dark:bg-slate-900/50">
             <span className="ui-caption font-semibold text-slate-700 dark:text-slate-200">
-              {selectedIds.length} selected
-              {hiddenSelectedCount > 0 ? ` (${hiddenSelectedCount} not visible)` : ""}
+              {t(`${selectedIds.length} selected${hiddenSelectedCount > 0 ? ` (${hiddenSelectedCount} not visible)` : ""}`)}
             </span>
             <ListActions>
               <ListActionButton
@@ -1003,14 +1022,14 @@ export default function S3ConnectionsPage() {
                 onClick={() => void submitBulkActivate()}
                 disabled={bulkActivateBusy || bulkDisableBusy || bulkDeleteBusy || selectAllFilteredBusy}
               >
-                {bulkActivateBusy ? "Activating..." : "Activate selected"}
+                {t(bulkActivateBusy ? "Activating..." : "Activate selected")}
               </ListActionButton>
               <ListActionButton
                 type="button"
                 onClick={() => void submitBulkDisable()}
                 disabled={bulkActivateBusy || bulkDisableBusy || bulkDeleteBusy || selectAllFilteredBusy}
               >
-                {bulkDisableBusy ? "Disabling..." : "Disable selected"}
+                {t(bulkDisableBusy ? "Disabling..." : "Disable selected")}
               </ListActionButton>
               <ListActionButton
                 type="button"
@@ -1018,7 +1037,7 @@ export default function S3ConnectionsPage() {
                 onClick={() => setBulkDeleteOpen(true)}
                 disabled={bulkActivateBusy || bulkDisableBusy || bulkDeleteBusy || selectAllFilteredBusy}
               >
-                Delete selected
+                {t("Delete selected")}
               </ListActionButton>
             </ListActions>
           </div>
@@ -1028,9 +1047,9 @@ export default function S3ConnectionsPage() {
           rows={items}
           rowKey={(connection) => connection.id}
           status={tableStatus}
-          loadingMessage="Loading connections..."
-          errorMessage="Unable to load connections."
-          emptyMessage="No connections."
+          loadingMessage={t("Loading connections...")}
+          errorMessage={t("Unable to load connections.")}
+          emptyMessage={t("No connections.")}
           primaryColumnId="name"
           responsiveCards
           tableClassName="ui-data-table"
@@ -1048,10 +1067,11 @@ export default function S3ConnectionsPage() {
       {/* Create modal */}
       {showCreateModal && (
         <WorkflowPage
-          title="Add S3 connection"
-          description="Configure endpoint access, credentials, and workspace availability for this shared connection."
-          breadcrumbs={adminPageBreadcrumbs("shared-connections", { label: "Create" })}
-          backLabel="Back to connections"
+          title={t("Add S3 connection")}
+          description={t("Configure endpoint access, credentials, and workspace availability for this shared connection.")}
+          breadcrumbs={localizeAdminIdentityConnectionBreadcrumbs(adminPageBreadcrumbs("shared-connections", { label: "Create" }), locale)}
+          breadcrumbLabel={t("Breadcrumb")}
+          backLabel={t("Back to connections")}
           onBack={createCloseGuard.requestClose}
           backDisabled={creating}
           contentVariant="plain"
@@ -1060,37 +1080,39 @@ export default function S3ConnectionsPage() {
         >
           {createError && (
             <UiInlineMessage tone="error" className="mb-3">
-              {createError}
+              {t(createError)}
             </UiInlineMessage>
           )}
-          <SettingsForm label="Create shared S3 connection" onSubmit={submitCreate} busy={creating}
-            onCancel={createCloseGuard.requestClose} submitLabel="Create" busyLabel="Creating...">
-            <S3ConnectionIdentityFields name={createForm.name} nameError={createFormValidation.errorFor("name")}
-              onNameChange={(name) => setCreateForm((current) => ({ ...current, name }))} catalogError={adminTagCatalogError}
+          <SettingsForm label={t("Create shared S3 connection")} onSubmit={submitCreate} busy={creating}
+            onCancel={createCloseGuard.requestClose} submitLabel={t("Create")} busyLabel={t("Creating...")}>
+            <S3ConnectionIdentityFields name={createForm.name} nameError={localizeValidationError(createFormValidation.errorFor("name"))}
+              onNameChange={(name) => setCreateForm((current) => ({ ...current, name }))} catalogError={adminTagCatalogError ? t(adminTagCatalogError) : adminTagCatalogError}
               tagEditor={{ tags: createForm.tags, catalog: adminTagCatalog,
                 onChange: (tags) => setCreateForm((current) => ({ ...current, tags })),
-                placeholder: "Add a tag for this shared connection", disabled: creating,
-                hint: adminTagCatalogLoading ? "Loading existing tag catalog..." : undefined }} />
+                placeholder: t("Add a tag for this shared connection"), disabled: creating,
+                hint: adminTagCatalogLoading ? t("Loading existing tag catalog...") : undefined }} />
             <S3ConnectionEndpointFields mode={createEndpointMode}
               onModeChange={(mode) => { setCreateEndpointMode(mode); if (mode === "preset") setCreateEndpointPresetId(preferredS3ConnectionEndpointId(createEndpointPresetId, storageEndpoints)); }}
               modeInputName="create-admin-s3-connection-endpoint-mode" endpointId={createEndpointPresetId}
               onEndpointIdChange={setCreateEndpointPresetId} endpoints={storageEndpoints} loadingEndpoints={loadingEndpoints}
               form={createForm} onFormChange={(field, value) => setCreateForm((current) => ({ ...current, [field]: value }))}
-              endpointIdError={createFormValidation.errorFor("endpointId")} endpointUrlError={createFormValidation.errorFor("endpointUrl")} />
-            <SettingsSection title="Credentials" presentation="compact">
+              endpointIdError={localizeValidationError(createFormValidation.errorFor("endpointId"))}
+              endpointUrlError={localizeValidationError(createFormValidation.errorFor("endpointUrl"))} />
+            <SettingsSection title={t("Credentials")} presentation="compact">
               <div className="settings-stack">
                 <S3ConnectionCredentialFields accessKeyId={createForm.access_key_id} secretAccessKey={createForm.secret_access_key}
                   onAccessKeyIdChange={(value) => setCreateForm((current) => ({ ...current, access_key_id: value }))}
                   onSecretAccessKeyChange={(value) => setCreateForm((current) => ({ ...current, secret_access_key: value }))}
-                  error={createFormValidation.errorFor("credentials")} required accessKeyLabel="Access key ID" secretAccessKeyLabel="Secret access key" />
+                  error={localizeValidationError(createFormValidation.errorFor("credentials"))}
+                  required accessKeyLabel={t("Access key ID")} secretAccessKeyLabel={t("Secret access key")} />
                 <S3CredentialsValidationMessage validation={createCredentialsValidation} />
               </div>
             </SettingsSection>
-            <SettingsSection title="Access" presentation="compact">
-              <p className="settings-label">Visibility: Shared</p>
-              <p className="settings-description mt-1">Admin connections are always shared with linked UI users.</p>
-              <p className="settings-label mt-3">Manager-only execution</p>
-              <p className="settings-description mt-1">Shared connections are never exposed to Browser. Browser users must create a private connection.</p>
+            <SettingsSection title={t("Access")} presentation="compact">
+              <p className="settings-label">{t("Visibility: Shared")}</p>
+              <p className="settings-description mt-1">{t("Admin connections are always shared with linked UI users.")}</p>
+              <p className="settings-label mt-3">{t("Manager-only execution")}</p>
+              <p className="settings-description mt-1">{t("Shared connections are never exposed to Browser. Browser users must create a private connection.")}</p>
             </SettingsSection>
           </SettingsForm>
           {createCloseGuard.confirmationDialog}
@@ -1100,10 +1122,11 @@ export default function S3ConnectionsPage() {
       {/* Edit modal */}
       {editing && (
         <WorkflowPage
-          title={`Edit connection · ${editing.name}`}
-          description="Manage endpoint access, credentials, workspace availability, and UI associations for this shared connection."
-          breadcrumbs={adminPageBreadcrumbs("shared-connections", { label: "Edit" })}
-          backLabel="Back to connections"
+          title={t(`Edit connection · ${editing.name}`)}
+          description={t("Manage endpoint access, credentials, workspace availability, and UI associations for this shared connection.")}
+          breadcrumbs={localizeAdminIdentityConnectionBreadcrumbs(adminPageBreadcrumbs("shared-connections", { label: "Edit" }), locale)}
+          breadcrumbLabel={t("Breadcrumb")}
+          backLabel={t("Back to connections")}
           onBack={editCloseGuard.requestClose}
           backDisabled={editBusy}
           contentClassName="settings-compact"
@@ -1112,57 +1135,59 @@ export default function S3ConnectionsPage() {
         >
           {editError && (
             <UiInlineMessage tone="error" className="mb-3">
-              {editError}
+              {t(editError)}
             </UiInlineMessage>
           )}
-          <SettingsForm label="Edit shared S3 connection" onSubmit={submitEdit} busy={editBusy}
-            onCancel={editCloseGuard.requestClose} submitLabel="Save" busyLabel="Saving...">
+          <SettingsForm label={t("Edit shared S3 connection")} onSubmit={submitEdit} busy={editBusy}
+            onCancel={editCloseGuard.requestClose} submitLabel={t("Save")} busyLabel={t("Saving...")}>
             <WorkflowTabs<EditTab>
               panelClassName={editTab === "users" || editTab === "groups" ? adminAssociationPanelClass : undefined}
               activeTab={editTab}
               onTabChange={setEditTab}
-              ariaLabel="Shared connection configuration sections"
+              ariaLabel={t("Shared connection configuration sections")}
               idPrefix="admin-shared-connection-edit"
               tabs={[
-                { id: "general", label: "General" },
-                { id: "users", label: "Linked UI users" },
-                { id: "groups", label: "Linked UI groups" },
+                { id: "general", label: t("General") },
+                { id: "users", label: t("Linked UI users") },
+                { id: "groups", label: t("Linked UI groups") },
               ]}
             >
 
             {showEditGeneralTab && (
               <>
-            <S3ConnectionIdentityFields name={editForm.name} nameError={editFormValidation.errorFor("name")}
-              onNameChange={(name) => setEditForm((current) => ({ ...current, name }))} catalogError={adminTagCatalogError}
+            <S3ConnectionIdentityFields name={editForm.name} nameError={localizeValidationError(editFormValidation.errorFor("name"))}
+              onNameChange={(name) => setEditForm((current) => ({ ...current, name }))} catalogError={adminTagCatalogError ? t(adminTagCatalogError) : adminTagCatalogError}
               tagEditor={{ tags: editForm.tags, catalog: adminTagCatalog,
                 onChange: (tags) => setEditForm((current) => ({ ...current, tags })),
-                placeholder: "Add a tag for this shared connection", disabled: editBusy,
-                hint: adminTagCatalogLoading ? "Loading existing tag catalog..." : undefined }} />
+                placeholder: t("Add a tag for this shared connection"), disabled: editBusy,
+                hint: adminTagCatalogLoading ? t("Loading existing tag catalog...") : undefined }} />
             <S3ConnectionEndpointFields mode={editEndpointMode}
               onModeChange={(mode) => { setEditEndpointMode(mode); if (mode === "preset") setEditEndpointPresetId(preferredS3ConnectionEndpointId(editEndpointPresetId, storageEndpoints)); }}
               modeInputName="edit-admin-s3-connection-endpoint-mode" endpointId={editEndpointPresetId}
               onEndpointIdChange={setEditEndpointPresetId} endpoints={storageEndpoints} loadingEndpoints={loadingEndpoints}
               form={editForm} onFormChange={(field, value) => setEditForm((current) => ({ ...current, [field]: value }))}
-              endpointIdError={editFormValidation.errorFor("endpointId")} endpointUrlError={editFormValidation.errorFor("endpointUrl")} />
-            <SettingsSection title="Credentials" presentation="compact" description="Leave blank to keep the current keys.">
+              endpointIdError={localizeValidationError(editFormValidation.errorFor("endpointId"))}
+              endpointUrlError={localizeValidationError(editFormValidation.errorFor("endpointUrl"))} />
+            <SettingsSection title={t("Credentials")} presentation="compact" description={t("Leave blank to keep the current keys.")}>
               <div className="settings-stack">
                 <S3ConnectionCredentialFields accessKeyId={editCredentials.access_key_id} secretAccessKey={editCredentials.secret_access_key}
                   onAccessKeyIdChange={(value) => setEditCredentials((current) => ({ ...current, access_key_id: value }))}
                   onSecretAccessKeyChange={(value) => setEditCredentials((current) => ({ ...current, secret_access_key: value }))}
-                  error={editFormValidation.errorFor("credentials")} />
+                  error={localizeValidationError(editFormValidation.errorFor("credentials"))}
+                  accessKeyLabel={t("Access key ID")} secretAccessKeyLabel={t("Secret access key")} />
 
               </div>
             </SettingsSection>
-                <SettingsSection title="Access and credential metadata" presentation="compact"
-                  description="Store owner context for keys imported from manager/ceph-admin flows.">
+                <SettingsSection title={t("Access and credential metadata")} presentation="compact"
+                  description={t("Store owner context for keys imported from manager/ceph-admin flows.")}>
                   <div className="settings-stack">
-                    <div><p className="settings-label">Visibility: Shared</p>
-                      <p className="settings-description mt-1 [overflow-wrap:anywhere]">Created by: {editing.created_by_email || editing.created_by_user_id}</p></div>
-                    <div><p className="settings-label">Manager-only execution</p>
-                      <p className="settings-description mt-1">Browser access is disabled for all shared connections.</p></div>
+                    <div><p className="settings-label">{t("Visibility: Shared")}</p>
+                      <p className="settings-description mt-1 [overflow-wrap:anywhere]">{t(`Created by: ${editing.created_by_email || editing.created_by_user_id}`)}</p></div>
+                    <div><p className="settings-label">{t("Manager-only execution")}</p>
+                      <p className="settings-description mt-1">{t("Browser access is disabled for all shared connections.")}</p></div>
                     <div className="settings-fields sm:grid-cols-2">
                     <UiSelect
-                      label="Owner type"
+                      label={t("Owner type")}
                       value={editForm.credential_owner_type}
                       onChange={(e) =>
                         setEditForm((previous) => ({
@@ -1174,12 +1199,12 @@ export default function S3ConnectionsPage() {
                     >
                       {credentialOwnerTypeOptions.map((option) => (
                         <option key={option.value} value={option.value}>
-                          {option.label}
+                          {t(option.label)}
                         </option>
                       ))}
                     </UiSelect>
                     <UiInput
-                      label="Owner identifier"
+                      label={t("Owner identifier")}
                       value={editForm.credential_owner_identifier}
                       onChange={(e) => setEditForm((p) => ({ ...p, credential_owner_identifier: e.target.value }))}
                       placeholder="account-id / user-id"
@@ -1193,9 +1218,9 @@ export default function S3ConnectionsPage() {
             {showEditUsersTab && (
               <div className="settings-stack">
                 <AdminAssociationSectionHeader
-                  title="Linked UI users"
-                  countLabel={`${linkedEditUsers.length} linked`}
-                  actionLabel={showEditUserPanel ? "Close" : "Add UI users"}
+                  title={t("Linked UI users")}
+                  countLabel={t(`${linkedEditUsers.length} linked`)}
+                  actionLabel={t(showEditUserPanel ? "Close" : "Add UI users")}
                   onAction={() => setShowEditUserPanel((prev) => !prev)}
                 />
                 <div className={associationTableContainerClass}>
@@ -1203,10 +1228,10 @@ export default function S3ConnectionsPage() {
                     <thead>
                       <tr>
                         <th className="text-left">
-                          User
+                          {t("User")}
                         </th>
                         <th className="w-px whitespace-nowrap text-right">
-                          Actions
+                          {t("Actions")}
                         </th>
                       </tr>
                     </thead>
@@ -1214,7 +1239,7 @@ export default function S3ConnectionsPage() {
                       {linkedEditUsers.length === 0 ? (
                         <tr>
                           <td colSpan={2} className="ui-table-secondary">
-                            No linked users yet.
+                            {t("No linked users yet.")}
                           </td>
                         </tr>
                       ) : (
@@ -1227,7 +1252,7 @@ export default function S3ConnectionsPage() {
                                 onClick={() => setEditLinkedUserIds((prev) => prev.filter((id) => id !== user.id))}
                                  variant="danger"
                               >
-                                Remove
+                                {t("Remove")}
                               </ListActionButton>
                             </td>
                           </tr>
@@ -1238,16 +1263,16 @@ export default function S3ConnectionsPage() {
                 </div>
                 {showEditUserPanel && (
                   <AdminAssociationPickerPanel
-                    title="Add UI users"
-                    hint="(filter by email)"
+                    title={t("Add UI users")}
+                    hint={t("(filter by email)")}
                     search={editUserSearch}
                     onSearchChange={setEditUserSearch}
-                    searchAriaLabel="Search UI users"
+                    searchAriaLabel={t("Search UI users")}
                     loading={false}
                     availableCount={availableEditUsers.length}
                     maxVisibleOptions={maxLinkOptions}
                     selectedCount={editUserSelections.length}
-                    loadingLabel="Loading UI users..."
+                    loadingLabel={t("Loading UI users...")}
                     onCancel={() => {
                       setShowEditUserPanel(false);
                       setEditUserSelections([]);
@@ -1278,9 +1303,9 @@ export default function S3ConnectionsPage() {
             {showEditGroupsTab && (
               <div className="settings-stack">
                 <AdminAssociationSectionHeader
-                  title="Linked UI groups"
-                  countLabel={`${linkedEditGroups.length} linked`}
-                  actionLabel={showEditGroupPanel ? "Close" : "Add UI groups"}
+                  title={t("Linked UI groups")}
+                  countLabel={t(`${linkedEditGroups.length} linked`)}
+                  actionLabel={t(showEditGroupPanel ? "Close" : "Add UI groups")}
                   onAction={() => setShowEditGroupPanel((prev) => !prev)}
                 />
                 <div className={associationTableContainerClass}>
@@ -1288,10 +1313,10 @@ export default function S3ConnectionsPage() {
                     <thead>
                       <tr>
                         <th className="text-left">
-                          Group
+                          {t("Group")}
                         </th>
                         <th className="w-px whitespace-nowrap text-right">
-                          Actions
+                          {t("Actions")}
                         </th>
                       </tr>
                     </thead>
@@ -1299,7 +1324,7 @@ export default function S3ConnectionsPage() {
                       {linkedEditGroups.length === 0 ? (
                         <tr>
                           <td colSpan={2} className="ui-table-secondary">
-                            No linked groups yet.
+                            {t("No linked groups yet.")}
                           </td>
                         </tr>
                       ) : (
@@ -1312,7 +1337,7 @@ export default function S3ConnectionsPage() {
                                 onClick={() => setEditLinkedGroupIds((prev) => prev.filter((id) => id !== group.id))}
                                  variant="danger"
                               >
-                                Remove
+                                {t("Remove")}
                               </ListActionButton>
                             </td>
                           </tr>
@@ -1323,16 +1348,16 @@ export default function S3ConnectionsPage() {
                 </div>
                 {showEditGroupPanel && (
                   <AdminAssociationPickerPanel
-                    title="Add UI groups"
-                    hint="(filter by name)"
+                    title={t("Add UI groups")}
+                    hint={t("(filter by name)")}
                     search={editGroupSearch}
                     onSearchChange={setEditGroupSearch}
-                    searchAriaLabel="Search UI groups"
+                    searchAriaLabel={t("Search UI groups")}
                     loading={false}
                     availableCount={availableEditGroups.length}
                     maxVisibleOptions={maxLinkOptions}
                     selectedCount={editGroupSelections.length}
-                    loadingLabel="Loading UI groups..."
+                    loadingLabel={t("Loading UI groups...")}
                     onCancel={() => {
                       setShowEditGroupPanel(false);
                       setEditGroupSelections([]);
@@ -1370,10 +1395,11 @@ export default function S3ConnectionsPage() {
       {/* Bulk delete modal */}
       {bulkDeleteOpen && (
         <ConfirmActionDialog
-          title={`Delete selected (${selectedIds.length})`}
-          description={`This will permanently delete ${selectedIds.length} selected connection${selectedIds.length > 1 ? "s" : ""} and their credentials.`}
-          confirmLabel="Delete selected connections"
-          processingLabel="Deleting..."
+          title={t(`Delete selected (${selectedIds.length})`)}
+          description={t(`This will permanently delete ${selectedIds.length} selected connection${selectedIds.length > 1 ? "s" : ""} and their credentials.`)}
+          confirmLabel={t("Delete selected connections")}
+          processingLabel={t("Deleting...")}
+          closeLabel={locale === "zh" ? t("Close") : undefined}
           loading={bulkDeleteBusy}
           onCancel={() => setBulkDeleteOpen(false)}
           onConfirm={() => void submitBulkDelete()}
@@ -1383,12 +1409,13 @@ export default function S3ConnectionsPage() {
       {/* Delete modal */}
       {deleteTarget && (
         <ConfirmActionDialog
-          title={`Delete: ${deleteTarget.name}`}
-          description="This will permanently delete the connection and its credentials."
-          confirmLabel="Delete"
-          processingLabel="Deleting..."
+          title={t(`Delete: ${deleteTarget.name}`)}
+          description={t("This will permanently delete the connection and its credentials.")}
+          confirmLabel={t("Delete")}
+          processingLabel={t("Deleting...")}
+          closeLabel={locale === "zh" ? t("Close") : undefined}
           loading={deleteBusy}
-          error={deleteError}
+          error={deleteError ? t(deleteError) : deleteError}
           onCancel={() => setDeleteTarget(null)}
           onConfirm={() => void submitDelete()}
         />
