@@ -11,8 +11,11 @@ import {
   putUserInlinePolicy,
 } from "../../api/managerIamUsers";
 import ManagerEntityPoliciesPage from "./ManagerEntityPoliciesPage";
+import { useManagerText } from "./managerI18n";
+import { managerIamUsersZhMessages } from "./managerIamUsersMessages";
 
 export default function ManagerUserPoliciesPage() {
+  const { t } = useManagerText(managerIamUsersZhMessages);
   return (
     <ManagerEntityPoliciesPage
       entityType="user"
@@ -25,7 +28,7 @@ export default function ManagerUserPoliciesPage() {
       deleteInlinePolicyForEntity={deleteUserInlinePolicy}
       extraActions={(entityName) => [
         {
-          label: "Access keys",
+          label: t("Access keys"),
           to: `/manager/users/${encodeURIComponent(entityName)}/keys`,
           variant: "ghost",
         },

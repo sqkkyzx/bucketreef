@@ -9,6 +9,11 @@ import UiCheckboxField from "../../components/ui/UiCheckboxField";
 import UiInput from "../../components/ui/UiInput";
 import { SettingsButton } from "../../components/settings/SettingsControls";
 import { SettingsSection } from "../../components/settings/SettingsLayout";
+import { useManagerText } from "./managerI18n";
+import {
+  managerIamRolesPoliciesZhMessages,
+  managerIamSelectedCount,
+} from "./managerIamRolesPoliciesMessages";
 
 type ManagedPolicySelectionPanelProps = {
   title: string;
@@ -37,6 +42,7 @@ export default function ManagedPolicySelectionPanel({
   onExpandedChange,
   onSelectionChange,
 }: ManagedPolicySelectionPanelProps) {
+  const { locale, t } = useManagerText(managerIamRolesPoliciesZhMessages);
   const contentId = useId();
   const filteredPolicies = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -57,11 +63,11 @@ export default function ManagedPolicySelectionPanel({
   };
 
   return (
-    <SettingsSection title={title} description={description} presentation="compact">
+    <SettingsSection title={t(title)} description={t(description)} presentation="compact">
       <div className="settings-stack">
         <div className="flex flex-wrap items-center justify-end gap-2">
           {selectedPolicyArns.length > 0 && (
-            <span className="settings-description">{selectedPolicyArns.length} selected</span>
+            <span className="settings-description">{managerIamSelectedCount(locale, selectedPolicyArns.length)}</span>
           )}
           <SettingsButton
             variant="secondary"
@@ -69,23 +75,23 @@ export default function ManagedPolicySelectionPanel({
             aria-controls={contentId}
             onClick={() => onExpandedChange(!expanded)}
           >
-            {expanded ? "Hide" : "Show"}
+            {expanded ? t("Hide") : t("Show")}
           </SettingsButton>
         </div>
         <div id={contentId} hidden={!expanded} className={expanded ? "settings-fields" : undefined}>
           {policies.length === 0 ? (
-            <p className="settings-description">{emptyMessage}</p>
+            <p className="settings-description">{t(emptyMessage)}</p>
           ) : (
             <>
               <UiInput
-                label="Search policies"
+                label={t("Search policies")}
                 value={search}
                 onChange={(event) => onSearchChange(event.target.value)}
-                placeholder="Search policies by name or ARN"
+                placeholder={t("Search policies by name or ARN")}
               />
               <div className="grid gap-x-4 sm:grid-cols-2">
                 {filteredPolicies.length === 0 && (
-                  <p className="settings-description">No matching policies.</p>
+                  <p className="settings-description">{t("No matching policies.")}</p>
                 )}
                 {filteredPolicies.map((policy) => (
                   <UiCheckboxField
@@ -101,7 +107,7 @@ export default function ManagedPolicySelectionPanel({
               </div>
             </>
           )}
-          <p className="settings-description">{footer}</p>
+          <p className="settings-description">{t(footer)}</p>
         </div>
       </div>
     </SettingsSection>

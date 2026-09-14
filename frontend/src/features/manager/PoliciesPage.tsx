@@ -4,7 +4,7 @@
  */
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useS3AccountContext } from "./S3AccountContext";
-import { managerPageBreadcrumbs } from "./managerBreadcrumbs";
+import { localizedManagerPageBreadcrumbs } from "./managerBreadcrumbs";
 import { IamPolicy, createIamPolicy, listIamPolicies } from "../../api/managerIamPolicies";
 import ListPageSection from "../../components/list/ListPageSection";
 import PageEmptyState from "../../components/PageEmptyState";
@@ -23,6 +23,12 @@ import UiInput from "../../components/ui/UiInput";
 import UiTextarea from "../../components/ui/UiTextarea";
 import { focusFirstInvalidField } from "../../utils/focusFirstInvalidField";
 import { useManagerIamCollection } from "./useManagerIamCollection";
+import { useManagerText } from "./managerI18n";
+import {
+  localizeManagerIamError,
+  managerIamResultCount,
+  managerIamRolesPoliciesZhMessages,
+} from "./managerIamRolesPoliciesMessages";
 
 const DEFAULT_POLICY_DOCUMENT = JSON.stringify(
   {
@@ -33,15 +39,10 @@ const DEFAULT_POLICY_DOCUMENT = JSON.stringify(
   2
 );
 
-const policyTableColumns: Array<DataTableColumn<IamPolicy>> = [
-  { id: "name", label: "Name", primary: true, mobileRole: "primary", render: (policy) => policy.name },
-  { id: "arn", label: "ARN", render: (policy) => policy.arn },
-  { id: "version", label: "Version", render: (policy) => policy.default_version_id ?? "-" },
-];
-
 const extractError = (err: unknown): string => extractApiError(err, "Unexpected error");
 
 export default function PoliciesPage() {
+  const { locale, t } = useManagerText(managerIamRolesPoliciesZhMessages);
   const { selectedS3AccountType, accountIdForApi, requiresS3AccountSelection, accessMode } = useS3AccountContext();
   const needsS3AccountSelection = requiresS3AccountSelection && !accountIdForApi;
   const isS3User = selectedS3AccountType === "s3_user";
@@ -128,6 +129,10 @@ export default function PoliciesPage() {
     hasUnsavedChanges: showAdvancedModal && advancedCurrentSignature !== advancedInitialSignature,
     onClose: closeAdvancedModal,
     disabled: creating,
+    title: t("Discard changes?"),
+    description: t("You have unapplied changes. Closing this dialog will discard them."),
+    cancelLabel: t("Keep editing"),
+    confirmLabel: t("Discard changes"),
   });
 
   const filteredPolicies = policies.filter((policy) => {
@@ -140,18 +145,24 @@ export default function PoliciesPage() {
     error,
     rowCount: filteredPolicies.length,
   });
+  const policyTableColumns: Array<DataTableColumn<IamPolicy>> = [
+    { id: "name", label: t("Name"), primary: true, mobileRole: "primary", render: (policy) => policy.name },
+    { id: "arn", label: "ARN", render: (policy) => policy.arn },
+    { id: "version", label: t("Version"), render: (policy) => policy.default_version_id ?? "-" },
+  ];
 
   return (
     <div className={workflowPageHostClass(showAdvancedModal)}>
       <PageHeader actionPresentation="listing"
-        title="IAM Policies"
-        description="List and create Ceph IAM policies for the selected account."
-        breadcrumbs={managerPageBreadcrumbs("policies")}
+        title={t("IAM Policies")}
+        description={t("List and create Ceph IAM policies for the selected account.")}
+        breadcrumbs={localizedManagerPageBreadcrumbs("policies", locale)}
+        breadcrumbLabel={t("Breadcrumb")}
         actions={
           !needsS3AccountSelection && !isS3User
             ? [
                 {
-                  label: "Create policy",
+                  label: t("Create policy"),
                   onClick: openAdvancedModal,
                 },
               ]
@@ -159,32 +170,34 @@ export default function PoliciesPage() {
         }
       />
 
-      {actionMessage && <PageBanner tone="success">{actionMessage}</PageBanner>}
-      {error && <PageBanner tone="error">{error}</PageBanner>}
+      {actionMessage && <PageBanner tone="success">{t(actionMessage)}</PageBanner>}
+      {error && <PageBanner tone="error">{localizeManagerIamError(locale, error)}</PageBanner>}
 
       {needsS3AccountSelection ? (
         <PageEmptyState
-          title="Select an account before managing IAM policies"
-          description="Policies are created inside an execution context. Choose an account to list, create, and attach managed IAM policies."
-          primaryAction={{ label: "Open users", to: "/manager/users" }}
+          eyebrow={t("Next step")}
+          title={t("Select an account before managing IAM policies")}
+          description={t("Policies are created inside an execution context. Choose an account to list, create, and attach managed IAM policies.")}
+          primaryAction={{ label: t("Open users"), to: "/manager/users" }}
           tone="warning"
         />
       ) : isS3User ? (
         <PageEmptyState
-          title="IAM policies are unavailable for managed S3 user contexts"
-          description="Switch to an RGW account or S3 connection context to manage reusable IAM policies."
-          primaryAction={{ label: "Open users", to: "/manager/users" }}
+          eyebrow={t("Next step")}
+          title={t("IAM policies are unavailable for managed S3 user contexts")}
+          description={t("Switch to an RGW account or S3 connection context to manage reusable IAM policies.")}
+          primaryAction={{ label: t("Open users"), to: "/manager/users" }}
           tone="warning"
         />
       ) : (
         <ListPageSection variant="page"
-            title="Policies"
-            countLabel={`${filteredPolicies.length} result(s)`}
+            title={t("Policies")}
+            countLabel={managerIamResultCount(locale, filteredPolicies.length)}
             search={
               <ManagerToolbarSearch
                 value={policyFilter}
                 onChange={setPolicyFilter}
-                placeholder="Search by name or ARN"
+                placeholder={t("Search by name or ARN")}
               />
             }
         >
@@ -193,9 +206,9 @@ export default function PoliciesPage() {
             rows={filteredPolicies}
             rowKey={(policy) => policy.arn}
             status={filteredTableStatus}
-            loadingMessage="Loading policies..."
-            errorMessage="Unable to load policies."
-            emptyMessage="No policies."
+            loadingMessage={t("Loading policies...")}
+            errorMessage={t("Unable to load policies.")}
+            emptyMessage={t("No policies.")}
             responsiveCards
             tableLayout="fixed"
           />
@@ -204,29 +217,30 @@ export default function PoliciesPage() {
 
       {showAdvancedModal && (
         <WorkflowPage
-          title="Create IAM policy"
-          description="Name the policy and edit its complete JSON document with page-level space."
-          breadcrumbs={managerPageBreadcrumbs("policies", { label: "Create" })}
-          backLabel="Back to policies"
+          title={t("Create IAM policy")}
+          description={t("Name the policy and edit its complete JSON document with page-level space.")}
+          breadcrumbs={localizedManagerPageBreadcrumbs("policies", locale, { label: t("Create") })}
+          breadcrumbLabel={t("Breadcrumb")}
+          backLabel={t("Back to policies")}
           onBack={advancedCloseGuard.requestClose}
           width="standard"
           contentVariant="plain"
         >
-          {error && <PageBanner tone="error">{error}</PageBanner>}
-          <SettingsForm label="Create IAM policy" onSubmit={handleAdvancedCreate}
+          {error && <PageBanner tone="error">{localizeManagerIamError(locale, error)}</PageBanner>}
+          <SettingsForm label={t("Create IAM policy")} onSubmit={handleAdvancedCreate}
             busy={creating} disabled={needsS3AccountSelection || isS3User} onCancel={advancedCloseGuard.requestClose}
-            submitLabel="Create policy" busyLabel="Creating...">
-            <SettingsSection title="Identity" presentation="compact">
+            submitLabel={t("Create policy")} busyLabel={t("Creating...")}>
+            <SettingsSection title={t("Identity")} presentation="compact">
               <div className="settings-fields">
-                <UiInput label="Policy name" required value={advancedName} onChange={(event) => setAdvancedName(event.target.value)}
-                  placeholder="Policy name" error={validationAttempted && !advancedName.trim() ? "Policy name is required." : undefined} />
+                <UiInput label={t("Policy name")} required value={advancedName} onChange={(event) => setAdvancedName(event.target.value)}
+                  placeholder={t("Policy name")} error={validationAttempted && !advancedName.trim() ? t("Policy name is required.") : undefined} />
               </div>
             </SettingsSection>
-            <SettingsSection title="Policy document" presentation="compact">
+            <SettingsSection title={t("Policy document")} presentation="compact">
               <div className="settings-fields">
-                <UiTextarea label="Policy document (JSON)" value={documentText} onChange={(event) => setDocumentText(event.target.value)}
-                  className="font-mono" rows={10} spellCheck={false} error={validationAttempted ? documentError : undefined}
-                  hint="Provide a valid IAM policy JSON document. You can start from the default template and customize statements." />
+                <UiTextarea label={t("Policy document (JSON)")} value={documentText} onChange={(event) => setDocumentText(event.target.value)}
+                  className="font-mono" rows={10} spellCheck={false} error={validationAttempted && documentError ? t(documentError) : undefined}
+                  hint={t("Provide a valid IAM policy JSON document. You can start from the default template and customize statements.")} />
               </div>
             </SettingsSection>
           </SettingsForm>

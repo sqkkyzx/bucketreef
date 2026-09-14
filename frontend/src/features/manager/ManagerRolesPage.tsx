@@ -6,7 +6,7 @@ import { ListActions, ListBadge, ListActionButton, ListActionLink } from "../../
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 import { useS3AccountContext } from "./S3AccountContext";
-import { managerPageBreadcrumbs } from "./managerBreadcrumbs";
+import { localizedManagerPageBreadcrumbs } from "./managerBreadcrumbs";
 import { S3AccountSelector } from "../../api/accountParams";
 import {
   IAMRole,
@@ -40,6 +40,12 @@ import SettingsForm from "../../components/settings/SettingsForm";
 import { focusFirstInvalidField } from "../../utils/focusFirstInvalidField";
 import ManagerRoleFormFields from "./ManagerRoleFormFields";
 import { parseIamRolePolicy } from "./iamRoleForm";
+import { useManagerText } from "./managerI18n";
+import {
+  localizeManagerIamError,
+  managerIamResultCount,
+  managerIamRolesPoliciesZhMessages,
+} from "./managerIamRolesPoliciesMessages";
 
 const DEFAULT_ASSUME_ROLE_DOCUMENT = JSON.stringify(
   {
@@ -60,6 +66,7 @@ const DEFAULT_ROLE_PATH = "/";
 const extractError = (err: unknown): string => extractApiError(err, "Unexpected error");
 
 export default function ManagerRolesPage() {
+  const { locale, t } = useManagerText(managerIamRolesPoliciesZhMessages);
   const deleteConfirmation = useConfirmActionDialog();
   const { selectedS3AccountType, accountIdForApi, requiresS3AccountSelection, accessMode } = useS3AccountContext();
   const needsS3AccountSelection = requiresS3AccountSelection && !accountIdForApi;
@@ -242,11 +249,11 @@ export default function ManagerRolesPage() {
   const handleDelete = (name: string) => {
     if (needsS3AccountSelection) return;
     deleteConfirmation.requestConfirmation({
-      title: "Delete IAM role?",
-      description: "Permanently remove this IAM role from the selected account.",
-      confirmLabel: "Delete role",
-      details: [{ label: "IAM role", value: name }],
-      impacts: ["Workloads that assume this role will no longer receive its permissions."],
+      title: t("Delete IAM role?"),
+      description: t("Permanently remove this IAM role from the selected account."),
+      confirmLabel: t("Delete role"),
+      details: [{ label: t("IAM role"), value: name }],
+      impacts: [t("Workloads that assume this role will no longer receive its permissions.")],
       onConfirm: () => deleteRole(name),
     });
   };
@@ -339,12 +346,20 @@ export default function ManagerRolesPage() {
     hasUnsavedChanges: showAdvancedModal && advancedCurrentSignature !== advancedInitialSignature,
     onClose: closeAdvancedModal,
     disabled: creating,
+    title: t("Discard changes?"),
+    description: t("You have unapplied changes. Closing this dialog will discard them."),
+    cancelLabel: t("Keep editing"),
+    confirmLabel: t("Discard changes"),
   });
 
   const editCloseGuard = useUnsavedChangesGuard({
     hasUnsavedChanges: showEditModal && !loadingRoleDetails && editCurrentSignature !== editInitialSignature,
     onClose: closeEditModal,
     disabled: savingEdit,
+    title: t("Discard changes?"),
+    description: t("You have unapplied changes. Closing this dialog will discard them."),
+    cancelLabel: t("Keep editing"),
+    confirmLabel: t("Discard changes"),
   });
 
   const handleSaveEdit = async (e: FormEvent) => {
@@ -387,12 +402,12 @@ export default function ManagerRolesPage() {
     rowCount: filteredRoles.length,
   });
   const roleTableColumns: Array<DataTableColumn<IAMRole>> = [
-    { id: "name", label: "Name", primary: true, mobileRole: "primary", render: (role) => role.name },
-    { id: "path", label: "Path", render: (role) => role.path ?? "-" },
+    { id: "name", label: t("Name"), primary: true, mobileRole: "primary", render: (role) => role.name },
+    { id: "path", label: t("Path"), render: (role) => role.path ?? "-" },
     { id: "arn", label: "ARN", render: (role) => role.arn ?? "-" },
     {
       id: "policies",
-      label: "Policies",
+      label: t("Policies"),
       cellClassName: "ui-table-wide",
       render: (role) =>
         role.policies && role.policies.length > 0 ? (
@@ -413,7 +428,7 @@ export default function ManagerRolesPage() {
     },
     {
       id: "actions",
-      label: "Actions",
+      label: t("Actions"),
       align: "right",
       mobileRole: "actions",
       render: (role) => (
@@ -422,17 +437,17 @@ export default function ManagerRolesPage() {
             onClick={() => openEditModal(role.name)}
             disabled={loadingRoleDetails && editingRole?.name === role.name}
           >
-            Edit
+            {t("Edit")}
           </ListActionButton>
           <ListActionLink to={`/manager/roles/${encodeURIComponent(role.name)}/policies`}>
-            Policies
+            {t("Policies")}
           </ListActionLink>
           <ListActionButton
             onClick={() => handleDelete(role.name)}
              variant="danger"
             disabled={deletingRole === role.name}
           >
-            {deletingRole === role.name ? "Deleting..." : "Delete"}
+            {deletingRole === role.name ? t("Deleting...") : t("Delete")}
           </ListActionButton>
         </ListActions>
       ),
@@ -442,14 +457,15 @@ export default function ManagerRolesPage() {
   return (
     <div className={workflowPageHostClass(showAdvancedModal || showEditModal)}>
       <PageHeader actionPresentation="listing"
-        title="IAM Roles"
-        description="Manage roles using the account root keys."
-        breadcrumbs={managerPageBreadcrumbs("roles")}
+        title={t("IAM Roles")}
+        description={t("Manage roles using the account root keys.")}
+        breadcrumbs={localizedManagerPageBreadcrumbs("roles", locale)}
+        breadcrumbLabel={t("Breadcrumb")}
         actions={
           !needsS3AccountSelection && !isS3User
             ? [
                 {
-                  label: "Create role",
+                  label: t("Create role"),
                   onClick: openAdvancedModal,
                 },
               ]
@@ -457,32 +473,34 @@ export default function ManagerRolesPage() {
         }
       />
 
-      {error && <PageBanner tone="error">{error}</PageBanner>}
-      {actionMessage && <PageBanner tone="success">{actionMessage}</PageBanner>}
+      {error && <PageBanner tone="error">{localizeManagerIamError(locale, error)}</PageBanner>}
+      {actionMessage && <PageBanner tone="success">{t(actionMessage)}</PageBanner>}
 
       {needsS3AccountSelection ? (
         <PageEmptyState
-          title="Select an account before managing IAM roles"
-          description="Roles are defined per execution context. Choose an account to list trust relationships and attached policies."
-          primaryAction={{ label: "Open users", to: "/manager/users" }}
+          eyebrow={t("Next step")}
+          title={t("Select an account before managing IAM roles")}
+          description={t("Roles are defined per execution context. Choose an account to list trust relationships and attached policies.")}
+          primaryAction={{ label: t("Open users"), to: "/manager/users" }}
           tone="warning"
         />
       ) : isS3User ? (
         <PageEmptyState
-          title="IAM roles are unavailable for managed S3 user contexts"
-          description="Switch to an RGW account or S3 connection context to manage role trust policies and attached permissions."
-          primaryAction={{ label: "Open users", to: "/manager/users" }}
+          eyebrow={t("Next step")}
+          title={t("IAM roles are unavailable for managed S3 user contexts")}
+          description={t("Switch to an RGW account or S3 connection context to manage role trust policies and attached permissions.")}
+          primaryAction={{ label: t("Open users"), to: "/manager/users" }}
           tone="warning"
         />
       ) : (
         <ListPageSection variant="page"
-            title="Roles"
-            countLabel={`${filteredRoles.length} result(s)`}
+            title={t("Roles")}
+            countLabel={managerIamResultCount(locale, filteredRoles.length)}
             search={
               <ManagerToolbarSearch
                 value={roleFilter}
                 onChange={setRoleFilter}
-                placeholder="Search by name, path, or ARN"
+                placeholder={t("Search by name, path, or ARN")}
               />
             }
         >
@@ -491,9 +509,9 @@ export default function ManagerRolesPage() {
             rows={filteredRoles}
             rowKey={(role) => role.name}
             status={filteredTableStatus}
-            loadingMessage="Loading roles..."
-            errorMessage="Unable to load roles."
-            emptyMessage="No roles."
+            loadingMessage={t("Loading roles...")}
+            errorMessage={t("Unable to load roles.")}
+            emptyMessage={t("No roles.")}
             responsiveCards
             tableLayout="fixed"
           />
@@ -502,18 +520,19 @@ export default function ManagerRolesPage() {
 
       {showAdvancedModal && (
         <WorkflowPage
-          title="Create IAM role"
-          description="Configure the trust policy, path and attached policies without compressing the workflow into an overlay."
-          breadcrumbs={managerPageBreadcrumbs("roles", { label: "Create" })}
-          backLabel="Back to roles"
+          title={t("Create IAM role")}
+          description={t("Configure the trust policy, path and attached policies without compressing the workflow into an overlay.")}
+          breadcrumbs={localizedManagerPageBreadcrumbs("roles", locale, { label: t("Create") })}
+          breadcrumbLabel={t("Breadcrumb")}
+          backLabel={t("Back to roles")}
           onBack={advancedCloseGuard.requestClose}
           width="standard"
           contentVariant="plain"
         >
-          {error && <PageBanner tone="error">{error}</PageBanner>}
-          <SettingsForm label="Create IAM role" onSubmit={handleAdvancedCreate}
+          {error && <PageBanner tone="error">{localizeManagerIamError(locale, error)}</PageBanner>}
+          <SettingsForm label={t("Create IAM role")} onSubmit={handleAdvancedCreate}
             busy={creating} disabled={needsS3AccountSelection} onCancel={advancedCloseGuard.requestClose}
-            submitLabel="Create role" busyLabel="Creating...">
+            submitLabel={t("Create role")} busyLabel={t("Creating...")}>
             <ManagerRoleFormFields name={advancedName} path={advancedPath} policy={assumeRolePolicyText}
               onNameChange={setAdvancedName} onPathChange={setAdvancedPath} onPolicyChange={setAssumeRolePolicyText}
               nameError={advancedValidationAttempted && !advancedName.trim() ? "Role name is required." : undefined}
@@ -561,21 +580,24 @@ export default function ManagerRolesPage() {
       )}
       {showEditModal && (
         <WorkflowPage
-          title={editingRole ? `Edit IAM role: ${editingRole.name}` : "Edit IAM role"}
-          description="Review the immutable identity and update the role trust policy in a dedicated page."
-          breadcrumbs={managerPageBreadcrumbs("roles", { label: "Edit" })}
-          backLabel="Back to roles"
+          title={editingRole
+            ? locale === "zh" ? `编辑 IAM 角色：${editingRole.name}` : `Edit IAM role: ${editingRole.name}`
+            : t("Edit IAM role")}
+          description={t("Review the immutable identity and update the role trust policy in a dedicated page.")}
+          breadcrumbs={localizedManagerPageBreadcrumbs("roles", locale, { label: t("Edit") })}
+          breadcrumbLabel={t("Breadcrumb")}
+          backLabel={t("Back to roles")}
           onBack={editCloseGuard.requestClose}
           width="standard"
           contentVariant="plain"
         >
-          {error && <PageBanner tone="error">{error}</PageBanner>}
+          {error && <PageBanner tone="error">{localizeManagerIamError(locale, error)}</PageBanner>}
           {loadingRoleDetails ? (
-            <p className="ui-body text-slate-500 dark:text-slate-300">Loading role details...</p>
+            <p className="ui-body text-slate-500 dark:text-slate-300">{t("Loading role details...")}</p>
           ) : (
-            <SettingsForm label="Edit IAM role" onSubmit={handleSaveEdit} busy={savingEdit}
+            <SettingsForm label={t("Edit IAM role")} onSubmit={handleSaveEdit} busy={savingEdit}
               disabled={needsS3AccountSelection || !editingRole} onCancel={editCloseGuard.requestClose}
-              submitLabel="Save changes" busyLabel="Saving...">
+              submitLabel={t("Save changes")} busyLabel={t("Saving...")}>
               <ManagerRoleFormFields editing name={editingRole?.name ?? ""} path={editPath} policy={editAssumeRolePolicyText}
                 onPolicyChange={setEditAssumeRolePolicyText} policyError={editValidationAttempted ? editPolicy.error : undefined} />
             </SettingsForm>

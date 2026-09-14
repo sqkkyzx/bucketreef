@@ -6,7 +6,7 @@ import { ListActions, ListBadge, ListActionLink, ListActionButton } from "../../
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 import { useS3AccountContext } from "./S3AccountContext";
-import { managerPageBreadcrumbs } from "./managerBreadcrumbs";
+import { localizedManagerPageBreadcrumbs } from "./managerBreadcrumbs";
 import { S3AccountSelector } from "../../api/accountParams";
 import { IAMGroup, attachGroupPolicy, createIamGroup, deleteIamGroup, listIamGroups } from "../../api/managerIamGroups";
 import { IamPolicy, listIamPolicies } from "../../api/managerIamPolicies";
@@ -32,10 +32,17 @@ import SettingsForm from "../../components/settings/SettingsForm";
 import { focusFirstInvalidField } from "../../utils/focusFirstInvalidField";
 import { SettingsSection } from "../../components/settings/SettingsLayout";
 import UiInput from "../../components/ui/UiInput";
+import { useManagerText } from "./managerI18n";
+import {
+  localizeManagerGroupsError,
+  managerGroupsResultCount,
+  managerGroupsZhMessages,
+} from "./managerGroupsMessages";
 
 const extractError = (err: unknown): string => extractApiError(err, "Unexpected error");
 
 export default function ManagerGroupsPage() {
+  const { locale, t } = useManagerText(managerGroupsZhMessages);
   const deleteConfirmation = useConfirmActionDialog();
   const { selectedS3AccountType, accountIdForApi, requiresS3AccountSelection, selectedS3AccountId, accessMode } = useS3AccountContext();
   const needsS3AccountSelection = requiresS3AccountSelection && !accountIdForApi;
@@ -179,11 +186,11 @@ export default function ManagerGroupsPage() {
   const handleDelete = (name: string) => {
     if (needsS3AccountSelection) return;
     deleteConfirmation.requestConfirmation({
-      title: "Delete IAM group?",
-      description: "Permanently remove this IAM group from the selected account.",
-      confirmLabel: "Delete group",
-      details: [{ label: "IAM group", value: name }],
-      impacts: ["Members will lose permissions inherited only through this group."],
+      title: t("Delete IAM group?"),
+      description: t("Permanently remove this IAM group from the selected account."),
+      confirmLabel: t("Delete group"),
+      details: [{ label: t("IAM group"), value: name }],
+      impacts: [t("Members will lose permissions inherited only through this group.")],
       onConfirm: () => deleteGroup(name),
     });
   };
@@ -221,6 +228,10 @@ export default function ManagerGroupsPage() {
     hasUnsavedChanges: showAdvancedModal && advancedCurrentSignature !== advancedInitialSignature,
     onClose: closeAdvancedModal,
     disabled: busy !== null,
+    title: t("Discard changes?"),
+    description: t("You have unapplied changes. Closing this dialog will discard them."),
+    cancelLabel: t("Keep editing"),
+    confirmLabel: t("Discard changes"),
   });
 
   const filteredGroups = groups.filter((group) => {
@@ -234,11 +245,11 @@ export default function ManagerGroupsPage() {
     rowCount: filteredGroups.length,
   });
   const groupTableColumns: Array<DataTableColumn<IAMGroup>> = [
-    { id: "name", label: "Name", primary: true, mobileRole: "primary", render: (group) => group.name },
+    { id: "name", label: t("Name"), primary: true, mobileRole: "primary", render: (group) => group.name },
     { id: "arn", label: "ARN", render: (group) => group.arn ?? "-" },
     {
       id: "policies",
-      label: "Policies",
+      label: t("Policies"),
       cellClassName: "ui-table-wide",
       render: (group) =>
         group.policies && group.policies.length > 0 ? (
@@ -259,23 +270,23 @@ export default function ManagerGroupsPage() {
     },
     {
       id: "actions",
-      label: "Actions",
+      label: t("Actions"),
       align: "right",
       mobileRole: "actions",
       render: (group) => (
         <ListActions>
           <ListActionLink to={`/manager/groups/${encodeURIComponent(group.name)}/users`}>
-            Members
+            {t("Members")}
           </ListActionLink>
           <ListActionLink to={`/manager/groups/${encodeURIComponent(group.name)}/policies`}>
-            Policies
+            {t("Policies")}
           </ListActionLink>
           <ListActionButton
             onClick={() => handleDelete(group.name)}
              variant="danger"
             disabled={busy === group.name}
           >
-            {busy === group.name ? "Deleting..." : "Delete"}
+            {busy === group.name ? t("Deleting...") : t("Delete")}
           </ListActionButton>
         </ListActions>
       ),
@@ -285,14 +296,15 @@ export default function ManagerGroupsPage() {
   return (
     <div className={workflowPageHostClass(showAdvancedModal)}>
       <PageHeader actionPresentation="listing"
-        title="IAM Groups"
-        description="Manage groups using the account root keys."
-        breadcrumbs={managerPageBreadcrumbs("groups")}
+        title={t("IAM Groups")}
+        description={t("Manage groups using the account root keys.")}
+        breadcrumbs={localizedManagerPageBreadcrumbs("groups", locale)}
+        breadcrumbLabel={t("Breadcrumb")}
         actions={
           !needsS3AccountSelection && !isS3User
             ? [
                 {
-                  label: "Create group",
+                  label: t("Create group"),
                   onClick: openAdvancedModal,
                 },
               ]
@@ -300,32 +312,34 @@ export default function ManagerGroupsPage() {
         }
       />
 
-      {error && <PageBanner tone="error">{error}</PageBanner>}
-      {actionMessage && <PageBanner tone="success">{actionMessage}</PageBanner>}
+      {error && <PageBanner tone="error">{localizeManagerGroupsError(locale, error)}</PageBanner>}
+      {actionMessage && <PageBanner tone="success">{t(actionMessage)}</PageBanner>}
 
       {needsS3AccountSelection ? (
         <PageEmptyState
-          title="Select an account before managing IAM groups"
-          description="Groups are scoped to an execution context. Choose an account to list membership containers and attach shared policies."
-          primaryAction={{ label: "Open users", to: "/manager/users" }}
+          eyebrow={t("Next step")}
+          title={t("Select an account before managing IAM groups")}
+          description={t("Groups are scoped to an execution context. Choose an account to list membership containers and attach shared policies.")}
+          primaryAction={{ label: t("Open users"), to: "/manager/users" }}
           tone="warning"
         />
       ) : isS3User ? (
         <PageEmptyState
-          title="IAM groups are unavailable for managed S3 user contexts"
-          description="Switch to an RGW account or S3 connection context to manage account-level IAM groups."
-          primaryAction={{ label: "Open users", to: "/manager/users" }}
+          eyebrow={t("Next step")}
+          title={t("IAM groups are unavailable for managed S3 user contexts")}
+          description={t("Switch to an RGW account or S3 connection context to manage account-level IAM groups.")}
+          primaryAction={{ label: t("Open users"), to: "/manager/users" }}
           tone="warning"
         />
       ) : (
         <ListPageSection variant="page"
-            title="Groups"
-            countLabel={`${filteredGroups.length} result(s)`}
+            title={t("Groups")}
+            countLabel={managerGroupsResultCount(locale, filteredGroups.length)}
             search={
               <ManagerToolbarSearch
                 value={groupFilter}
                 onChange={setGroupFilter}
-                placeholder="Search by name or ARN"
+                placeholder={t("Search by name or ARN")}
               />
             }
         >
@@ -334,9 +348,9 @@ export default function ManagerGroupsPage() {
             rows={filteredGroups}
             rowKey={(group) => group.name}
             status={filteredTableStatus}
-            loadingMessage="Loading groups..."
-            errorMessage="Unable to load groups."
-            emptyMessage="No groups."
+            loadingMessage={t("Loading groups...")}
+            errorMessage={t("Unable to load groups.")}
+            emptyMessage={t("No groups.")}
             responsiveCards
             tableLayout="fixed"
           />
@@ -345,29 +359,30 @@ export default function ManagerGroupsPage() {
 
       {showAdvancedModal && (
         <WorkflowPage
-          title="Create IAM group"
-          description="Define the group and attach its managed and inline policies in one focused workflow."
-          breadcrumbs={managerPageBreadcrumbs("groups", { label: "Create" })}
-          backLabel="Back to groups"
+          title={t("Create IAM group")}
+          description={t("Define the group and attach its managed and inline policies in one focused workflow.")}
+          breadcrumbs={localizedManagerPageBreadcrumbs("groups", locale, { label: t("Create") })}
+          breadcrumbLabel={t("Breadcrumb")}
+          backLabel={t("Back to groups")}
           onBack={advancedCloseGuard.requestClose}
           width="standard"
           contentVariant="plain"
         >
-          {error && <PageBanner tone="error">{error}</PageBanner>}
-          <SettingsForm label="Create IAM group" onSubmit={handleAdvancedCreate}
+          {error && <PageBanner tone="error">{localizeManagerGroupsError(locale, error)}</PageBanner>}
+          <SettingsForm label={t("Create IAM group")} onSubmit={handleAdvancedCreate}
             busy={busy !== null} disabled={!selectedS3AccountId} onCancel={advancedCloseGuard.requestClose}
-            submitLabel="Create group" busyLabel="Creating...">
-            <SettingsSection title="Identity" presentation="compact">
+            submitLabel={t("Create group")} busyLabel={t("Creating...")}>
+            <SettingsSection title={t("Identity")} presentation="compact">
               <div className="settings-fields">
-                <UiInput label="Group name" required value={advancedName} onChange={(event) => setAdvancedName(event.target.value)}
-                  placeholder="Group name" error={advancedValidationAttempted && !advancedName.trim() ? "Group name is required." : undefined} />
+                <UiInput label={t("Group name")} required value={advancedName} onChange={(event) => setAdvancedName(event.target.value)}
+                  placeholder={t("Group name")} error={advancedValidationAttempted && !advancedName.trim() ? t("Group name is required.") : undefined} />
               </div>
             </SettingsSection>
             <ManagedPolicySelectionPanel
-              title="Attach policies"
-              description="Select managed policies to link immediately."
-              emptyMessage="No policies available. Create them first."
-              footer="Policies can also be attached later from the group page."
+              title={t("Attach policies")}
+              description={t("Select managed policies to link immediately.")}
+              emptyMessage={t("No policies available. Create them first.")}
+              footer={t("Policies can also be attached later from the group page.")}
               policies={policies}
               selectedPolicyArns={selectedPolicies}
               search={policySearch}
