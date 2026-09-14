@@ -2,7 +2,7 @@
  * Copyright (c) 2026 Laurent Barbe
  * Licensed under the Apache License, Version 2.0
  */
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   collectUsageHistory,
   listUsageHistory,
@@ -21,6 +21,7 @@ import PageBanner from "../../components/PageBanner";
 import InlineSummary from "../../components/InlineSummary";
 import MobileTableSort from "../../components/list/MobileTableSort";
 import PageShell from "../../components/PageShell";
+import FullPageStatus from "../../components/FullPageStatus";
 import { adminPageBreadcrumbs } from "./adminBreadcrumbs";
 import { resolveListTableStatus } from "../../components/list/listTableStatus";
 import { ListActionButton } from "../../components/list/ListControls";
@@ -32,9 +33,13 @@ import {
   uiTitleTextClass,
 } from "../../components/ui/styles";
 import { RefreshIcon } from "../browser/browserIcons";
-import FeatureDisabledPage from "../shared/FeatureDisabledPage";
 import { extractApiError } from "../../utils/apiError";
 import { formatBytes, formatCompactNumber, formatPercentage } from "../../utils/format";
+import {
+  localizeAdminOperationsBreadcrumbs,
+  type AdminOperationsLocale,
+  useAdminOperationsText,
+} from "./adminOperationsMessages";
 
 const SUBJECT_TYPES: Array<{ value: UsageHistorySubjectType; label: string }> = [
   { value: "all", label: "All subjects" },
@@ -62,12 +67,12 @@ function todayDate(): string {
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())).toISOString().slice(0, 10);
 }
 
-function formatDateTime(value?: string | null): string {
+function formatDateTime(value: string | null | undefined, locale: AdminOperationsLocale): string {
   if (!value) return "-";
   if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return value;
-  return parsed.toLocaleString(undefined, {
+  return parsed.toLocaleString(locale === "zh" ? "zh-CN" : undefined, {
     year: "numeric",
     month: "short",
     day: "2-digit",
@@ -76,17 +81,22 @@ function formatDateTime(value?: string | null): string {
   });
 }
 
-function formatSubjectType(value: UsageHistoryRecord["subject_type"]): string {
+function formatSubjectType(value: UsageHistoryRecord["subject_type"], locale: AdminOperationsLocale): string {
+  if (locale === "zh") return value === "account" ? "账户" : "S3 用户";
   return value === "account" ? "Account" : "S3 user";
 }
 
-function collectionMessage(result: Awaited<ReturnType<typeof collectUsageHistory>>): string {
+function collectionMessage(
+  result: Awaited<ReturnType<typeof collectUsageHistory>>,
+  locale: AdminOperationsLocale,
+): string {
   if (result.status === "skipped" && result.reason) {
     return result.reason;
   }
   const processed = result.subjects_processed ?? 0;
   const hourly = result.history_hourly_upserts ?? 0;
   const daily = result.history_daily_upserts ?? 0;
+  if (locale === "zh") return `采集完成：已处理 ${processed} 个主体，写入 ${hourly} 个每小时快照和 ${daily} 个每日快照。`;
   return `Collection completed: ${processed} subject${processed === 1 ? "" : "s"} processed, ${hourly} hourly and ${daily} daily snapshot${daily === 1 ? "" : "s"}.`;
 }
 
@@ -101,29 +111,43 @@ function describeCollectionIssue(issue: unknown, fallback: string): string {
   return fallback;
 }
 
-function collectionIssueMessage(kind: "error" | "warning", issues?: unknown[]): string | null {
+function collectionIssueMessage(
+  kind: "error" | "warning",
+  issues: unknown[] | undefined,
+  locale: AdminOperationsLocale,
+): string | null {
   if (!issues?.length) return null;
-  const first = describeCollectionIssue(issues[0], `Unknown ${kind}`);
+  const first = describeCollectionIssue(issues[0], locale === "zh" ? (kind === "error" ? "未知错误" : "未知警告") : `Unknown ${kind}`);
   const label = kind === "error" ? "error" : "warning";
+  if (locale === "zh") {
+    const labelZh = kind === "error" ? "错误" : "警告";
+    return `采集完成，但有 ${issues.length} 个${labelZh}。首个${labelZh}：${first}`;
+  }
   return `Collection finished with ${issues.length} ${label}${issues.length === 1 ? "" : "s"}. First ${label}: ${first}`;
 }
 
-const historyTableColumns: Array<DataTableColumn<UsageHistoryRecord, UsageHistorySortBy>> = [
+function buildHistoryTableColumns(
+  locale: AdminOperationsLocale,
+  t: (message: string) => string,
+): Array<DataTableColumn<UsageHistoryRecord, UsageHistorySortBy>> {
+  return [
   {
     id: "period",
-    label: "Period",
+    label: t("Period"),
     field: "period",
     primary: true,
     render: (item) => (
       <>
-        <div className={cx("font-medium", uiTitleTextClass)}>{formatDateTime(item.period_start)}</div>
-        <div className={cx("ui-caption", uiMutedTextClass)}>{item.granularity}</div>
+        <div className={cx("font-medium", uiTitleTextClass)}>{formatDateTime(item.period_start, locale)}</div>
+        <div className={cx("ui-caption", uiMutedTextClass)}>
+          {locale === "zh" ? t(item.granularity === "daily" ? "Daily" : "Hourly") : item.granularity}
+        </div>
       </>
     ),
   },
   {
     id: "endpoint",
-    label: "Endpoint",
+    label: t("Endpoint"),
     render: (item) => (
       <>
         <div className={cx("font-medium", uiTitleTextClass)}>{item.endpoint_name}</div>
@@ -133,13 +157,13 @@ const historyTableColumns: Array<DataTableColumn<UsageHistoryRecord, UsageHistor
   },
   {
     id: "subject",
-    label: "Subject",
+    label: t("Subject"),
     field: "subject",
     render: (item) => (
       <>
         <div className={cx("font-medium", uiTitleTextClass)}>{item.subject_name}</div>
         <div className={cx("ui-caption", uiMutedTextClass)}>
-          {formatSubjectType(item.subject_type)}
+          {formatSubjectType(item.subject_type, locale)}
           {item.subject_identifier ? ` - ${item.subject_identifier}` : ""}
         </div>
       </>
@@ -147,50 +171,52 @@ const historyTableColumns: Array<DataTableColumn<UsageHistoryRecord, UsageHistor
   },
   {
     id: "storage",
-    label: "Storage",
+    label: t("Storage"),
     field: "used_bytes",
     render: (item) => (
       <>
         <div className={cx("font-medium", uiTitleTextClass)}>{formatBytes(item.used_bytes)}</div>
         {item.quota_size_bytes != null ? (
-          <div className={cx("ui-caption", uiMutedTextClass)}>Quota {formatBytes(item.quota_size_bytes)}</div>
+          <div className={cx("ui-caption", uiMutedTextClass)}>{t("Quota")} {formatBytes(item.quota_size_bytes)}</div>
         ) : null}
       </>
     ),
   },
   {
     id: "objects",
-    label: "Objects",
+    label: t("Objects"),
     field: "used_objects",
     render: (item) => (
       <>
         <div className={cx("font-medium", uiTitleTextClass)}>{formatCompactNumber(item.used_objects)}</div>
         {item.quota_objects != null ? (
-          <div className={cx("ui-caption", uiMutedTextClass)}>Quota {formatCompactNumber(item.quota_objects)}</div>
+          <div className={cx("ui-caption", uiMutedTextClass)}>{t("Quota")} {formatCompactNumber(item.quota_objects)}</div>
         ) : null}
       </>
     ),
   },
   {
     id: "ratio",
-    label: "Quota ratio",
+    label: t("Quota ratio"),
     field: "ratio",
     render: (item) => formatPercentage(item.usage_ratio_pct),
   },
   {
     id: "samples",
-    label: "Samples",
+    label: t("Samples"),
     align: "right",
     render: (item) => item.samples_count ?? (item.granularity === "hourly" ? "1" : "-"),
   },
   {
     id: "collected",
-    label: "Collected",
-    render: (item) => formatDateTime(item.collected_at),
+    label: t("Collected"),
+    render: (item) => formatDateTime(item.collected_at, locale),
   },
-];
+  ];
+}
 
 export default function UsageHistoryPage() {
+  const { locale, t } = useAdminOperationsText();
   const { generalSettings } = useGeneralSettings();
   const [granularity, setGranularity] = useState<UsageHistoryGranularity>("daily");
   const [subjectType, setSubjectType] = useState<UsageHistorySubjectType>("all");
@@ -295,6 +321,14 @@ export default function UsageHistoryPage() {
     error: historyError,
     rowCount: history?.items.length ?? 0,
   });
+  const localizedSortOptions = useMemo(
+    () => SORT_OPTIONS.map((option) => ({ ...option, label: t(option.label) })),
+    [t],
+  );
+  const historyTableColumns = useMemo(
+    () => buildHistoryTableColumns(locale, t),
+    [locale, t],
+  );
 
   async function handleCollect() {
     setCollectLoading(true);
@@ -303,9 +337,9 @@ export default function UsageHistoryPage() {
     setCollectError(null);
     try {
       const result = await collectUsageHistory();
-      const message = collectionMessage(result);
-      const errorMessage = collectionIssueMessage("error", result.errors);
-      const warningMessage = collectionIssueMessage("warning", result.warnings);
+      const message = collectionMessage(result, locale);
+      const errorMessage = collectionIssueMessage("error", result.errors, locale);
+      const warningMessage = collectionIssueMessage("warning", result.warnings, locale);
       if (errorMessage) {
         setCollectError(`${message} ${errorMessage}`);
       } else {
@@ -330,14 +364,22 @@ export default function UsageHistoryPage() {
   }
 
   if (!generalSettings.usage_history_enabled) {
-    return <FeatureDisabledPage feature="Usage history" />;
+    return (
+      <FullPageStatus
+        title={t("Usage history disabled")}
+        description={t("This feature has been disabled by an administrator. Contact your admin if you need access restored.")}
+        primaryAction={{ label: t("Back to home"), to: "/", variant: "primary" }}
+        secondaryAction={{ label: t("Switch account"), to: "/login" }}
+      />
+    );
   }
 
   return (
     <PageShell actionPresentation="listing"
-      title="Usage history"
-      description="Review quota usage trends for RGW accounts and users."
-      breadcrumbs={adminPageBreadcrumbs("usage-history")}
+      title={t("Usage history")}
+      description={t("Review quota usage trends for RGW accounts and users.")}
+      breadcrumbs={localizeAdminOperationsBreadcrumbs(adminPageBreadcrumbs("usage-history"), locale)}
+      breadcrumbLabel={t("Breadcrumb")}
       rightContent={
         <ListActionButton
           variant="primary"
@@ -346,42 +388,42 @@ export default function UsageHistoryPage() {
           loading={collectLoading}
         >
           <RefreshIcon aria-hidden="true" className={cx("h-3.5 w-3.5", collectLoading && "animate-spin")} />
-          {collectLoading ? "Collecting..." : "Collect usage"}
+          {collectLoading ? t("Collecting...") : t("Collect usage")}
         </ListActionButton>
       }
     >
 
-      {endpointsError ? <PageBanner tone="warning">{endpointsError}</PageBanner> : null}
+      {endpointsError ? <PageBanner tone="warning">{t(endpointsError)}</PageBanner> : null}
 
       {collectSuccess ? <PageBanner tone="success">{collectSuccess}</PageBanner> : null}
       {collectWarning ? <PageBanner tone="warning">{collectWarning}</PageBanner> : null}
-      {collectError ? <PageBanner tone="error">{collectError}</PageBanner> : null}
-      {historyError ? <PageBanner tone="error">{historyError}</PageBanner> : null}
+      {collectError ? <PageBanner tone="error">{t(collectError)}</PageBanner> : null}
+      {historyError ? <PageBanner tone="error">{t(historyError)}</PageBanner> : null}
 
       <ListPageSection variant="page"
-        title="Snapshots"
-        mobileSort={<MobileTableSort options={SORT_OPTIONS} field={sortBy} direction={sortDir} onFieldChange={setSortBy} onDirectionChange={setSortDir} />}
-        countLabel={`${history?.total ?? 0} record${history?.total === 1 ? "" : "s"}`}
+        title={t("Snapshots")}
+        mobileSort={<MobileTableSort options={localizedSortOptions} field={sortBy} direction={sortDir} onFieldChange={setSortBy} onDirectionChange={setSortDir} labels={{ sortBy: t("Sort by"), direction: t("Direction"), ascending: t("Ascending"), descending: t("Descending") }} />}
+        countLabel={locale === "zh" ? `${history?.total ?? 0} 条记录` : `${history?.total ?? 0} record${history?.total === 1 ? "" : "s"}`}
         filters={
           <>
             <UiSelect
-              label="Granularity"
-              title="Daily keeps the latest usage per day; hourly keeps each collected quota snapshot."
+              label={t("Granularity")}
+              title={t("Daily keeps the latest usage per day; hourly keeps each collected quota snapshot.")}
               value={granularity}
               onChange={(event) => setGranularity(event.target.value as UsageHistoryGranularity)}
               size="compact"
             >
-              <option value="daily">Daily</option>
-              <option value="hourly">Hourly</option>
+              <option value="daily">{t("Daily")}</option>
+              <option value="hourly">{t("Hourly")}</option>
             </UiSelect>
             <UiSelect
-              label="Endpoint"
+              label={t("Endpoint")}
               value={selectedEndpointId ?? ""}
               onChange={(event) => setSelectedEndpointId(event.target.value ? Number(event.target.value) : null)}
               disabled={endpointsLoading}
               size="compact"
             >
-              <option value="">{endpointsLoading ? "Loading..." : "All endpoints"}</option>
+              <option value="">{endpointsLoading ? t("Loading...") : t("All endpoints")}</option>
               {endpoints.map((endpoint) => (
                 <option key={endpoint.id} value={endpoint.id}>
                   {endpoint.name}
@@ -389,26 +431,26 @@ export default function UsageHistoryPage() {
               ))}
             </UiSelect>
             <UiSelect
-              label="Subject"
+              label={t("Subject")}
               value={subjectType}
               onChange={(event) => setSubjectType(event.target.value as UsageHistorySubjectType)}
               size="compact"
             >
               {SUBJECT_TYPES.map((option) => (
                 <option key={option.value} value={option.value}>
-                  {option.label}
+                  {t(option.label)}
                 </option>
               ))}
             </UiSelect>
             <UiInput
-              label="Start"
+              label={t("Start")}
               type="date"
               value={startDate}
               onChange={(event) => setStartDate(event.target.value)}
               size="compact"
             />
             <UiInput
-              label="End"
+              label={t("End")}
               type="date"
               value={endDate}
               onChange={(event) => setEndDate(event.target.value)}
@@ -417,11 +459,11 @@ export default function UsageHistoryPage() {
 
           </>
         }
-        actions={<ListActionButton variant="secondary" onClick={() => setReloadToken((current) => current + 1)} disabled={historyLoading}>Refresh</ListActionButton>}
+        actions={<ListActionButton variant="secondary" onClick={() => setReloadToken((current) => current + 1)} disabled={historyLoading}>{t("Refresh")}</ListActionButton>}
         secondaryContent={
           <InlineSummary items={[
-            { label: "Latest collection", value: historyLoading ? "Loading..." : formatDateTime(history?.summary.latest_collected_at) },
-            { label: "Max quota ratio", value: historyLoading ? "Loading..." : formatPercentage(history?.summary.max_usage_ratio_pct) },
+            { label: t("Latest collection"), value: historyLoading ? t("Loading...") : formatDateTime(history?.summary.latest_collected_at, locale) },
+            { label: t("Max quota ratio"), value: historyLoading ? t("Loading...") : formatPercentage(history?.summary.max_usage_ratio_pct) },
           ]} />
         }
       >
@@ -430,9 +472,9 @@ export default function UsageHistoryPage() {
           rows={history?.items ?? []}
           rowKey={(item) => `${item.granularity}-${item.id}`}
           status={tableStatus}
-          loadingMessage="Loading usage history..."
-          errorMessage="Unable to load usage history."
-          emptyMessage="No usage history for this scope."
+          loadingMessage={t("Loading usage history...")}
+          errorMessage={t("Unable to load usage history.")}
+          emptyMessage={t("No usage history for this scope.")}
           primaryColumnId="period"
           sort={{
             field: sortBy,

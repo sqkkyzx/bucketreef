@@ -453,7 +453,7 @@ function AdminLayoutShell() {
     <Layout
       navSections={adminNav}
       headerTitle="Administration"
-      sidebarTitle="ADMIN"
+      sidebarTitle={locale === "zh" ? "管理后台" : "ADMIN"}
       hideHeader
     />
   );

@@ -4,8 +4,8 @@ import path from "node:path";
 const DIST_DIR = path.resolve(process.cwd(), "dist");
 const MANIFEST_PATH = path.join(DIST_DIR, ".vite", "manifest.json");
 const MAX_ENTRY_JS_BYTES = 600 * 1024;
-// Includes localized infrastructure, administration, and Manager storage messages.
-const MAX_TOTAL_JS_BYTES = 3_950 * 1024;
+// Includes localized infrastructure, administration, Manager storage, identity, and operations messages.
+const MAX_TOTAL_JS_BYTES = 4_050 * 1024;
 const MAX_LARGEST_CHUNK_BYTES = 1_500 * 1024;
 
 function formatBytes(bytes) {

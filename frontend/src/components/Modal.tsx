@@ -6,6 +6,7 @@ import { ReactNode, RefObject, useEffect, useId, useRef, useState } from "react"
 import UiButton from "./ui/UiButton";
 import { getFocusableElements, trapFocusWithin } from "./ui/focusTrap";
 import { cx, uiCardClass, uiDividerClass, uiTitleTextClass } from "./ui/styles";
+import { useI18n } from "../i18n";
 import "./modal.css";
 
 const modalStack: string[] = [];
@@ -54,12 +55,15 @@ export default function Modal({
   closeOnEscape = true,
   closeDisabled = false,
   closeOnBackdropClick = true,
-  closeLabel = "Close",
-  closeAriaLabel = "Close modal",
+  closeLabel: closeLabelOverride,
+  closeAriaLabel: closeAriaLabelOverride,
   initialFocusRef,
   returnFocusOnClose = true,
   trapFocus = true,
 }: ModalProps) {
+  const { locale } = useI18n();
+  const closeLabel = closeLabelOverride ?? (locale === "zh" ? "关闭" : "Close");
+  const closeAriaLabel = closeAriaLabelOverride ?? (locale === "zh" ? "关闭弹窗" : "Close modal");
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const modalId = useId();
   const fallbackTitleId = `${modalId}-title`;

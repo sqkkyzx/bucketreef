@@ -54,6 +54,11 @@ import {
   downsampleLatencySeries,
   type LatencyChartPoint,
 } from "./endpointStatusLatencyChart";
+import {
+  localizeAdminOperationsBreadcrumbs,
+  type AdminOperationsLocale,
+  useAdminOperationsText,
+} from "./adminOperationsMessages";
 
 type WindowOption = { label: string; value: "day" | "week" | "month" | "quarter" | "half_year"; helper: string };
 
@@ -69,7 +74,20 @@ const RAW_CHECKS_PAGE_SIZE = 25;
 type RawCheckRow = EndpointHealthRawCheck & { rowKey: string };
 type IncidentRow = EndpointHealthIncident & { rowKey: string };
 
+function formatLocalizedDuration(durationMs: number, locale: AdminOperationsLocale): string {
+  if (locale !== "zh") return formatDurationShort(durationMs);
+  const minutes = Math.max(0, Math.round(durationMs / 60000));
+  if (minutes < 60) return `${minutes} 分钟`;
+  const hours = Math.floor(minutes / 60);
+  const remainingMinutes = minutes % 60;
+  if (hours < 24) return remainingMinutes > 0 ? `${hours} 小时 ${remainingMinutes} 分钟` : `${hours} 小时`;
+  const days = Math.floor(hours / 24);
+  const remainingHours = hours % 24;
+  return remainingHours > 0 ? `${days} 天 ${remainingHours} 小时` : `${days} 天`;
+}
+
 export default function EndpointStatusDetailPage() {
+  const { locale, t } = useAdminOperationsText();
   const params = useParams();
   const endpointId = Number(params.endpointId ?? "");
   const hasValidEndpointId = Number.isFinite(endpointId) && endpointId > 0;
@@ -203,6 +221,12 @@ export default function EndpointStatusDetailPage() {
   const selectedEndpoint = useMemo(() => {
     return summary?.find((entry) => entry.endpoint_id === endpointId) ?? null;
   }, [endpointId, summary]);
+  const localizedWindowOptions = useMemo(
+    () => WINDOW_OPTIONS.map((option) => ({ ...option, label: t(option.label), helper: t(option.helper) })),
+    [t],
+  );
+  const selectedWindowLabel = localizedWindowOptions.find((option) => option.value === windowValue)?.label ?? windowValue;
+  const selectedWindowSummaryLabel = locale === "zh" ? selectedWindowLabel : windowValue;
 
   const latencyChartData = useMemo(() => buildLatencyChartPoints(series, windowValue), [series, windowValue]);
   const latencyDisplayMode = latencyChartData.mode;
@@ -291,8 +315,18 @@ export default function EndpointStatusDetailPage() {
   }, [windowValue]);
 
   const formatLatencyTick = useCallback(
-    (value: number) => (latencyDisplayMode === "rollup" ? formatChartTime(value) : formatChartDay(value)),
-    [latencyDisplayMode]
+    (value: number) => {
+      if (locale !== "zh") return latencyDisplayMode === "rollup" ? formatChartTime(value) : formatChartDay(value);
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return "";
+      return new Intl.DateTimeFormat(
+        "zh-CN",
+        latencyDisplayMode === "rollup"
+          ? { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }
+          : { month: "2-digit", day: "2-digit" },
+      ).format(date);
+    },
+    [latencyDisplayMode, locale]
   );
 
   const renderLatencyTooltip = useCallback(
@@ -308,10 +342,10 @@ export default function EndpointStatusDetailPage() {
       if (!active || !payload || payload.length === 0) return null;
       const point = payload[0]?.payload;
       if (!point) return null;
-      const statusLabel = STATUS_LABELS[point.status];
+      const statusLabel = t(STATUS_LABELS[point.status]);
       const missingLatencyMessage =
         point.latency_ms == null && (point.status === "down" || point.status === "degraded")
-          ? "No latency sample during outage/degradation."
+          ? t("No latency sample during outage/degradation.")
           : null;
 
       return (
@@ -320,22 +354,22 @@ export default function EndpointStatusDetailPage() {
             {typeof label === "number" ? formatLatencyTick(label) : "-"}
           </p>
           <p className="ui-caption text-slate-600 dark:text-slate-300">
-            Status: <span className={`font-semibold ${statusTextClass(point.status)}`}>{statusLabel}</span>
+            {t("Status")}: <span className={`font-semibold ${statusTextClass(point.status)}`}>{statusLabel}</span>
           </p>
           <p className="ui-caption text-slate-600 dark:text-slate-300">
-            {latencyDisplayMode === "rollup" ? "Rollup latency" : "Average latency"}:{" "}
+            {t(latencyDisplayMode === "rollup" ? "Rollup latency" : "Average latency")}:{" "}
             <span className="font-semibold">{formatLatency(point.latency_ms)}</span>
           </p>
           {latencyDisplayMode === "daily" && (
             <p className="ui-caption text-slate-600 dark:text-slate-300">
-              P95 latency: <span className="font-semibold">{formatLatency(point.p95_latency_ms)}</span>
+              {t("P95 latency")}: <span className="font-semibold">{formatLatency(point.p95_latency_ms)}</span>
             </p>
           )}
           {missingLatencyMessage && <p className="ui-caption text-slate-500 dark:text-slate-400">{missingLatencyMessage}</p>}
         </div>
       );
     },
-    [formatLatencyTick, latencyDisplayMode]
+    [formatLatencyTick, latencyDisplayMode, t]
   );
 
   const rawChecksTotalPages = useMemo(() => {
@@ -366,18 +400,18 @@ export default function EndpointStatusDetailPage() {
     () => [
       {
         id: "check",
-        label: "Check",
+        label: t("Check"),
         primary: true,
-        render: (check) => formatTimestamp(check.checked_at),
+        render: (check) => formatTimestamp(check.checked_at, locale === "zh" ? "zh-CN" : undefined),
       },
       {
         id: "status",
-        label: "Status",
+        label: t("Status"),
         render: (check) => <StatusPill status={check.status} />,
       },
       {
         id: "latency",
-        label: "Latency",
+        label: t("Latency"),
         render: (check) => formatLatency(check.latency_ms ?? null),
       },
       {
@@ -387,42 +421,45 @@ export default function EndpointStatusDetailPage() {
       },
       {
         id: "mode",
-        label: "Mode",
+        label: t("Mode"),
         render: (check) => formatCheckMode(check.check_mode),
       },
       {
         id: "error",
-        label: "Error",
+        label: t("Error"),
         render: (check) => check.error_message || "-",
       },
     ],
-    []
+    [locale, t]
   );
   const incidentColumns = useMemo<DataTableColumn<IncidentRow>[]>(
     () => [
       {
         id: "status",
-        label: "Status",
+        label: t("Status"),
         primary: true,
         render: (incident) => <StatusPill status={incident.status} />,
       },
       {
         id: "start",
-        label: "Start",
-        render: (incident) => formatTimestamp(incident.start),
+        label: t("Start"),
+        render: (incident) => formatTimestamp(incident.start, locale === "zh" ? "zh-CN" : undefined),
       },
       {
         id: "end",
-        label: "End",
-        render: (incident) => (incident.end ? formatTimestamp(incident.end) : "Ongoing"),
+        label: t("End"),
+        render: (incident) => (incident.end ? formatTimestamp(incident.end, locale === "zh" ? "zh-CN" : undefined) : t("Ongoing")),
       },
       {
         id: "duration",
-        label: "Duration",
-        render: (incident) => (incident.duration_minutes != null ? `${incident.duration_minutes} min` : "-"),
+        label: t("Duration"),
+        render: (incident) =>
+          incident.duration_minutes != null
+            ? locale === "zh" ? `${incident.duration_minutes} 分钟` : `${incident.duration_minutes} min`
+            : "-",
       },
     ],
-    []
+    [locale, t]
   );
 
   useEffect(() => {
@@ -432,8 +469,8 @@ export default function EndpointStatusDetailPage() {
   }, [rawChecksPage, rawChecksTotalPages]);
 
   const timelineSegments = useMemo(
-    () => buildTimelineSegmentDetails(series?.series ?? [], series?.start, series?.end),
-    [series]
+    () => buildTimelineSegmentDetails(series?.series ?? [], series?.start, series?.end, t),
+    [series, t]
   );
 
   const selectedTimelineSegment = useMemo(
@@ -477,44 +514,46 @@ export default function EndpointStatusDetailPage() {
   if (!hasValidEndpointId) {
     return (
       <PageShell actionPresentation="listing"
-        title="Endpoint Details"
-        breadcrumbs={adminPageBreadcrumbs("endpoint-status", { label: "Details" })}
-        actions={[{ label: "Back", to: "/admin/endpoint-status", variant: "ghost" }]}
+        title={t("Endpoint Details")}
+        breadcrumbs={localizeAdminOperationsBreadcrumbs(adminPageBreadcrumbs("endpoint-status", { label: t("Details") }), locale)}
+        breadcrumbLabel={t("Breadcrumb")}
+        actions={[{ label: t("Back"), to: "/admin/endpoint-status", variant: "ghost" }]}
       >
-        <PageBanner tone="warning">Invalid endpoint identifier.</PageBanner>
+        <PageBanner tone="warning">{t("Invalid endpoint identifier.")}</PageBanner>
       </PageShell>
     );
   }
 
   return (
     <PageShell actionPresentation="listing"
-      title={selectedEndpoint ? selectedEndpoint.name : "Endpoint Details"}
-      description={selectedEndpoint?.endpoint_url || "Detailed health history and incidents for one endpoint."}
-      breadcrumbs={adminPageBreadcrumbs("endpoint-status", { label: "Details" })}
+      title={selectedEndpoint ? selectedEndpoint.name : t("Endpoint Details")}
+      description={selectedEndpoint?.endpoint_url || t("Detailed health history and incidents for one endpoint.")}
+      breadcrumbs={localizeAdminOperationsBreadcrumbs(adminPageBreadcrumbs("endpoint-status", { label: t("Details") }), locale)}
+      breadcrumbLabel={t("Breadcrumb")}
       actions={[
-        { label: runLoading ? "Running..." : "Check now", onClick: handleRunNow },
-        { label: "Refresh", onClick: loadAll, variant: "ghost" },
-        { label: "Back", to: "/admin/endpoint-status", variant: "ghost" },
+        { label: runLoading ? t("Running...") : t("Check now"), onClick: handleRunNow },
+        { label: t("Refresh"), onClick: loadAll, variant: "ghost" },
+        { label: t("Back"), to: "/admin/endpoint-status", variant: "ghost" },
       ]}
     >
 
-      {actionMessage && <PageBanner tone="success">{actionMessage}</PageBanner>}
-      {actionError && <PageBanner tone="error">{actionError}</PageBanner>}
-      {summaryError && <PageBanner tone="error">{summaryError}</PageBanner>}
-      {seriesError && <PageBanner tone="error">{seriesError}</PageBanner>}
+      {actionMessage && <PageBanner tone="success">{t(actionMessage)}</PageBanner>}
+      {actionError && <PageBanner tone="error">{t(actionError)}</PageBanner>}
+      {summaryError && <PageBanner tone="error">{t(summaryError)}</PageBanner>}
+      {seriesError && <PageBanner tone="error">{t(seriesError)}</PageBanner>}
 
       <div className="ui-surface-card">
         <div className="flex flex-col gap-3 border-b border-slate-100 px-6 py-4 dark:border-slate-800 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <p className="ui-body font-semibold text-slate-900 dark:text-slate-100">Health detail</p>
+            <p className="ui-body font-semibold text-slate-900 dark:text-slate-100">{t("Health detail")}</p>
             <p className="ui-caption text-slate-500 dark:text-slate-400">
-              Mode {formatCheckMode(series?.check_mode ?? selectedEndpoint?.check_mode)}
-              {series?.check_target_url ? ` · Target ${series.check_target_url}` : ""}
+              {t("Mode")} {formatCheckMode(series?.check_mode ?? selectedEndpoint?.check_mode)}
+              {series?.check_target_url ? ` · ${t("Target")} ${series.check_target_url}` : ""}
             </p>
           </div>
           <UiSegmentedControl
-            ariaLabel="Endpoint detail window"
-            options={WINDOW_OPTIONS}
+            ariaLabel={t("Endpoint detail window")}
+            options={localizedWindowOptions}
             value={windowValue}
             onChange={(nextWindow) => {
               setWindowValue(nextWindow);
@@ -524,58 +563,58 @@ export default function EndpointStatusDetailPage() {
         </div>
 
         <div className="space-y-6 px-6 py-6">
-          {summaryLoading && <p className="ui-body text-slate-500 dark:text-slate-400">Loading endpoint metadata...</p>}
+          {summaryLoading && <p className="ui-body text-slate-500 dark:text-slate-400">{t("Loading endpoint metadata...")}</p>}
           {!summaryLoading && !selectedEndpoint && (
-            <PageBanner tone="warning">Endpoint not found in summary. It may have been deleted.</PageBanner>
+            <PageBanner tone="warning">{t("Endpoint not found in summary. It may have been deleted.")}</PageBanner>
           )}
 
           {selectedEndpoint?.error_message && (
-            <PageBanner tone={selectedEndpoint.status === "up" ? "info" : "warning"}>Last check: {selectedEndpoint.error_message}</PageBanner>
+            <PageBanner tone={selectedEndpoint.status === "up" ? "info" : "warning"}>{t("Last check:")} {selectedEndpoint.error_message}</PageBanner>
           )}
 
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
             <div className="rounded-lg border border-slate-200/80 bg-slate-50/70 px-4 py-3 dark:border-slate-700 dark:bg-slate-800/40">
-              <p className="ui-caption text-slate-500 dark:text-slate-400">Current status</p>
+              <p className="ui-caption text-slate-500 dark:text-slate-400">{t("Current status")}</p>
               <div className="mt-2">
                 <StatusPill status={selectedEndpoint?.status ?? "unknown"} />
               </div>
             </div>
             <div className="rounded-lg border border-slate-200/80 bg-slate-50/70 px-4 py-3 dark:border-slate-700 dark:bg-slate-800/40">
-              <p className="ui-caption text-slate-500 dark:text-slate-400">Current latency</p>
+              <p className="ui-caption text-slate-500 dark:text-slate-400">{t("Current latency")}</p>
               <p className="mt-2 ui-body font-semibold text-slate-900 dark:text-slate-100">
                 {formatLatency(selectedEndpoint?.status === "down" ? null : selectedEndpoint?.latency_ms)}
               </p>
             </div>
             <div className="rounded-lg border border-slate-200/80 bg-slate-50/70 px-4 py-3 dark:border-slate-700 dark:bg-slate-800/40">
-              <p className="ui-caption text-slate-500 dark:text-slate-400">Availability ({windowValue})</p>
+              <p className="ui-caption text-slate-500 dark:text-slate-400">{t("Availability")} ({selectedWindowSummaryLabel})</p>
               <p className="mt-2 ui-body font-semibold text-slate-900 dark:text-slate-100">{formatPercent(windowAvailability)}</p>
             </div>
             <div className="rounded-lg border border-slate-200/80 bg-slate-50/70 px-4 py-3 dark:border-slate-700 dark:bg-slate-800/40">
-              <p className="ui-caption text-slate-500 dark:text-slate-400">Average latency ({windowValue})</p>
+              <p className="ui-caption text-slate-500 dark:text-slate-400">{t("Average latency")} ({selectedWindowSummaryLabel})</p>
               <p className="mt-2 ui-body font-semibold text-slate-900 dark:text-slate-100">{formatLatency(windowAverageLatency)}</p>
             </div>
             <div className="rounded-lg border border-slate-200/80 bg-slate-50/70 px-4 py-3 dark:border-slate-700 dark:bg-slate-800/40">
-              <p className="ui-caption text-slate-500 dark:text-slate-400">P95 latency ({windowValue})</p>
+              <p className="ui-caption text-slate-500 dark:text-slate-400">{t("P95 latency")} ({selectedWindowSummaryLabel})</p>
               <p className="mt-2 ui-body font-semibold text-slate-900 dark:text-slate-100">{formatLatency(windowP95Latency)}</p>
             </div>
             <div className="rounded-lg border border-slate-200/80 bg-slate-50/70 px-4 py-3 dark:border-slate-700 dark:bg-slate-800/40">
-              <p className="ui-caption text-slate-500 dark:text-slate-400">Checks in range</p>
+              <p className="ui-caption text-slate-500 dark:text-slate-400">{t("Checks in range")}</p>
               <p className="mt-2 ui-body font-semibold text-slate-900 dark:text-slate-100">{series?.data_points ?? 0}</p>
             </div>
           </div>
 
-          {seriesLoading && <p className="ui-body text-slate-500 dark:text-slate-400">Loading endpoint charts...</p>}
+          {seriesLoading && <p className="ui-body text-slate-500 dark:text-slate-400">{t("Loading endpoint charts...")}</p>}
 
           {!seriesLoading && (
             <div className="space-y-6">
               <div>
-                <p className="ui-body font-semibold text-slate-900 dark:text-slate-100">Endpoint Timeline</p>
+                <p className="ui-body font-semibold text-slate-900 dark:text-slate-100">{t("Endpoint Timeline")}</p>
                 <p className="ui-caption text-slate-500 dark:text-slate-400">
-                  Status timeline with real duration per segment. Hover for start/end, duration and cause.
+                  {t("Status timeline with real duration per segment. Hover for start/end, duration and cause.")}
                 </p>
                 <div className="mt-3">
                   {(series?.series.length ?? 0) === 0 ? (
-                    <p className="ui-caption text-slate-500 dark:text-slate-400">No status timeline data for this range.</p>
+                    <p className="ui-caption text-slate-500 dark:text-slate-400">{t("No status timeline data for this range.")}</p>
                   ) : (
                     <div className="space-y-3">
                       <EndpointTimelineBar
@@ -589,34 +628,34 @@ export default function EndpointStatusDetailPage() {
                       {selectedTimelineSegment && (
                         <div className="rounded-lg border border-slate-200/80 bg-slate-50/70 px-4 py-3 dark:border-slate-700 dark:bg-slate-800/40">
                           <p className="ui-caption font-semibold text-slate-700 dark:text-slate-200">
-                            Selected Segment ({timelineSegments.findIndex((segment) => segment.key === selectedTimelineSegment.key) + 1}/{timelineSegments.length})
+                            {t("Selected Segment")} ({timelineSegments.findIndex((segment) => segment.key === selectedTimelineSegment.key) + 1}/{timelineSegments.length})
                           </p>
                           <div className="mt-1 grid gap-1">
                             <p className="ui-caption text-slate-600 dark:text-slate-300">
-                              Status:{" "}
+                              {t("Status")}:{" "}
                               <span className={`font-semibold ${statusTextClass(selectedTimelineSegment.status)}`}>
-                                {STATUS_LABELS[selectedTimelineSegment.status]}
+                                {t(STATUS_LABELS[selectedTimelineSegment.status])}
                               </span>
                             </p>
                             <p className="ui-caption text-slate-600 dark:text-slate-300">
-                              Start: <span className="font-semibold">{formatTimestamp(selectedTimelineSegment.startTimestamp)}</span>
+                              {t("Start")}: <span className="font-semibold">{formatTimestamp(selectedTimelineSegment.startTimestamp, locale === "zh" ? "zh-CN" : undefined)}</span>
                             </p>
                             <p className="ui-caption text-slate-600 dark:text-slate-300">
-                              End: <span className="font-semibold">{formatTimestamp(selectedTimelineSegment.endTimestamp)}</span>
+                              {t("End")}: <span className="font-semibold">{formatTimestamp(selectedTimelineSegment.endTimestamp, locale === "zh" ? "zh-CN" : undefined)}</span>
                             </p>
                             <p className="ui-caption text-slate-600 dark:text-slate-300">
-                              Duration: <span className="font-semibold">{formatDurationShort(selectedTimelineSegment.durationMs)}</span>
+                              {t("Duration")}: <span className="font-semibold">{formatLocalizedDuration(selectedTimelineSegment.durationMs, locale)}</span>
                             </p>
                             <p className="ui-caption text-slate-600 dark:text-slate-300">
-                              Latency: <span className="font-semibold">{formatLatency(selectedTimelineSegment.latencyMs ?? null)}</span>
+                              {t("Latency")}: <span className="font-semibold">{formatLatency(selectedTimelineSegment.latencyMs ?? null)}</span>
                             </p>
                             {selectedTimelineSegment.cause && (
                               <p className="ui-caption text-slate-600 dark:text-slate-300">
-                                Cause: <span className="font-semibold">{selectedTimelineSegment.cause}</span>
+                                {t("Cause")}: <span className="font-semibold">{selectedTimelineSegment.cause}</span>
                               </p>
                             )}
                           </div>
-                          <p className="mt-2 ui-caption text-slate-500 dark:text-slate-400">Use left/right arrow keys to move between segments.</p>
+                          <p className="mt-2 ui-caption text-slate-500 dark:text-slate-400">{t("Use left/right arrow keys to move between segments.")}</p>
                         </div>
                       )}
                     </div>
@@ -625,34 +664,34 @@ export default function EndpointStatusDetailPage() {
               </div>
 
               <div>
-                <p className="ui-body font-semibold text-slate-900 dark:text-slate-100">Latency (ms)</p>
+                <p className="ui-body font-semibold text-slate-900 dark:text-slate-100">{t("Latency (ms)")}</p>
                 <p className="ui-caption text-slate-500 dark:text-slate-400">
-                  {formatCheckMode(series?.check_mode ?? selectedEndpoint?.check_mode)} latency from{" "}
-                  {latencyDisplayMode === "rollup" ? "5-minute rollups" : "daily aggregates"}.
+                  {formatCheckMode(series?.check_mode ?? selectedEndpoint?.check_mode)} {t("latency from")}{" "}
+                  {t(latencyDisplayMode === "rollup" ? "5-minute rollups" : "daily aggregates")}.
                 </p>
                 <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 ui-caption text-slate-500 dark:text-slate-400">
                   <span className="inline-flex items-center gap-1.5">
                     <span className="h-0.5 w-4 rounded bg-blue-500" />
-                    {latencyDisplayMode === "rollup" ? "Rollup latency" : "Average latency"}
+                    {t(latencyDisplayMode === "rollup" ? "Rollup latency" : "Average latency")}
                   </span>
                   {latencyDisplayMode === "daily" && (
                     <span className="inline-flex items-center gap-1.5">
                       <span className="h-0.5 w-4 border-t border-dashed border-orange-500" />
-                      P95 latency
+                      {t("P95 latency")}
                     </span>
                   )}
                   <span className="inline-flex items-center gap-1.5">
                     <span className="h-2.5 w-4 rounded-sm border border-amber-500/60 bg-amber-400/30" />
-                    Degraded window
+                    {t("Degraded window")}
                   </span>
                   <span className="inline-flex items-center gap-1.5">
                     <span className="h-2.5 w-4 rounded-sm border border-rose-500/60 bg-rose-400/30" />
-                    Down window
+                    {t("Down window")}
                   </span>
                 </div>
                 <div className="mt-3 h-64">
                   {latencyPoints.length === 0 ? (
-                    <p className="ui-caption text-slate-500 dark:text-slate-400">No latency data for this range.</p>
+                    <p className="ui-caption text-slate-500 dark:text-slate-400">{t("No latency data for this range.")}</p>
                   ) : (
                     <>
                       <ResponsiveContainer width="100%" height="100%">
@@ -692,7 +731,7 @@ export default function EndpointStatusDetailPage() {
                           <Line
                             type="monotone"
                             dataKey="latency_ms"
-                            name={latencyDisplayMode === "rollup" ? "Rollup latency" : "Average latency"}
+                            name={t(latencyDisplayMode === "rollup" ? "Rollup latency" : "Average latency")}
                             stroke="#3B82F6"
                             strokeWidth={2}
                             dot={latencySeries.length === 1 ? { r: 3 } : false}
@@ -702,7 +741,7 @@ export default function EndpointStatusDetailPage() {
                             <Line
                               type="monotone"
                               dataKey="p95_latency_ms"
-                              name="P95 latency"
+                              name={t("P95 latency")}
                               stroke="#F97316"
                               strokeWidth={2}
                               strokeDasharray="5 5"
@@ -714,7 +753,7 @@ export default function EndpointStatusDetailPage() {
                       </ResponsiveContainer>
                       {latencySamplesCount === 0 && latencyStatusBands.length > 0 && (
                         <p className="mt-2 ui-caption text-slate-500 dark:text-slate-400">
-                          No measurable latency in this range (endpoint unavailable or degraded).
+                          {t("No measurable latency in this range (endpoint unavailable or degraded).")}
                         </p>
                       )}
                     </>
@@ -725,10 +764,12 @@ export default function EndpointStatusDetailPage() {
               <div>
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div>
-                    <p className="ui-body font-semibold text-slate-900 dark:text-slate-100">Raw Healthchecks</p>
-                    <p className="ui-caption text-slate-500 dark:text-slate-400">Raw check values for this endpoint and selected range.</p>
+                    <p className="ui-body font-semibold text-slate-900 dark:text-slate-100">{t("Raw Healthchecks")}</p>
+                    <p className="ui-caption text-slate-500 dark:text-slate-400">{t("Raw check values for this endpoint and selected range.")}</p>
                   </div>
-                  <p className="ui-caption text-slate-500 dark:text-slate-400">{rawChecksTotal} checks</p>
+                  <p className="ui-caption text-slate-500 dark:text-slate-400">
+                    {locale === "zh" ? `${rawChecksTotal} 次检查` : `${rawChecksTotal} checks`}
+                  </p>
                 </div>
                 <div className="mt-3 overflow-hidden rounded-lg border border-slate-200/80 dark:border-slate-700">
                   <DataTableShell
@@ -736,9 +777,9 @@ export default function EndpointStatusDetailPage() {
                     rows={rawCheckRows}
                     rowKey={(check) => check.rowKey}
                     status={rawChecksTableStatus}
-                    loadingMessage="Loading raw healthchecks..."
-                    errorMessage="Unable to load raw healthchecks."
-                    emptyMessage="No raw checks for this range."
+                    loadingMessage={t("Loading raw healthchecks...")}
+                    errorMessage={t("Unable to load raw healthchecks.")}
+                    emptyMessage={t("No raw checks for this range.")}
                     pagination={{
                       page: rawChecksPage,
                       pageSize: RAW_CHECKS_PAGE_SIZE,
@@ -756,17 +797,17 @@ export default function EndpointStatusDetailPage() {
       </div>
 
       <ListSectionCard
-        title="Incidents"
-        subtitle="Downtime or degraded periods detected for this endpoint."
+        title={t("Incidents")}
+        subtitle={t("Downtime or degraded periods detected for this endpoint.")}
       >
         <DataTableShell
           columns={incidentColumns}
           rows={incidentRows}
           rowKey={(incident) => incident.rowKey}
           status={incidentsTableStatus}
-          loadingMessage="Loading incidents..."
-          errorMessage="Unable to load incidents."
-          emptyMessage="No incidents recorded for this range."
+          loadingMessage={t("Loading incidents...")}
+          errorMessage={t("Unable to load incidents.")}
+          emptyMessage={t("No incidents recorded for this range.")}
           responsiveCards
         />
       </ListSectionCard>

@@ -14,6 +14,7 @@ import AnchoredPortalMenu from "./ui/AnchoredPortalMenu";
 import UiRemoveIcon from "./ui/UiRemoveIcon";
 import { cx, uiBadgeShapeClass, uiLabelClass } from "./ui/styles";
 import { useDismissibleLayer } from "./ui/useDismissibleLayer";
+import { uiTagText, useUiTagText } from "./uiTagMessages";
 
 type UiTagVisibility = "private" | "shared";
 type UiTagSelectionState = "selected" | "available";
@@ -33,8 +34,8 @@ type UiTagBadgeProps = {
   removeAriaLabel?: string;
 };
 
-const visibilityLabel = (visibility?: UiTagVisibility) =>
-  visibility === "private" ? "Private" : visibility === "shared" ? "Shared" : null;
+const visibilityLabel = (visibility: UiTagVisibility | undefined, locale: "en" | "fr" | "de" | "zh") =>
+  visibility === "private" ? uiTagText("Private", locale) : visibility === "shared" ? uiTagText("Shared", locale) : null;
 
 export function UiTagBadge({
   label,
@@ -50,7 +51,8 @@ export function UiTagBadge({
   onRemove,
   removeAriaLabel,
 }: UiTagBadgeProps) {
-  const visibilityText = visibilityLabel(visibility);
+  const { locale } = useUiTagText();
+  const visibilityText = visibilityLabel(visibility, locale);
   const accessibleLabel = visibilityText ? `${label}, ${visibilityText}` : label;
   const labelContent = onClick ? (
     <span className="truncate">{label}</span>
@@ -83,7 +85,7 @@ export function UiTagBadge({
           type="button"
           onClick={onClick}
           disabled={disabled}
-          aria-label={ariaLabel ?? `Configure UI tag ${accessibleLabel}`}
+          aria-label={ariaLabel ?? (locale === "zh" ? `配置界面标签 ${accessibleLabel}` : `Configure UI tag ${accessibleLabel}`)}
           className="inline-flex min-w-0 items-center gap-1 px-2 py-0.5 text-[10px] font-medium leading-4 focus:outline-none"
         >
           {labelContent}
@@ -104,7 +106,7 @@ export function UiTagBadge({
             onRemove();
           }}
           disabled={disabled}
-          aria-label={removeAriaLabel ?? `Remove UI tag ${accessibleLabel}`}
+          aria-label={removeAriaLabel ?? (locale === "zh" ? `移除界面标签 ${accessibleLabel}` : `Remove UI tag ${accessibleLabel}`)}
           className="flex items-center border-l border-current/15 px-1.5 py-0.5 opacity-70 transition hover:opacity-100 focus:outline-none"
         >
           <UiRemoveIcon className="h-2.5 w-2.5" />
@@ -127,9 +129,10 @@ export function UiTagColorPalette({
   disabled = false,
   onChange,
 }: UiTagColorPaletteProps) {
+  const { locale, t } = useUiTagText();
   return (
     <div className="space-y-2">
-      <span className={uiLabelClass}>Color</span>
+      <span className={uiLabelClass}>{t("Color")}</span>
       <div className="grid grid-cols-6 gap-2">
         {TAG_COLOR_OPTIONS.map((option) => {
           const selected = option.key === value;
@@ -137,8 +140,8 @@ export function UiTagColorPalette({
             <button
               key={option.key}
               type="button"
-              aria-label={`Set ${label} color to ${option.label}`}
-              title={option.label}
+              aria-label={locale === "zh" ? `将 ${label} 的颜色设为${t(option.label)}` : `Set ${label} color to ${option.label}`}
+              title={t(option.label)}
               disabled={disabled}
               onClick={() => void onChange(option.key)}
               className={cx(
@@ -174,11 +177,16 @@ const UI_TAG_SCOPE_OPTIONS: Array<{
   },
 ];
 
-export function getUiTagScopeOption(scope: TagScope | undefined) {
-  return (
+export function getUiTagScopeOption(scope: TagScope | undefined, locale: "en" | "fr" | "de" | "zh" = "en") {
+  const option = (
     UI_TAG_SCOPE_OPTIONS.find((option) => option.key === scope) ??
     UI_TAG_SCOPE_OPTIONS[0]
   );
+  return {
+    ...option,
+    label: uiTagText(option.label, locale),
+    description: uiTagText(option.description, locale),
+  };
 }
 
 type UiTagScopeSettingsProps = {
@@ -194,12 +202,13 @@ export function UiTagScopeSettings({
   help,
   onChange,
 }: UiTagScopeSettingsProps) {
+  const { locale, t } = useUiTagText();
   const options = readOnly
     ? UI_TAG_SCOPE_OPTIONS.filter((option) => option.key === value)
     : UI_TAG_SCOPE_OPTIONS;
   return (
     <div className="space-y-2">
-      <span className={uiLabelClass}>Scope</span>
+      <span className={uiLabelClass}>{t("Scope")}</span>
       <div className="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-1 dark:border-slate-700 dark:bg-slate-800/70">
         {options.map((option) => {
           const selected = value === option.key;
@@ -217,7 +226,7 @@ export function UiTagScopeSettings({
                 readOnly && "cursor-default"
               )}
             >
-              {option.label}
+              {getUiTagScopeOption(option.key, locale).label}
             </button>
           );
         })}
@@ -250,6 +259,7 @@ export function UiTagSettingsPopover({
   children,
   footer,
 }: UiTagSettingsPopoverProps) {
+  const { locale, t } = useUiTagText();
   const panelRef = useRef<HTMLDivElement | null>(null);
   useDismissibleLayer({
     open,
@@ -268,12 +278,12 @@ export function UiTagSettingsPopover({
       <div
         ref={panelRef}
         role="group"
-        aria-label={`Tag settings for ${label}`}
+        aria-label={locale === "zh" ? `${label} 的标签设置` : `Tag settings for ${label}`}
         className="w-72 rounded-xl border border-slate-200 bg-white p-3 shadow-xl dark:border-slate-700 dark:bg-slate-900"
       >
         <div className="space-y-3">
           <div className="space-y-2">
-            <span className={uiLabelClass}>Tag settings</span>
+            <span className={uiLabelClass}>{t("Tag settings")}</span>
             <div className="flex items-start justify-between gap-3">
               <UiTagBadge
                 label={label}
@@ -284,7 +294,7 @@ export function UiTagSettingsPopover({
                 type="button"
                 onClick={onDismiss}
                 className="ui-caption font-semibold text-slate-400 transition hover:text-slate-600 dark:hover:text-slate-200"
-                aria-label="Close tag settings"
+                aria-label={locale === "zh" ? "关闭标签设置" : "Close tag settings"}
               >
                 ×
               </button>

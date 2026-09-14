@@ -15,9 +15,41 @@ import UiBadge from "../../components/ui/UiBadge";
 import UiInput from "../../components/ui/UiInput";
 import UiSelect from "../../components/ui/UiSelect";
 import { extractApiError } from "../../utils/apiError";
+import {
+  localizeAdminOperationsBreadcrumbs,
+  type AdminOperationsLocale,
+  useAdminOperationsText,
+} from "./adminOperationsMessages";
 
 type RoleFilter = "all" | "ui_superadmin" | "ui_admin" | "ui_user" | "ui_none";
 type ScopeFilter = "all" | "admin" | "manager" | "portal";
+
+const knownAuditStatusLabels: Readonly<Record<string, string>> = {
+  success: "Success",
+  failure: "Failure",
+  failed: "Failed",
+  denied: "Denied",
+  partial: "Partial",
+  completed: "Completed",
+  pending: "Pending",
+  skipped: "Skipped",
+  canceled: "Canceled",
+  authenticated: "Authenticated",
+  available: "Available",
+  unavailable: "Unavailable",
+  misconfigured: "Misconfigured",
+  active: "Active",
+  disabled: "Disabled",
+  enabled: "Enabled",
+  suspended: "Suspended",
+  draft: "Draft",
+  ready: "Ready",
+  configured: "Configured",
+  empty: "Empty",
+  rotated: "Rotated",
+  link_approval_required: "Link approval required",
+  remediation_required: "Remediation required",
+};
 
 const roleLabels: Record<RoleFilter, string> = {
   all: "All actors",
@@ -34,32 +66,44 @@ const scopeLabels: Record<ScopeFilter, string> = {
   portal: "Portal area",
 };
 
+function formatKnownAuditStatus(
+  status: string,
+  locale: AdminOperationsLocale,
+  t: (message: string) => string,
+): string {
+  const localizedLabel = knownAuditStatusLabels[status.toLowerCase()];
+  if (locale === "zh" && localizedLabel) return t(localizedLabel);
+  return status.charAt(0).toUpperCase() + status.slice(1);
+}
+
 function RoleBadge({ role }: { role: string }) {
+  const { t } = useAdminOperationsText();
   const base = "inline-flex items-center rounded-full px-2 py-0.5 ui-caption font-semibold";
   if (role === "ui_superadmin") {
     return (
       <span className={`${base} bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-200`}>
-        Superadmin
+        {t("Superadmin")}
       </span>
     );
   }
   if (role === "ui_admin") {
-    return <span className={`${base} bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-200`}>Admin</span>;
+    return <span className={`${base} bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-200`}>{t("Admin")}</span>;
   }
   if (role === "ui_user") {
     return (
-      <span className={`${base} bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-100`}>User</span>
+      <span className={`${base} bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-100`}>{t("User")}</span>
     );
   }
   if (role === "ui_none") {
     return (
-      <span className={`${base} bg-slate-100 text-slate-600 dark:bg-slate-800/60 dark:text-slate-200`}>No access</span>
+      <span className={`${base} bg-slate-100 text-slate-600 dark:bg-slate-800/60 dark:text-slate-200`}>{t("No access")}</span>
     );
   }
   return <span className={`${base} bg-slate-100 text-slate-600 dark:bg-slate-800/60 dark:text-slate-200`}>{role}</span>;
 }
 
 function ScopeBadge({ scope }: { scope: string }) {
+  const { t } = useAdminOperationsText();
   const base = "inline-flex items-center rounded-full px-2 py-0.5 ui-caption font-semibold";
   let styles = "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-100";
   let label = "Manager UI";
@@ -70,18 +114,20 @@ function ScopeBadge({ scope }: { scope: string }) {
     styles = "bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-100";
     label = "Portal UI";
   }
-  return <span className={`${base} ${styles}`}>{label}</span>;
+  return <span className={`${base} ${styles}`}>{t(label)}</span>;
 }
 
 function StatusBadge({ status }: { status: string }) {
-  const tone = status === "success" ? "success" : status === "failure" || status === "failed" ? "danger" : "neutral";
-  return <UiBadge tone={tone}>{status.charAt(0).toUpperCase() + status.slice(1)}</UiBadge>;
+  const { locale, t } = useAdminOperationsText();
+  const normalizedStatus = status.toLowerCase();
+  const tone = normalizedStatus === "success" ? "success" : normalizedStatus === "failure" || normalizedStatus === "failed" ? "danger" : "neutral";
+  return <UiBadge tone={tone}>{formatKnownAuditStatus(status, locale, t)}</UiBadge>;
 }
 
-function formatAuditDate(value: string) {
+function formatAuditDate(value: string, locale: AdminOperationsLocale) {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return value;
-  return parsed.toLocaleString();
+  return parsed.toLocaleString(locale === "zh" ? "zh-CN" : undefined);
 }
 
 function MetadataPreview({ metadata }: { metadata?: Record<string, unknown> | null }) {
@@ -96,6 +142,7 @@ function MetadataPreview({ metadata }: { metadata?: Record<string, unknown> | nu
 }
 
 export default function AuditLogsPage() {
+  const { locale, t } = useAdminOperationsText();
   const [logs, setLogs] = useState<AuditLogEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -210,13 +257,13 @@ export default function AuditLogsPage() {
     () => (
       <>
         <UiSelect
-          label="Action"
-          aria-label="Filter by action"
+          label={t("Action")}
+          aria-label={t("Filter by action")}
           value={actionFilter}
           onChange={(e) => setActionFilter(e.target.value)}
           size="compact"
         >
-          <option value="all">All actions</option>
+          <option value="all">{t("All actions")}</option>
           {actionOptions.map((action) => (
             <option key={action} value={action}>
               {action}
@@ -224,60 +271,60 @@ export default function AuditLogsPage() {
           ))}
         </UiSelect>
         <UiSelect
-          label="Status"
-          aria-label="Filter by status"
+          label={t("Status")}
+          aria-label={t("Filter by status")}
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
           size="compact"
         >
-          <option value="all">All statuses</option>
+          <option value="all">{t("All statuses")}</option>
           {statusOptions.map((status) => (
             <option key={status} value={status}>
-              {status.charAt(0).toUpperCase() + status.slice(1)}
+              {formatKnownAuditStatus(status, locale, t)}
             </option>
           ))}
         </UiSelect>
         <UiSelect
-          label="Role"
-          aria-label="Filter by actor role"
+          label={t("Role")}
+          aria-label={t("Filter by actor role")}
           value={roleFilter}
           onChange={(e) => setRoleFilter(e.target.value as RoleFilter)}
           size="compact"
         >
           {Object.entries(roleLabels).map(([value, label]) => (
             <option key={value} value={value}>
-              {label}
+              {t(label)}
             </option>
           ))}
         </UiSelect>
         <UiSelect
-          label="Workspace"
-          aria-label="Filter by workspace scope"
+          label={t("Workspace")}
+          aria-label={t("Filter by workspace scope")}
           value={scopeFilter}
           onChange={(e) => setScopeFilter(e.target.value as ScopeFilter)}
           size="compact"
         >
           {Object.entries(scopeLabels).map(([value, label]) => (
             <option key={value} value={value}>
-              {label}
+              {t(label)}
             </option>
           ))}
         </UiSelect>
       </>
     ),
-    [actionFilter, actionOptions, roleFilter, scopeFilter, statusFilter, statusOptions]
+    [actionFilter, actionOptions, locale, roleFilter, scopeFilter, statusFilter, statusOptions, t]
   );
   const auditTableColumns = useMemo<Array<DataTableColumn<AuditLogEntry>>>(
     () => [
       {
         id: "time",
-        label: "Time",
+        label: t("Time"),
         cellClassName: "whitespace-nowrap ui-caption text-slate-500 dark:text-slate-400",
-        render: (log) => formatAuditDate(log.created_at),
+        render: (log) => formatAuditDate(log.created_at, locale),
       },
       {
         id: "actor",
-        label: "Actor",
+        label: t("Actor"),
         cellClassName: "min-w-[12rem]",
         render: (log) => (
           <div className="flex flex-col gap-1">
@@ -288,24 +335,24 @@ export default function AuditLogsPage() {
       },
       {
         id: "scope",
-        label: "Scope",
+        label: t("Scope"),
         render: (log) => <ScopeBadge scope={log.scope} />,
       },
       {
         id: "action",
-        label: "Action",
+        label: t("Action"),
         primary: true,
         cellClassName: "font-mono ui-caption",
         render: (log) => log.action,
       },
       {
         id: "status",
-        label: "Status",
+        label: t("Status"),
         render: (log) => <StatusBadge status={log.status} />,
       },
       {
         id: "target",
-        label: "Target",
+        label: t("Target"),
         cellClassName: "min-w-[8rem]",
         render: (log) => (
           <>
@@ -316,53 +363,56 @@ export default function AuditLogsPage() {
       },
       {
         id: "account",
-        label: "S3 Account/User",
+        label: t("S3 Account/User"),
         cellClassName: "min-w-[10rem]",
         render: (log) =>
           log.account_name ? (
             <div className="font-medium text-slate-900 dark:text-white">{log.account_name}</div>
           ) : log.account_id ? (
-            <div className="text-slate-600 dark:text-slate-300">S3Account #{log.account_id}</div>
+            <div className="text-slate-600 dark:text-slate-300">
+              {locale === "zh" ? "S3 账户" : "S3Account"} #{log.account_id}
+            </div>
           ) : (
             <span className="text-slate-500 dark:text-slate-400">-</span>
           ),
       },
       {
         id: "details",
-        label: "Details",
+        label: t("Details"),
         cellClassName: "min-w-[18rem] max-w-[28rem]",
         render: (log) => <MetadataPreview metadata={log.metadata as Record<string, unknown> | undefined} />,
       },
     ],
-    []
+    [locale, t]
   );
 
   return (
     <PageShell actionPresentation="listing"
-      title="Audit trail"
-      description="Control-plane and security events. Object operations belong in provider S3 access logs."
-      breadcrumbs={adminPageBreadcrumbs("audit")}
+      title={t("Audit trail")}
+      description={t("Control-plane and security events. Object operations belong in provider S3 access logs.")}
+      breadcrumbs={localizeAdminOperationsBreadcrumbs(adminPageBreadcrumbs("audit"), locale)}
+      breadcrumbLabel={t("Breadcrumb")}
     >
-      {error && <PageBanner tone="error">{error}</PageBanner>}
+      {error && <PageBanner tone="error">{t(error)}</PageBanner>}
 
       <ListPageSection variant="page"
         className="bg-white/95 dark:bg-slate-900/60"
-        title="Audit trail"
-        countLabel={`${filteredLogs.length} of ${logs.length} loaded entries`}
+        title={t("Audit trail")}
+        countLabel={locale === "zh" ? `已加载 ${logs.length} 条，当前显示 ${filteredLogs.length} 条` : `${filteredLogs.length} of ${logs.length} loaded entries`}
         search={
           <UiInput
-            aria-label="Search audit logs"
+            aria-label={t("Search audit logs")}
             type="search"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Search by actor, action, target, or message"
+            placeholder={t("Search by actor, action, target, or message")}
             fieldClassName="min-w-[220px] flex-1"
             size="compact"
           />
         }
         filters={filters}
-        actions={<ListActionButton onClick={handleRefresh} disabled={loading}>{loading ? "Refreshing…" : "Refresh"}</ListActionButton>}
-        secondaryContent={<p className="text-[var(--ui-text-muted)]">Action and status filters apply to loaded entries. Load older entries to extend the results.</p>}
+        actions={<ListActionButton onClick={handleRefresh} disabled={loading}>{loading ? t("Refreshing…") : t("Refresh")}</ListActionButton>}
+        secondaryContent={<p className="text-[var(--ui-text-muted)]">{t("Action and status filters apply to loaded entries. Load older entries to extend the results.")}</p>}
       >
 
         <DataTableShell
@@ -370,10 +420,10 @@ export default function AuditLogsPage() {
           rows={filteredLogs}
           rowKey={(log) => log.id}
           status={tableStatus}
-          loadingMessage="Loading audit data..."
-          errorMessage="Unable to load audit logs."
+          loadingMessage={t("Loading audit data...")}
+          errorMessage={t("Unable to load audit logs.")}
           emptyMessage={
-            logs.length === 0 && !hasActiveFilters ? "No audit entries." : "No audit entries match the current filters."
+            logs.length === 0 && !hasActiveFilters ? t("No audit entries.") : t("No audit entries match the current filters.")
           }
           primaryColumnId="action"
           responsiveCards
@@ -387,7 +437,7 @@ export default function AuditLogsPage() {
             onClick={handleLoadMore}
             disabled={!hasMore || loadingMore}
           >
-            {loadingMore ? "Loading…" : hasMore ? "Load older" : "No more"}
+            {loadingMore ? t("Loading…") : hasMore ? t("Load older") : t("No more")}
           </ListActionButton>
         </div>
       </ListPageSection>
