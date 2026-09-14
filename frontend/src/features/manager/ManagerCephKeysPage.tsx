@@ -27,14 +27,23 @@ import { extractApiError } from "../../utils/apiError";
 import { formatLocalDateTime } from "../../utils/dateTime";
 import { useConfirmActionDialog } from "../../components/useConfirmActionDialog";
 import { useS3AccountContext } from "./S3AccountContext";
-import { managerPageBreadcrumbs } from "./managerBreadcrumbs";
+import { localizedManagerPageBreadcrumbs } from "./managerBreadcrumbs";
 import CreateManagedPrivateAccessModal from "./CreateManagedPrivateAccessModal";
+import { useManagerText } from "./managerI18n";
+import type { I18nMessage } from "../../i18n";
+import {
+  localizeManagerCephKeysError,
+  managerCephKeyResultCount,
+  managerCephKeysZhMessages,
+  managerPrivateConnectionCreatedMessage,
+} from "./managerCephKeysMessages";
 
 function parseError(err: unknown): string {
   return extractApiError(err, "Unexpected error");
 }
 
 export default function ManagerCephKeysPage() {
+  const { locale, t } = useManagerText(managerCephKeysZhMessages);
   const {
     hasS3AccountContext,
     accountIdForApi,
@@ -50,7 +59,7 @@ export default function ManagerCephKeysPage() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [createdKey, setCreatedKey] = useState<ManagerCephGeneratedAccessKey | null>(null);
-  const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [actionMessage, setActionMessage] = useState<I18nMessage | null>(null);
   const [keyFilter, setKeyFilter] = useState("");
   const [showPrivateAccessModal, setShowPrivateAccessModal] = useState(false);
   const keyConfirmation = useConfirmActionDialog();
@@ -60,7 +69,6 @@ export default function ManagerCephKeysPage() {
   const canProvisionManagedPrivateAccess = Boolean(
     hasS3AccountContext && isS3UserContext && managerPrivateAccessEnabled
   );
-
   const loadKeys = useCallback(async () => {
     if (!canManageCephKeys) {
       setKeys([]);
@@ -141,25 +149,25 @@ export default function ManagerCephKeysPage() {
       return;
     }
     keyConfirmation.requestConfirmation({
-      title: "Disable Ceph access key?",
-      description: "Temporarily prevent this RGW access key from authenticating.",
-      confirmLabel: "Disable key",
-      details: [{ label: "Access key", value: key.access_key_id, mono: true }],
-      impacts: ["Applications using this key will lose access until the key is enabled again."],
+      title: t("Disable Ceph access key?"),
+      description: t("Temporarily prevent this RGW access key from authenticating."),
+      confirmLabel: t("Disable key"),
+      details: [{ label: t("Access key"), value: key.access_key_id, mono: true }],
+      impacts: [t("Applications using this key will lose access until the key is enabled again.")],
       onConfirm: () => toggleKey(key),
     });
   };
 
   const handleDeleteKey = (key: ManagerCephAccessKey) => {
     keyConfirmation.requestConfirmation({
-      title: "Delete Ceph access key?",
-      description: "Permanently remove this RGW access key from the current S3 User context.",
-      confirmLabel: "Delete key",
+      title: t("Delete Ceph access key?"),
+      description: t("Permanently remove this RGW access key from the current S3 User context."),
+      confirmLabel: t("Delete key"),
       details: [
-        { label: "Context", value: selectedS3AccountName || "Current S3 User" },
-        { label: "Access key", value: key.access_key_id, mono: true },
+        { label: t("Context"), value: selectedS3AccountName || t("Current S3 User") },
+        { label: t("Access key"), value: key.access_key_id, mono: true },
       ],
-      impacts: ["Applications using this key will immediately lose access."],
+      impacts: [t("Applications using this key will immediately lose access.")],
       onConfirm: () => deleteKey(key),
     });
   };
@@ -168,13 +176,16 @@ export default function ManagerCephKeysPage() {
     const needle = keyFilter.trim().toLowerCase();
     if (!needle) return true;
     const statusLabel = key.is_active ? "active" : "inactive";
-    return key.access_key_id.toLowerCase().includes(needle) || statusLabel.includes(needle);
+    const localizedStatusLabel = t(key.is_active ? "Active" : "Inactive").toLowerCase();
+    return key.access_key_id.toLowerCase().includes(needle)
+      || statusLabel.includes(needle)
+      || localizedStatusLabel.includes(needle);
   });
   const tableStatus = resolveListTableStatus({ loading, error, rowCount: filteredKeys.length });
   const keyTableColumns: Array<DataTableColumn<ManagerCephAccessKey>> = [
     {
       id: "access-key",
-      label: "Access key",
+      label: t("Access key"),
       primary: true,
       mobileRole: "primary",
       cellClassName: "font-mono",
@@ -187,9 +198,9 @@ export default function ManagerCephKeysPage() {
             {locked && (
               <ListBadge
                 tone="neutral" className="shrink-0"
-                title={managedPrivate ? "Managed private access key" : "Portal key (locked)"}
+                title={managedPrivate ? t("Managed private access key") : t("Portal key (locked)")}
               >
-                {managedPrivate ? "Private access" : "KLO"}
+                {managedPrivate ? t("Private access") : t("KLO")}
               </ListBadge>
             )}
           </div>
@@ -198,14 +209,18 @@ export default function ManagerCephKeysPage() {
     },
     {
       id: "status",
-      label: "Status",
+      label: t("Status"),
       cellClassName: "text-slate-700 dark:text-slate-200",
-      render: (key) => (key.is_active ? "Active" : "Inactive"),
+      render: (key) => t(key.is_active ? "Active" : "Inactive"),
     },
-    { id: "created", label: "Created on", render: (key) => formatLocalDateTime(key.created_at) },
+    {
+      id: "created",
+      label: t("Created on"),
+      render: (key) => formatLocalDateTime(key.created_at, locale === "zh" ? "zh-CN" : undefined),
+    },
     {
       id: "actions",
-      label: "Actions",
+      label: t("Actions"),
       align: "right",
       mobileRole: "actions",
       render: (key) => {
@@ -218,18 +233,18 @@ export default function ManagerCephKeysPage() {
               type="button"
               onClick={() => handleToggleKey(key)}
               disabled={Boolean(busy) || locked}
-              title={locked ? (managedPrivate ? "Update the linked private connection instead" : "Portal key is locked") : undefined}
+              title={locked ? (managedPrivate ? t("Update the linked private connection instead") : t("Portal key is locked")) : undefined}
             >
-              {busy === `toggle:${key.access_key_id}` ? "Saving..." : active ? "Disable" : "Enable"}
+              {busy === `toggle:${key.access_key_id}` ? t("Saving...") : active ? t("Disable") : t("Enable")}
             </ListActionButton>
             <ListActionButton
               type="button"
               onClick={() => handleDeleteKey(key)}
                variant="danger"
               disabled={Boolean(busy) || locked}
-              title={locked ? (managedPrivate ? "Delete the linked private connection instead" : "Portal key is locked") : undefined}
+              title={locked ? (managedPrivate ? t("Delete the linked private connection instead") : t("Portal key is locked")) : undefined}
             >
-              {busy === `delete:${key.access_key_id}` ? "Deleting..." : "Delete"}
+              {busy === `delete:${key.access_key_id}` ? t("Deleting...") : t("Delete")}
             </ListActionButton>
           </ListActions>
         );
@@ -239,14 +254,15 @@ export default function ManagerCephKeysPage() {
 
   return (
     <PageShell actionPresentation="listing"
-      title="Ceph access keys"
-      description="Manage Ceph RGW access keys and provision private access for this S3 User context."
-      breadcrumbs={managerPageBreadcrumbs("ceph-keys")}
+      title={t("Ceph access keys")}
+      description={t("Manage Ceph RGW access keys and provision private access for this S3 User context.")}
+      breadcrumbs={localizedManagerPageBreadcrumbs("ceph-keys", locale)}
+      breadcrumbLabel={t("Breadcrumb")}
       actions={[
         ...(canManageCephKeys
           ? [
               {
-                label: busy === "create" ? "Creating..." : "New key",
+                label: busy === "create" ? t("Creating...") : t("New key"),
                 onClick: handleCreateKey,
                 variant: "primary" as const,
               },
@@ -255,7 +271,7 @@ export default function ManagerCephKeysPage() {
         ...(canProvisionManagedPrivateAccess
           ? [
               {
-                label: "Create my private access",
+                label: t("Create my private access"),
                 onClick: () => setShowPrivateAccessModal(true),
                 variant: canManageCephKeys ? ("secondary" as const) : ("primary" as const),
               },
@@ -263,59 +279,68 @@ export default function ManagerCephKeysPage() {
           : []),
       ]}
     >
-      {error && <PageBanner tone="error">{error}</PageBanner>}
-      {actionMessage && <PageBanner tone="success">{actionMessage}</PageBanner>}
+      {error && (
+        <PageBanner tone="error">{localizeManagerCephKeysError(locale, error)}</PageBanner>
+      )}
+      {actionMessage && <PageBanner tone="success">{t(actionMessage)}</PageBanner>}
 
       {createdKey && (
         <OneTimeSecretPanel
-          title="Access key created"
-          description="The secret is shown only once."
-          badge="Copy these values now"
+          title={t("Access key created")}
+          description={t("The secret is shown only once.")}
+          badge={t("Copy these values now")}
           values={[
-            { label: "Access key", value: createdKey.access_key_id, copyLabel: "Copy" },
-            { label: "Secret key", value: createdKey.secret_access_key, copyLabel: "Copy" },
+            { label: t("Access key"), value: createdKey.access_key_id, copyLabel: t("Copy") },
+            { label: t("Secret key"), value: createdKey.secret_access_key, copyLabel: t("Copy") },
           ]}
+          copyFeedback={{
+            copied: t("Copied to clipboard."),
+            failed: t("Unable to copy. Select and copy this value manually."),
+          }}
         />
       )}
 
       {!hasS3AccountContext ? (
         <PageEmptyState
-          title="Select an account before managing Ceph access keys"
-          description="Ceph access keys are scoped to the active execution context. Choose a managed S3 user context before opening key inventory."
-          primaryAction={{ label: "Open buckets", to: "/manager/buckets" }}
+          eyebrow={t("Next step")}
+          title={t("Select an account before managing Ceph access keys")}
+          description={t("Ceph access keys are scoped to the active execution context. Choose a managed S3 user context before opening key inventory.")}
+          primaryAction={{ label: t("Open buckets"), to: "/manager/buckets" }}
           tone="warning"
         />
       ) : !isS3UserContext ? (
         <PageEmptyState
-          title="Ceph access keys are available only for managed S3 user contexts"
-          description="Switch to a managed S3 user execution context to create, enable, disable, or delete RGW access keys."
-          primaryAction={{ label: "Open buckets", to: "/manager/buckets" }}
+          eyebrow={t("Next step")}
+          title={t("Ceph access keys are available only for managed S3 user contexts")}
+          description={t("Switch to a managed S3 user execution context to create, enable, disable, or delete RGW access keys.")}
+          primaryAction={{ label: t("Open buckets"), to: "/manager/buckets" }}
           tone="warning"
         />
       ) : managerCephKeysEnabled === null ? (
-        <PageBanner tone="info">Loading context capabilities…</PageBanner>
+        <PageBanner tone="info">{t("Loading context capabilities…")}</PageBanner>
       ) : !managerCephKeysEnabled ? (
         <PageEmptyState
-          title="Ceph key inventory is unavailable for this context"
+          eyebrow={t("Next step")}
+          title={t("Ceph key inventory is unavailable for this context")}
           description={
             canProvisionManagedPrivateAccess
-              ? "Manual RGW key management is unavailable. Managed private access remains available from the page action."
-              : "The selected context does not expose RGW access-key management. Check the user tool access, feature toggle, endpoint provider, admin feature, and Ceph admin credentials."
+              ? t("Manual RGW key management is unavailable. Managed private access remains available from the page action.")
+              : t("The selected context does not expose RGW access-key management. Check the user tool access, feature toggle, endpoint provider, admin feature, and Ceph admin credentials.")
           }
-          primaryAction={{ label: "Open buckets", to: "/manager/buckets" }}
+          primaryAction={{ label: t("Open buckets"), to: "/manager/buckets" }}
           tone="warning"
         />
       ) : (
         <ListPageSection variant="page"
-          title="Keys"
-          secondaryContent={<p>BucketReef interface keys and managed private-access keys are locked; delete a managed key through its private connection.</p>}
-          countLabel={`${filteredKeys.length} result(s)`}
+          title={t("Keys")}
+          secondaryContent={<p>{t("BucketReef interface keys and managed private-access keys are locked; delete a managed key through its private connection.")}</p>}
+          countLabel={managerCephKeyResultCount(locale, filteredKeys.length)}
           search={
-            <UiInput aria-label="Search" size="compact"
+            <UiInput aria-label={t("Search")} size="compact"
               type="search"
               value={keyFilter}
               onChange={(event) => setKeyFilter(event.target.value)}
-              placeholder="Search by access key or status"
+              placeholder={t("Search by access key or status")}
             />
           }
         >
@@ -328,9 +353,9 @@ export default function ManagerCephKeysPage() {
               cx("hover:bg-slate-50 dark:hover:bg-slate-800/50", !key.is_active && "bg-slate-50/70 dark:bg-slate-900/40")
             }
             status={tableStatus}
-            loadingMessage="Loading keys..."
-            errorMessage="Unable to load keys."
-            emptyMessage="No keys."
+            loadingMessage={t("Loading keys...")}
+            errorMessage={t("Unable to load keys.")}
+            emptyMessage={t("No keys.")}
             tableLayout="fixed"
           />
         </ListPageSection>
@@ -343,7 +368,7 @@ export default function ManagerCephKeysPage() {
           contextName={selectedS3AccountName}
           onClose={() => setShowPrivateAccessModal(false)}
           onCreated={(name) => {
-            setActionMessage(`Private connection ${name} created without exposing its secret.`);
+            setActionMessage(managerPrivateConnectionCreatedMessage(name));
             setError(null);
             void loadKeys();
           }}
