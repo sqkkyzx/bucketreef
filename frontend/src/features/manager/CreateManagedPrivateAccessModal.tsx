@@ -6,6 +6,7 @@ import ModalActions from "../../components/ModalActions";
 import { FormEvent, useMemo, useRef, useState } from "react";
 
 import type { S3AccountSelector } from "../../api/accountParams";
+import { isApiError } from "../../api/client";
 import type { IAMGroup } from "../../api/managerIamGroups";
 import type { IamPolicy } from "../../api/managerIamPolicies";
 import {
@@ -21,13 +22,42 @@ import UiInlineMessage from "../../components/ui/UiInlineMessage";
 import UiCheckboxField from "../../components/ui/UiCheckboxField";
 import UiDetails from "../../components/ui/UiDetails";
 import S3ConnectionAccessFields from "../shared/S3ConnectionAccessFields";
-import { extractApiError } from "../../utils/apiError";
+import { extractApiError, sanitizeErrorMessage } from "../../utils/apiError";
 import { notifyExecutionContextsRefresh } from "../../utils/executionContextRefresh";
 import { focusFirstInvalidField } from "../../utils/focusFirstInvalidField";
+import { useManagerText } from "./managerI18n";
+import {
+  localizeManagerCephKeysError,
+  managerCephKeysZhMessages,
+  managerPrivateAccessDefaultName,
+  managerRemoveInlinePolicyLabel,
+} from "./managerCephKeysMessages";
 
 const AMAZON_S3_FULL_ACCESS_POLICY_ARN = "arn:aws:iam::aws:policy/AmazonS3FullAccess";
 
 const INLINE_POLICY_TEMPLATE = '{\n  "Version": "2012-10-17",\n  "Statement": []\n}';
+
+const MANAGED_PRIVATE_ACCESS_ERROR_FALLBACK = "Unable to create managed private access.";
+
+function extractManagedPrivateAccessError(error: unknown): string {
+  if (isApiError(error)) {
+    const detail = (error.response?.data as { detail?: unknown } | undefined)?.detail;
+    if (detail && typeof detail === "object" && !Array.isArray(detail)) {
+      const { message, ...metadata } = detail as Record<string, unknown>;
+      if (typeof message === "string" && message.trim()) {
+        const safeMessage = sanitizeErrorMessage(message, MANAGED_PRIVATE_ACCESS_ERROR_FALLBACK);
+        const safeMetadata = Object.entries(metadata).flatMap(([key, value]) => {
+          if (typeof value !== "string" && typeof value !== "number" && typeof value !== "boolean") {
+            return [];
+          }
+          return [sanitizeErrorMessage(`${key}: ${String(value)}`, "")].filter(Boolean);
+        });
+        return [safeMessage, ...safeMetadata].join(" · ");
+      }
+    }
+  }
+  return extractApiError(error, MANAGED_PRIVATE_ACCESS_ERROR_FALLBACK);
+}
 
 type Props = {
   variant: "iam" | "rgw_user";
@@ -48,12 +78,12 @@ export default function CreateManagedPrivateAccessModal({
   onClose,
   onCreated,
 }: Props) {
+  const { locale, t } = useManagerText(managerCephKeysZhMessages);
   const formRef = useRef<HTMLFormElement>(null);
   const connectionNameRef = useRef<HTMLInputElement | null>(null);
-  const [initialConnectionName] = useState(() => {
-    const normalizedContextName = contextName?.trim();
-    return normalizedContextName ? `${normalizedContextName} private access` : "My private access";
-  });
+  const [initialConnectionName] = useState(() =>
+    managerPrivateAccessDefaultName(locale, contextName),
+  );
   const [connectionName, setConnectionName] = useState(initialConnectionName);
   const [accessBrowser, setAccessBrowser] = useState(true);
   const [accessManager, setAccessManager] = useState(false);
@@ -71,7 +101,9 @@ export default function CreateManagedPrivateAccessModal({
   const [inlineDocumentError, setInlineDocumentError] = useState<string>();
   const [accessError, setAccessError] = useState<string>();
 
-  const title = variant === "iam" ? "Create my private access" : "Create my private RGW access";
+  const title = variant === "iam"
+    ? t("Create my private access")
+    : t("Create my private RGW access");
   const selectedInlineNames = useMemo(() => new Set(inlinePolicies.map((policy) => policy.name)), [inlinePolicies]);
   const availablePolicies = useMemo(
     () => policies.some((policy) => policy.arn === AMAZON_S3_FULL_ACCESS_POLICY_ARN)
@@ -99,6 +131,11 @@ export default function CreateManagedPrivateAccessModal({
       || (variant === "iam" && (inlineName !== "" || inlineDocument !== INLINE_POLICY_TEMPLATE)),
     disabled: busy,
     onClose,
+    title: t("Discard changes?"),
+    description: t("You have unapplied changes. Closing this dialog will discard them."),
+    cancelLabel: t("Keep editing"),
+    confirmLabel: t("Discard changes"),
+    closeLabel: locale === "zh" ? t("Close") : undefined,
   });
 
   const focusInvalidField = () => {
@@ -111,12 +148,12 @@ export default function CreateManagedPrivateAccessModal({
     setInlineDocumentError(undefined);
     const name = inlineName.trim();
     if (!name) {
-      setInlineNameError("Inline policy name is required.");
+      setInlineNameError(t("Inline policy name is required."));
       focusInvalidField();
       return;
     }
     if (selectedInlineNames.has(name)) {
-      setInlineNameError("Inline policy names must be unique.");
+      setInlineNameError(t("Inline policy names must be unique."));
       focusInvalidField();
       return;
     }
@@ -129,7 +166,7 @@ export default function CreateManagedPrivateAccessModal({
       setInlineName("");
       setError(null);
     } catch {
-      setInlineDocumentError("Inline policy document must be a JSON object.");
+      setInlineDocumentError(t("Inline policy document must be a JSON object."));
       focusInvalidField();
     }
   };
@@ -139,8 +176,8 @@ export default function CreateManagedPrivateAccessModal({
     if (busy) return;
     const missingName = !connectionName.trim();
     const missingAccess = !accessBrowser && !accessManager;
-    setNameError(missingName ? "Connection name is required." : undefined);
-    setAccessError(missingAccess ? "Enable Browser, Manager, or both." : undefined);
+    setNameError(missingName ? t("Connection name is required.") : undefined);
+    setAccessError(missingAccess ? t("Enable Browser, Manager, or both.") : undefined);
     if (missingName || missingAccess) {
       const details = formRef.current?.querySelector("details");
       if (missingAccess && details) details.open = true;
@@ -167,7 +204,7 @@ export default function CreateManagedPrivateAccessModal({
       onCreated(result.connection.name);
       onClose();
     } catch (err) {
-      setError(extractApiError(err, "Unable to create managed private access."));
+      setError(extractManagedPrivateAccessError(err));
     } finally {
       setBusy(false);
     }
@@ -183,19 +220,23 @@ export default function CreateManagedPrivateAccessModal({
     >
       <form ref={formRef} className="settings-form" onSubmit={submit} noValidate>
         <fieldset disabled={busy} className="settings-stack min-w-0">
-          {error && <UiInlineMessage tone="error">{error}</UiInlineMessage>}
+          {error && (
+            <UiInlineMessage tone="error">
+              {localizeManagerCephKeysError(locale, error)}
+            </UiInlineMessage>
+          )}
           <UiInlineMessage tone="info">
             {variant === "iam"
               ? usesDefaultConfiguration
-                ? "BucketReef creates a dedicated IAM user with AmazonS3FullAccess and a private connection for Browser. The generated secret is stored only on the server and is never sent to this browser."
-                : "BucketReef creates a dedicated IAM user and private connection using the advanced configuration below. The generated secret is stored only on the server and is never sent to this browser."
+                ? t("BucketReef creates a dedicated IAM user with AmazonS3FullAccess and a private connection for Browser. The generated secret is stored only on the server and is never sent to this browser.")
+                : t("BucketReef creates a dedicated IAM user and private connection using the advanced configuration below. The generated secret is stored only on the server and is never sent to this browser.")
               : usesDefaultConfiguration
-                ? "BucketReef creates a new access key for this RGW user and stores it in a private connection for Browser. The generated secret is stored only on the server and is never sent to this browser."
-                : "BucketReef creates a new access key for this RGW user and stores it in a private connection using the advanced configuration below. The generated secret is stored only on the server and is never sent to this browser."}
+                ? t("BucketReef creates a new access key for this RGW user and stores it in a private connection for Browser. The generated secret is stored only on the server and is never sent to this browser.")
+                : t("BucketReef creates a new access key for this RGW user and stores it in a private connection using the advanced configuration below. The generated secret is stored only on the server and is never sent to this browser.")}
           </UiInlineMessage>
           <UiInput
             ref={connectionNameRef}
-            label="Connection name"
+            label={t("Connection name")}
             value={connectionName}
             error={nameError}
             onChange={(event) => { setConnectionName(event.target.value); setNameError(undefined); }}
@@ -204,15 +245,15 @@ export default function CreateManagedPrivateAccessModal({
 
           <UiDetails className="modal-disclosure">
             <summary>
-              Advanced configuration
-              {!usesDefaultConfiguration && <span className="settings-description ml-2">Customized</span>}
+              {t("Advanced configuration")}
+              {!usesDefaultConfiguration && <span className="settings-description ml-2">{t("Customized")}</span>}
             </summary>
             <div className="settings-stack pt-2">
               {variant === "iam" && (
                 <div>
-                  <SettingsSection title="IAM groups" presentation="compact">
+                  <SettingsSection title={t("IAM groups")} presentation="compact">
                     <div className="settings-fields">
-                      {groups.length === 0 && <span className="settings-description">No groups available.</span>}
+                      {groups.length === 0 && <span className="settings-description">{t("No groups available.")}</span>}
                       {groups.map((group) => (
                         <UiCheckboxField
                           key={group.name}
@@ -227,7 +268,7 @@ export default function CreateManagedPrivateAccessModal({
                       ))}
                     </div>
                   </SettingsSection>
-                  <SettingsSection title="Managed policies" presentation="compact">
+                  <SettingsSection title={t("Managed policies")} presentation="compact">
                     <div className="settings-fields">
                       {availablePolicies.map((policy) => (
                         <UiCheckboxField
@@ -244,39 +285,39 @@ export default function CreateManagedPrivateAccessModal({
                       ))}
                     </div>
                   </SettingsSection>
-                  <SettingsSection title="Inline policies" presentation="compact">
+                  <SettingsSection title={t("Inline policies")} presentation="compact">
                     <div className="settings-fields">
                       {inlinePolicies.length > 0 && (
                         <ul className="grid gap-2">
                           {inlinePolicies.map((policy) => (
                             <li key={policy.name} className="flex min-w-0 items-start justify-between gap-2">
                               <span className="settings-label min-w-0 [overflow-wrap:anywhere]">{policy.name}</span>
-                              <SettingsButton variant="ghost" aria-label={`Remove inline policy ${policy.name}`}
+                              <SettingsButton variant="ghost" aria-label={managerRemoveInlinePolicyLabel(locale, policy.name)}
                                 onClick={() => { setInlinePolicies((current) => current.filter((item) => item.name !== policy.name)); setInlineNameError(undefined); }}>
-                                Remove
+                                {t("Remove")}
                               </SettingsButton>
                             </li>
                           ))}
                         </ul>
                       )}
                       <UiInput
-                        label="Inline policy name"
+                        label={t("Inline policy name")}
                         value={inlineName}
                         error={inlineNameError}
                         onChange={(event) => { setInlineName(event.target.value); setInlineNameError(undefined); }}
                       />
                       <UiTextarea
-                        label="Inline policy document"
+                        label={t("Inline policy document")}
                         value={inlineDocument}
                         error={inlineDocumentError}
-                        hint="Provide a JSON object, then add it to the policies for this access."
+                        hint={t("Provide a JSON object, then add it to the policies for this access.")}
                         onChange={(event) => { setInlineDocument(event.target.value); setInlineDocumentError(undefined); }}
                         rows={6}
                         spellCheck={false}
                         className="font-mono"
                       />
                       <div className="flex justify-end">
-                        <SettingsButton variant="secondary" onClick={addInlinePolicy}>Add inline policy</SettingsButton>
+                        <SettingsButton variant="secondary" onClick={addInlinePolicy}>{t("Add inline policy")}</SettingsButton>
                       </div>
                     </div>
                   </SettingsSection>
@@ -287,15 +328,18 @@ export default function CreateManagedPrivateAccessModal({
                 accessManager={accessManager}
                 onAccessBrowserChange={(value) => { setAccessBrowser(value); setAccessError(undefined); }}
                 onAccessManagerChange={(value) => { setAccessManager(value); setAccessError(undefined); }}
-                hint="Browser is selected by default. At least one workspace must remain enabled."
+                title={t("Workspace access")}
+                managerLabel={t("Access manager")}
+                browserLabel={t("Access browser")}
+                hint={t("Browser is selected by default. At least one workspace must remain enabled.")}
                 error={accessError}
                 className="settings-fields"
               />
             </div>
           </UiDetails>
           <ModalActions>
-            <SettingsButton variant="secondary" onClick={closeGuard.requestClose}>Cancel</SettingsButton>
-            <SettingsButton type="submit">{busy ? "Creating…" : "Create my private access"}</SettingsButton>
+            <SettingsButton variant="secondary" onClick={closeGuard.requestClose}>{t("Cancel")}</SettingsButton>
+            <SettingsButton type="submit">{busy ? t("Creating…") : t("Create my private access")}</SettingsButton>
           </ModalActions>
         </fieldset>
       </form>

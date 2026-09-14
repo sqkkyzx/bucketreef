@@ -359,6 +359,7 @@ const zhMessages: Record<string, string> = {
   "Rotation results": "轮换结果",
   "Previous execution summary": "上次执行摘要",
   "Execution summary": "执行摘要",
+  Mode: "模式",
   "Deactivate old keys": "停用旧密钥",
   "Delete old keys": "删除旧密钥",
   "Total:": "总数：",

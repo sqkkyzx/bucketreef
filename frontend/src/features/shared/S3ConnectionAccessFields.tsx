@@ -2,7 +2,7 @@
  * Copyright (c) 2026 Laurent Barbe
  * Licensed under the Apache License, Version 2.0
  */
-import { useId } from "react";
+import { type ReactNode, useId } from "react";
 import UiCheckboxField from "../../components/ui/UiCheckboxField";
 import { cx, uiMutedTextClass, uiPanelMutedClass, uiTitleTextClass } from "../../components/ui/styles";
 
@@ -16,6 +16,9 @@ type S3ConnectionAccessFieldsProps = {
   className?: string;
   variant?: "plain" | "panel";
   ownerSummary?: string | null;
+  managerLabel?: ReactNode;
+  browserLabel?: ReactNode;
+  ownerSummaryLabel?: ReactNode;
   error?: string;
 };
 
@@ -29,6 +32,9 @@ export default function S3ConnectionAccessFields({
   className,
   variant = "plain",
   ownerSummary,
+  managerLabel = "Access manager",
+  browserLabel = "Access browser",
+  ownerSummaryLabel = "Owner metadata",
   error,
 }: S3ConnectionAccessFieldsProps) {
   const id = useId();
@@ -46,7 +52,7 @@ export default function S3ConnectionAccessFields({
           aria-invalid={Boolean(error)}
           className="settings-choice ui-body text-[var(--ui-text)]"
         >
-          Access manager
+          {managerLabel}
         </UiCheckboxField>
         <UiCheckboxField
           checked={accessBrowser}
@@ -55,12 +61,16 @@ export default function S3ConnectionAccessFields({
           aria-invalid={Boolean(error)}
           className="settings-choice ui-body text-[var(--ui-text)]"
         >
-          Access browser
+          {browserLabel}
         </UiCheckboxField>
       </div>
       <p id={hintId} className={cx("ui-caption", uiMutedTextClass)}>{hint}</p>
       {error && <p id={errorId} role="alert" className="ui-caption text-rose-600 dark:text-rose-200">{error}</p>}
-      {ownerSummary ? <p className={cx("ui-caption [overflow-wrap:anywhere]", uiMutedTextClass)}>Owner metadata: {ownerSummary}</p> : null}
+      {ownerSummary ? (
+        <p className={cx("ui-caption [overflow-wrap:anywhere]", uiMutedTextClass)}>
+          {ownerSummaryLabel}: {ownerSummary}
+        </p>
+      ) : null}
     </section>
   );
 }

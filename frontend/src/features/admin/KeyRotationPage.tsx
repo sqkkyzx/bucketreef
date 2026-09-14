@@ -450,7 +450,7 @@ export default function KeyRotationPage() {
         </SettingsSection>
         {result && (
           <section
-            aria-label="Rotation results"
+            aria-label={t("Rotation results")}
             className="border-t border-[var(--ui-border-soft)] pt-5"
           >
             <ListToolbar variant="section"
@@ -459,7 +459,9 @@ export default function KeyRotationPage() {
                   ? t("Previous execution summary")
                   : t("Execution summary")
               }
-              description={`Mode: ${result.mode === "deactivate_old_keys" ? t("Deactivate old keys") : t("Delete old keys")}`}
+              description={locale === "zh"
+                ? `${t("Mode")}：${result.mode === "deactivate_old_keys" ? t("Deactivate old keys") : t("Delete old keys")}`
+                : `Mode: ${result.mode === "deactivate_old_keys" ? t("Deactivate old keys") : t("Delete old keys")}`}
               countLabel={locale === "zh" ? `${result.results.length} 条详细结果` : `${result.results.length} detailed result${result.results.length === 1 ? "" : "s"}`}
             />
             <div className="my-3 flex flex-wrap gap-2">
@@ -515,8 +517,8 @@ export default function KeyRotationPage() {
             {
               label: t("Previous keys"),
               value: deactivateOnly
-                ? "Disable after replacement"
-                : "Permanently delete after replacement",
+                ? t("Disable after replacement")
+                : t("Permanently delete after replacement"),
             },
           ]}
           warning={
@@ -531,7 +533,7 @@ export default function KeyRotationPage() {
         title={t("Leave this rotation?")}
         description={t("The server operation will continue. You may lose access to its detailed results on this page.")}
         confirmLabel={t("Leave page")}
-        cancelLabel="Wait for results"
+        cancelLabel={t("Wait for results")}
       />
     </PageShell>
   );
