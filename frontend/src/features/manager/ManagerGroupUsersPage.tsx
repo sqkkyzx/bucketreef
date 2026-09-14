@@ -10,19 +10,22 @@ import { S3AccountSelector } from "../../api/accountParams";
 import { IAMUser, listIamUsers } from "../../api/managerIamUsers";
 import { addIamGroupUser, listIamGroupUsers, removeIamGroupUser } from "../../api/managerIamGroups";
 import { useS3AccountContext } from "./S3AccountContext";
-import { managerPageBreadcrumbs } from "./managerBreadcrumbs";
+import { localizedManagerPageBreadcrumbs } from "./managerBreadcrumbs";
 import PageShell from "../../components/PageShell";
 import PageBanner from "../../components/PageBanner";
 import DataTableShell, { type DataTableColumn } from "../../components/list/DataTableShell";
 import { resolveListTableStatus } from "../../components/list/listTableStatus";
 import { extractApiError } from "../../utils/apiError";
 import { useConfirmActionDialog } from "../../components/useConfirmActionDialog";
+import { useManagerText } from "./managerI18n";
+import { localizeManagerGroupsError, managerGroupsZhMessages } from "./managerGroupsMessages";
 
 function extractError(err: unknown): string {
   return extractApiError(err, "Unexpected error");
 }
 
 export default function ManagerGroupUsersPage() {
+  const { locale, t } = useManagerText(managerGroupsZhMessages);
   const { groupName } = useParams<{ groupName: string }>();
   const { selectedS3AccountType, accountIdForApi, requiresS3AccountSelection, accessMode } = useS3AccountContext();
   const needsS3AccountSelection = requiresS3AccountSelection && !accountIdForApi;
@@ -123,14 +126,14 @@ export default function ManagerGroupUsersPage() {
 
   const handleRemove = (userName: string) => {
     memberConfirmation.requestConfirmation({
-      title: "Remove user from group?",
-      description: "Detach this IAM user from the selected group.",
-      confirmLabel: "Remove user",
+      title: t("Remove user from group?"),
+      description: t("Detach this IAM user from the selected group."),
+      confirmLabel: t("Remove user"),
       details: [
-        { label: "Group", value: decodedGroup },
-        { label: "User", value: userName },
+        { label: t("Group"), value: decodedGroup },
+        { label: t("User"), value: userName },
       ],
-      impacts: ["Permissions inherited only through this group will no longer apply to the user."],
+      impacts: [t("Permissions inherited only through this group will no longer apply to the user.")],
       onConfirm: () => removeUser(userName),
     });
   };
@@ -138,21 +141,22 @@ export default function ManagerGroupUsersPage() {
   if (isS3User) {
     return (
       <PageShell actionPresentation="listing"
-          title="Group members"
-          description="Manage IAM group membership."
-          breadcrumbs={managerPageBreadcrumbs("groups", { label: "Users" })}
+          title={t("Group members")}
+          description={t("Manage IAM group membership.")}
+          breadcrumbs={localizedManagerPageBreadcrumbs("groups", locale, { label: t("Users") })}
+          breadcrumbLabel={t("Breadcrumb")}
       >
-        <PageBanner tone="info">IAM features are disabled for standalone S3 users. Select an S3 Account to continue.</PageBanner>
+        <PageBanner tone="info">{t("IAM features are disabled for standalone S3 users. Select an S3 Account to continue.")}</PageBanner>
       </PageShell>
     );
   }
 
   if (!groupName) {
-    return <div className="ui-body text-slate-600">Group not specified.</div>;
+    return <div className="ui-body text-slate-600">{t("Group not specified.")}</div>;
   }
 
   if (needsS3AccountSelection) {
-    return <div className="ui-body text-slate-600">Select an account before managing groups.</div>;
+    return <div className="ui-body text-slate-600">{t("Select an account before managing groups.")}</div>;
   }
 
   const handleRefresh = () => {
@@ -170,7 +174,7 @@ export default function ManagerGroupUsersPage() {
   const userColumns: Array<DataTableColumn<IAMUser>> = [
     {
       id: "user",
-      label: "User",
+      label: t("User"),
       primary: true,
       render: (user) => user.name,
     },
@@ -182,7 +186,7 @@ export default function ManagerGroupUsersPage() {
     },
     {
       id: "actions",
-      label: "Actions",
+      label: t("Actions"),
       align: "right",
       mobileRole: "actions",
       render: (user) => (
@@ -191,7 +195,7 @@ export default function ManagerGroupUsersPage() {
           onClick={() => handleRemove(user.name)}
           disabled={busy === user.name}
         >
-          {busy === user.name ? "Removing..." : "Remove"}
+          {busy === user.name ? t("Removing...") : t("Remove")}
         </ListActionButton>
       ),
     },
@@ -199,28 +203,32 @@ export default function ManagerGroupUsersPage() {
 
   return (
     <PageShell actionPresentation="listing"
-      title="Group members"
+      title={t("Group members")}
       description={
-        <>
-          Manage users for <span className="font-semibold text-slate-700 dark:text-slate-100">{decodedGroup}</span>.
-        </>
+        locale === "zh" ? (
+          <>管理用户组“<span className="font-semibold text-slate-700 dark:text-slate-100">{decodedGroup}</span>”中的用户。</>
+        ) : (
+          <>Manage users for <span className="font-semibold text-slate-700 dark:text-slate-100">{decodedGroup}</span>.</>
+        )
       }
-      breadcrumbs={managerPageBreadcrumbs(
+      breadcrumbs={localizedManagerPageBreadcrumbs(
         "groups",
+        locale,
         { label: decodedGroup },
-        { label: "Users" },
+        { label: t("Users") },
       )}
+      breadcrumbLabel={t("Breadcrumb")}
       actions={[
-        { label: "← Back to groups", to: "/manager/groups", variant: "ghost" },
-        { label: "Attached policies", to: `/manager/groups/${encodeURIComponent(decodedGroup)}/policies`, variant: "ghost" },
-        { label: "Refresh", onClick: handleRefresh, variant: "ghost" },
+        { label: t("← Back to groups"), to: "/manager/groups", variant: "ghost" },
+        { label: t("Attached policies"), to: `/manager/groups/${encodeURIComponent(decodedGroup)}/policies`, variant: "ghost" },
+        { label: t("Refresh"), onClick: handleRefresh, variant: "ghost" },
       ]}
     >
 
-      {actionMessage && <PageBanner tone="success">{actionMessage}</PageBanner>}
-      {error && <PageBanner tone="error">{error}</PageBanner>}
+      {actionMessage && <PageBanner tone="success">{t(actionMessage)}</PageBanner>}
+      {error && <PageBanner tone="error">{localizeManagerGroupsError(locale, error)}</PageBanner>}
       {noAvailableUsers && (
-        <PageBanner tone="warning">No IAM users available to add. Create one before managing this group.</PageBanner>
+        <PageBanner tone="warning">{t("No IAM users available to add. Create one before managing this group.")}</PageBanner>
       )}
 
       <form
@@ -229,11 +237,12 @@ export default function ManagerGroupUsersPage() {
       >
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
           <select
+            aria-label={t("User")}
             value={newUser}
             onChange={(e) => setNewUser(e.target.value)}
             className="flex-1 rounded-md border border-slate-200 px-3 py-2 ui-body focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
           >
-            <option value="">Select an existing user</option>
+            <option value="">{t("Select an existing user")}</option>
             {availableUsers.map((u) => (
               <option key={u.name} value={u.name}>
                 {u.name}
@@ -245,23 +254,23 @@ export default function ManagerGroupUsersPage() {
             disabled={busy !== null || !newUser}
             className="rounded-md bg-primary px-4 py-2 ui-body font-medium text-white shadow-sm transition hover:bg-primary-600 disabled:opacity-60"
           >
-            {busy === "add" ? "Adding..." : "Add"}
+            {busy === "add" ? t("Adding...") : t("Add")}
           </button>
         </div>
         <p className="ui-caption text-slate-500 dark:text-slate-400">
-          Users come from IAM. Add them here to attach them to the group.
+          {t("Users come from IAM. Add them here to attach them to the group.")}
         </p>
       </form>
 
-      <ListPageSection variant="section" title="Users" description="Members of this group.">
+      <ListPageSection variant="section" title={t("Users")} description={t("Members of this group.")}>
         <DataTableShell
           columns={userColumns}
           rows={users}
           rowKey={(user) => user.name}
           status={tableStatus}
-          loadingMessage="Loading members..."
-          errorMessage="Unable to load users."
-          emptyMessage="No members in this group."
+          loadingMessage={t("Loading members...")}
+          errorMessage={t("Unable to load users.")}
+          emptyMessage={t("No members in this group.")}
           tableClassName="ui-data-table"
           responsiveCards
         />

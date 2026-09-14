@@ -18,7 +18,13 @@ import InlinePolicyEditor from "./InlinePolicyEditor";
 import UiSelect from "../../components/ui/UiSelect";
 import { SettingsButton } from "../../components/settings/SettingsControls";
 import { useS3AccountContext } from "./S3AccountContext";
-import { managerPageBreadcrumbs } from "./managerBreadcrumbs";
+import { localizedManagerPageBreadcrumbs } from "./managerBreadcrumbs";
+import { useManagerText } from "./managerI18n";
+import {
+  localizeManagerIamError,
+  managerIamEntityLabel,
+  managerIamRolesPoliciesZhMessages,
+} from "./managerIamRolesPoliciesMessages";
 
 type ManagerPolicyEntityType = "user" | "group" | "role";
 
@@ -89,7 +95,10 @@ export default function ManagerEntityPoliciesPage({
   deleteInlinePolicyForEntity,
   extraActions,
 }: ManagerEntityPoliciesPageProps) {
+  const { locale, t } = useManagerText(managerIamRolesPoliciesZhMessages);
   const config = ENTITY_CONFIG[entityType];
+  const localizedSingularLabel = managerIamEntityLabel(locale, entityType);
+  const localizedPluralLabel = managerIamEntityLabel(locale, entityType, { plural: true });
   const parentPageId = {
     user: "users",
     group: "groups",
@@ -200,14 +209,18 @@ export default function ManagerEntityPoliciesPage({
 
   const handleDetach = (policyArn: string) => {
     policyConfirmation.requestConfirmation({
-      title: "Detach managed policy?",
-      description: `Remove this managed policy from the selected ${config.singularLabel}.`,
-      confirmLabel: "Detach policy",
+      title: t("Detach managed policy?"),
+      description: locale === "zh"
+        ? `从所选${localizedSingularLabel}中分离此托管策略。`
+        : `Remove this managed policy from the selected ${config.singularLabel}.`,
+      confirmLabel: t("Detach policy"),
       details: [
-        { label: config.singularLabel, value: decodedEntity },
-        { label: "Policy ARN", value: policyArn, mono: true },
+        { label: localizedSingularLabel, value: decodedEntity },
+        { label: t("Policy ARN"), value: policyArn, mono: true },
       ],
-      impacts: [`Permissions granted only by this policy will no longer apply to the ${config.singularLabel}.`],
+      impacts: [locale === "zh"
+        ? `仅由此策略授予的权限将不再应用于该${localizedSingularLabel}。`
+        : `Permissions granted only by this policy will no longer apply to the ${config.singularLabel}.`],
       onConfirm: () => detachPolicy(policyArn),
     });
   };
@@ -230,23 +243,36 @@ export default function ManagerEntityPoliciesPage({
   if (isS3User) {
     return (
       <PageShell actionPresentation="listing"
-          title={config.title}
-          description={`Attach/detach IAM policies for a specific ${config.singularLabel}.`}
-          breadcrumbs={managerPageBreadcrumbs(parentPageId[entityType], { label: "Policies" })}
+          title={t(config.title)}
+          description={locale === "zh"
+            ? `为指定${localizedSingularLabel}附加或分离 IAM 策略。`
+            : `Attach/detach IAM policies for a specific ${config.singularLabel}.`}
+          breadcrumbs={localizedManagerPageBreadcrumbs(parentPageId[entityType], locale, { label: t("Policies") })}
+          breadcrumbLabel={t("Breadcrumb")}
       >
         <PageBanner tone="info">
-          IAM {config.pluralLabel} are not available for standalone S3 users. Select an S3 Account to continue.
+          {locale === "zh"
+            ? `独立 S3 用户无法使用 IAM ${localizedPluralLabel}。请选择 S3 账户后继续。`
+            : <>IAM {config.pluralLabel} are not available for standalone S3 users. Select an S3 Account to continue.</>}
         </PageBanner>
       </PageShell>
     );
   }
 
   if (!rawEntityName) {
-    return <div className="ui-body text-slate-600">{`${config.singularLabel[0].toUpperCase()}${config.singularLabel.slice(1)} not specified.`}</div>;
+    return <div className="ui-body text-slate-600">
+      {locale === "zh"
+        ? `未指定${localizedSingularLabel}。`
+        : `${config.singularLabel[0].toUpperCase()}${config.singularLabel.slice(1)} not specified.`}
+    </div>;
   }
 
   if (needsS3AccountSelection) {
-    return <div className="ui-body text-slate-600">{`Select an account before managing ${config.pluralLabel}.`}</div>;
+    return <div className="ui-body text-slate-600">
+      {locale === "zh"
+        ? `请先选择账户，再管理${localizedPluralLabel}。`
+        : `Select an account before managing ${config.pluralLabel}.`}
+    </div>;
   }
 
   const options = available.map((policy) => ({ value: policy.arn, label: policy.name }));
@@ -254,7 +280,7 @@ export default function ManagerEntityPoliciesPage({
   const attachedPolicyColumns: Array<DataTableColumn<IamPolicy>> = [
     {
       id: "policy",
-      label: "Policy",
+      label: t("Policy"),
       primary: true,
       render: (policy) => policy.name,
     },
@@ -266,7 +292,7 @@ export default function ManagerEntityPoliciesPage({
     },
     {
       id: "actions",
-      label: "Actions",
+      label: t("Actions"),
       align: "right",
       mobileRole: "actions",
       render: (policy) => (
@@ -275,45 +301,52 @@ export default function ManagerEntityPoliciesPage({
           onClick={() => handleDetach(policy.arn)}
           disabled={busy === policy.arn}
         >
-          {busy === policy.arn ? "Detaching..." : "Detach"}
+          {busy === policy.arn ? t("Detaching...") : t("Detach")}
         </ListActionButton>
       ),
     },
   ];
 
-  const detailLine =
-    entityType === "role"
-      ? (
-        <>
-          Attach/detach policies for role <span className="font-semibold text-slate-700 dark:text-slate-100 [overflow-wrap:anywhere]">{decodedEntity}</span>.
-        </>
-      )
-      : (
-        <>
-          Attach/detach policies for <span className="font-semibold text-slate-700 dark:text-slate-100 [overflow-wrap:anywhere]">{decodedEntity}</span>.
-        </>
-      );
+  const detailLine = (
+    <>
+      {locale === "zh"
+        ? `为${localizedSingularLabel}“`
+        : entityType === "role" ? "Attach/detach policies for role " : "Attach/detach policies for "}
+      <span className="font-semibold text-slate-700 dark:text-slate-100 [overflow-wrap:anywhere]">{decodedEntity}</span>
+      {locale === "zh" ? "”附加或分离策略。" : "."}
+    </>
+  );
 
   return (
     <PageShell actionPresentation="listing"
-      title={config.title}
+      title={t(config.title)}
       description={detailLine}
-      breadcrumbs={managerPageBreadcrumbs(
+      breadcrumbs={localizedManagerPageBreadcrumbs(
         parentPageId[entityType],
+        locale,
         { label: decodedEntity },
-        { label: "Policies" },
+        { label: t("Policies") },
       )}
+      breadcrumbLabel={t("Breadcrumb")}
       actions={[
-        { label: `← Back to ${config.pluralLabel}`, to: config.managerRoute, variant: "ghost" },
+        {
+          label: locale === "zh" ? `← 返回${localizedPluralLabel}` : `← Back to ${config.pluralLabel}`,
+          to: config.managerRoute,
+          variant: "ghost",
+        },
         ...(extraActions?.(decodedEntity) ?? []),
-        { label: "Refresh", onClick: handleRefresh, variant: "ghost" },
+        { label: t("Refresh"), onClick: handleRefresh, variant: "ghost" },
       ]}
     >
 
-      {error && <PageBanner tone="error">{error}</PageBanner>}
-      {actionMessage && <PageBanner tone="success">{actionMessage}</PageBanner>}
+      {error && <PageBanner tone="error">{localizeManagerIamError(locale, error)}</PageBanner>}
+      {actionMessage && <PageBanner tone="success">{t(actionMessage)}</PageBanner>}
       {noPoliciesAvailable && (
-        <PageBanner tone="warning">No IAM policies available. Create one before attaching to this {config.singularLabel}.</PageBanner>
+        <PageBanner tone="warning">
+          {locale === "zh"
+            ? `没有可用的 IAM 策略。请先创建策略，再附加到此${localizedSingularLabel}。`
+            : <>No IAM policies available. Create one before attaching to this {config.singularLabel}.</>}
+        </PageBanner>
       )}
 
       <div className="settings-compact settings-stack">
@@ -324,35 +357,40 @@ export default function ManagerEntityPoliciesPage({
           savePolicy={saveInlinePolicy}
           deletePolicy={removeInlinePolicy}
           disabled={needsS3AccountSelection}
-          disabledReason={`Select an account before editing ${config.singularLabel} inline policies.`}
+          disabledReason={locale === "zh"
+            ? `请先选择账户，再编辑${localizedSingularLabel}的内联策略。`
+            : `Select an account before editing ${config.singularLabel} inline policies.`}
           key={`${config.singularLabel}-inline-${accountIdForApi ?? "none"}-${rawEntityName ?? ""}`}
         />
 
-        <SettingsSection presentation="compact" title="Attached policies" description={`Attach/detach managed policies for this ${config.singularLabel}.`}>
+        <SettingsSection presentation="compact" title={t("Attached policies")}
+          description={locale === "zh"
+            ? `为此${localizedSingularLabel}附加或分离托管策略。`
+            : `Attach/detach managed policies for this ${config.singularLabel}.`}>
           <div className="settings-stack">
-            <form aria-label="Attach managed policy" onSubmit={handleAttach} className="settings-fields">
+            <form aria-label={t("Attach managed policy")} onSubmit={handleAttach} className="settings-fields">
               <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-end">
                 <div className="min-w-0 flex-1">
-                  <UiSelect label="Managed policy" value={selectedArn} onChange={(event) => setSelectedArn(event.target.value)}
+                  <UiSelect label={t("Managed policy")} value={selectedArn} onChange={(event) => setSelectedArn(event.target.value)}
                     disabled={busy !== null || loading}>
-                    <option value="">Select a policy to attach</option>
+                    <option value="">{t("Select a policy to attach")}</option>
                     {options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                   </UiSelect>
                 </div>
                 <SettingsButton type="submit" disabled={busy !== null || loading || !selectedArn}>
-                  {busy === "attach" ? "Attaching..." : "Attach"}
+                  {busy === "attach" ? t("Attaching...") : t("Attach")}
                 </SettingsButton>
               </div>
-              <p className="settings-description">Policies must be created first in the Policies tab.</p>
+              <p className="settings-description">{t("Policies must be created first in the Policies tab.")}</p>
             </form>
             <DataTableShell
               columns={attachedPolicyColumns}
               rows={attached}
               rowKey={(policy) => policy.arn}
               status={tableStatus}
-              loadingMessage="Loading policies..."
-              errorMessage="Unable to load policies."
-              emptyMessage="No attached policies."
+              loadingMessage={t("Loading policies...")}
+              errorMessage={t("Unable to load policies.")}
+              emptyMessage={t("No attached policies.")}
               tableClassName="ui-data-table"
               responsiveCards
             />
