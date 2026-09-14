@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Optional
 
-from pydantic import Field
+from pydantic import Field, field_validator, model_validator
 
 from app.models.base import ApiModel
 from app.models.pagination import PaginatedResponse
@@ -87,6 +87,8 @@ class S3UserAccessKey(ApiModel):
     access_key_id: str
     status: Optional[str] = None
     created_at: Optional[datetime] = None
+    name: Optional[str] = None
+    description: Optional[str] = None
     is_ui_managed: bool = False
     is_active: bool = True
     is_private_access_managed: bool = False
@@ -97,6 +99,41 @@ class S3UserGeneratedKey(ApiModel):
     access_key_id: str
     secret_access_key: str
     created_at: Optional[datetime] = None
+    name: Optional[str] = None
+    description: Optional[str] = None
+    metadata_warning: Optional[str] = None
+
+
+class S3UserAccessKeyCreate(ApiModel):
+    name: Optional[str] = Field(default=None, max_length=128)
+    description: Optional[str] = Field(default=None, max_length=500)
+
+    @field_validator("name", mode="before")
+    @classmethod
+    def _normalize_name(cls, value: object) -> object:
+        if value is None:
+            return None
+        if not isinstance(value, str):
+            return value
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("name must not be blank")
+        return normalized
+
+    @field_validator("description", mode="before")
+    @classmethod
+    def _normalize_description(cls, value: object) -> object:
+        if value is None:
+            return None
+        if not isinstance(value, str):
+            return value
+        return value.strip() or None
+
+    @model_validator(mode="after")
+    def _require_name_for_description(self):
+        if self.description is not None and self.name is None:
+            raise ValueError("name is required when description is provided")
+        return self
 
 
 class S3UserAccessKeyStatusChange(ApiModel):

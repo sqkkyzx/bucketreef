@@ -3,8 +3,10 @@
  * Licensed under the Apache License, Version 2.0
  */
 import UiInput from "../../components/ui/UiInput";
+import UiTextarea from "../../components/ui/UiTextarea";
+import UiInlineMessage from "../../components/ui/UiInlineMessage";
 import { ListActions, ListBadge, ListActionButton } from "../../components/list/ListControls";
-import { useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 
 import {
   createManagerCephAccessKey,
@@ -21,6 +23,12 @@ import PageEmptyState from "../../components/PageEmptyState";
 import PageShell from "../../components/PageShell";
 import DataTableShell, { type DataTableColumn } from "../../components/list/DataTableShell";
 import { resolveListTableStatus } from "../../components/list/listTableStatus";
+import ModalActions from "../../components/ModalActions";
+import {
+  SettingsButton,
+  SettingsDialog,
+  useSettingsCloseGuard,
+} from "../../components/settings/SettingsControls";
 
 import { cx } from "../../components/ui/styles";
 import { extractApiError } from "../../utils/apiError";
@@ -61,7 +69,13 @@ export default function ManagerCephKeysPage() {
   const [createdKey, setCreatedKey] = useState<ManagerCephGeneratedAccessKey | null>(null);
   const [actionMessage, setActionMessage] = useState<I18nMessage | null>(null);
   const [keyFilter, setKeyFilter] = useState("");
+  const [showCreateKeyModal, setShowCreateKeyModal] = useState(false);
+  const [createKeyName, setCreateKeyName] = useState("");
+  const [createKeyDescription, setCreateKeyDescription] = useState("");
+  const [createKeyError, setCreateKeyError] = useState<string | null>(null);
+  const [createKeyNameError, setCreateKeyNameError] = useState<string | null>(null);
   const [showPrivateAccessModal, setShowPrivateAccessModal] = useState(false);
+  const createKeyNameRef = useRef<HTMLInputElement | null>(null);
   const keyConfirmation = useConfirmActionDialog();
 
   const isS3UserContext = selectedS3AccountType === "s3_user";
@@ -90,21 +104,71 @@ export default function ManagerCephKeysPage() {
   useEffect(() => {
     setCreatedKey(null);
     setActionMessage(null);
+    setShowCreateKeyModal(false);
+    setCreateKeyName("");
+    setCreateKeyDescription("");
+    setCreateKeyError(null);
+    setCreateKeyNameError(null);
     void loadKeys();
   }, [accessMode, loadKeys]);
 
-  const handleCreateKey = async () => {
-    if (!canManageCephKeys) return;
+  const closeCreateKeyModal = useCallback(() => {
+    setShowCreateKeyModal(false);
+    setCreateKeyName("");
+    setCreateKeyDescription("");
+    setCreateKeyError(null);
+    setCreateKeyNameError(null);
+  }, []);
+
+  const createKeyCloseGuard = useSettingsCloseGuard({
+    hasUnsavedChanges: Boolean(createKeyName || createKeyDescription),
+    disabled: busy === "create",
+    onClose: closeCreateKeyModal,
+    title: t("Discard changes?"),
+    description: t("You have unapplied changes. Closing this dialog will discard them."),
+    cancelLabel: t("Keep editing"),
+    confirmLabel: t("Discard changes"),
+    closeLabel: t("Close"),
+  });
+
+  const openCreateKeyModal = () => {
+    setActionMessage(null);
+    setCreateKeyName("");
+    setCreateKeyDescription("");
+    setCreateKeyError(null);
+    setCreateKeyNameError(null);
+    setShowCreateKeyModal(true);
+  };
+
+  const handleCreateKey = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!canManageCephKeys || busy === "create") return;
+    const name = createKeyName.trim();
+    const description = createKeyDescription.trim();
+    if (!name) {
+      setCreateKeyNameError(t("Key name is required."));
+      createKeyNameRef.current?.focus();
+      return;
+    }
     setBusy("create");
-    setError(null);
+    setCreateKeyError(null);
+    setCreateKeyNameError(null);
     setActionMessage(null);
     try {
-      const key = await createManagerCephAccessKey(accountIdForApi);
-      setCreatedKey(key);
+      const key = await createManagerCephAccessKey(accountIdForApi, {
+        name,
+        description: description || null,
+      });
+      setCreatedKey({
+        ...key,
+        name: key.name ?? name,
+        description: key.description ?? (description || null),
+      });
       setActionMessage("Access key created");
-      await loadKeys();
+      closeCreateKeyModal();
+      void loadKeys();
     } catch (err) {
-      setError(parseError(err));
+      setCreateKeyError(parseError(err));
     } finally {
       setBusy(null);
     }
@@ -134,6 +198,9 @@ export default function ManagerCephKeysPage() {
     setActionMessage(null);
     try {
       await deleteManagerCephAccessKey(accountIdForApi, key.access_key_id);
+      setCreatedKey((current) =>
+        current?.access_key_id === key.access_key_id ? null : current
+      );
       setActionMessage("Access key deleted");
       await loadKeys();
     } catch (err) {
@@ -159,12 +226,14 @@ export default function ManagerCephKeysPage() {
   };
 
   const handleDeleteKey = (key: ManagerCephAccessKey) => {
+    const keyName = key.name?.trim();
     keyConfirmation.requestConfirmation({
       title: t("Delete Ceph access key?"),
       description: t("Permanently remove this RGW access key from the current S3 User context."),
       confirmLabel: t("Delete key"),
       details: [
         { label: t("Context"), value: selectedS3AccountName || t("Current S3 User") },
+        ...(keyName ? [{ label: t("Name"), value: keyName }] : []),
         { label: t("Access key"), value: key.access_key_id, mono: true },
       ],
       impacts: [t("Applications using this key will immediately lose access.")],
@@ -178,6 +247,8 @@ export default function ManagerCephKeysPage() {
     const statusLabel = key.is_active ? "active" : "inactive";
     const localizedStatusLabel = t(key.is_active ? "Active" : "Inactive").toLowerCase();
     return key.access_key_id.toLowerCase().includes(needle)
+      || (key.name ?? "").toLowerCase().includes(needle)
+      || (key.description ?? "").toLowerCase().includes(needle)
       || statusLabel.includes(needle)
       || localizedStatusLabel.includes(needle);
   });
@@ -206,6 +277,18 @@ export default function ManagerCephKeysPage() {
           </div>
         );
       },
+    },
+    {
+      id: "name",
+      label: t("Name"),
+      cellClassName: "text-slate-700 dark:text-slate-200",
+      render: (key) => key.name?.trim() || "—",
+    },
+    {
+      id: "description",
+      label: t("Description"),
+      cellClassName: "max-w-md whitespace-normal break-words text-slate-700 dark:text-slate-200",
+      render: (key) => key.description?.trim() || "—",
     },
     {
       id: "status",
@@ -262,9 +345,10 @@ export default function ManagerCephKeysPage() {
         ...(canManageCephKeys
           ? [
               {
-                label: busy === "create" ? t("Creating...") : t("New key"),
-                onClick: handleCreateKey,
+                label: t("New key"),
+                onClick: openCreateKeyModal,
                 variant: "primary" as const,
+                disabled: Boolean(busy),
               },
             ]
           : []),
@@ -285,19 +369,29 @@ export default function ManagerCephKeysPage() {
       {actionMessage && <PageBanner tone="success">{t(actionMessage)}</PageBanner>}
 
       {createdKey && (
-        <OneTimeSecretPanel
-          title={t("Access key created")}
-          description={t("The secret is shown only once.")}
-          badge={t("Copy these values now")}
-          values={[
-            { label: t("Access key"), value: createdKey.access_key_id, copyLabel: t("Copy") },
-            { label: t("Secret key"), value: createdKey.secret_access_key, copyLabel: t("Copy") },
-          ]}
-          copyFeedback={{
-            copied: t("Copied to clipboard."),
-            failed: t("Unable to copy. Select and copy this value manually."),
-          }}
-        />
+        <div className="space-y-3">
+          {createdKey.metadata_warning && (
+            <UiInlineMessage tone="warning" role="alert">
+              {t(createdKey.metadata_warning)}
+            </UiInlineMessage>
+          )}
+          <OneTimeSecretPanel
+            title={t("Access key created")}
+            description={t("The secret is shown only once.")}
+            badge={t("Copy these values now")}
+            values={[
+              ...(createdKey.name
+                ? [{ label: t("Name"), value: createdKey.name }]
+                : []),
+              { label: t("Access key"), value: createdKey.access_key_id, copyLabel: t("Copy") },
+              { label: t("Secret key"), value: createdKey.secret_access_key, copyLabel: t("Copy") },
+            ]}
+            copyFeedback={{
+              copied: t("Copied to clipboard."),
+              failed: t("Unable to copy. Select and copy this value manually."),
+            }}
+          />
+        </div>
       )}
 
       {!hasS3AccountContext ? (
@@ -340,7 +434,7 @@ export default function ManagerCephKeysPage() {
               type="search"
               value={keyFilter}
               onChange={(event) => setKeyFilter(event.target.value)}
-              placeholder={t("Search by access key or status")}
+              placeholder={t("Search by key, name, description, or status")}
             />
           }
         >
@@ -361,6 +455,65 @@ export default function ManagerCephKeysPage() {
         </ListPageSection>
       )}
       {keyConfirmation.confirmationDialog}
+      {showCreateKeyModal && (
+        <SettingsDialog
+          title={t("Create access key")}
+          onClose={createKeyCloseGuard.requestClose}
+          closeDisabled={busy === "create"}
+          closeLabel={t("Close")}
+          closeAriaLabel={t("Close")}
+          initialFocusRef={createKeyNameRef}
+        >
+          <form className="settings-form" onSubmit={handleCreateKey} noValidate>
+            <fieldset disabled={busy === "create"} className="settings-stack min-w-0">
+              {createKeyError && (
+                <UiInlineMessage tone="error" role="alert">
+                  {localizeManagerCephKeysError(locale, createKeyError)}
+                </UiInlineMessage>
+              )}
+              <UiInput
+                ref={createKeyNameRef}
+                label={t("Name")}
+                value={createKeyName}
+                placeholder={t("Application or purpose")}
+                hint={t("Use a short name that identifies the application or purpose of this key.")}
+                error={createKeyNameError}
+                maxLength={128}
+                required
+                onChange={(event) => {
+                  setCreateKeyName(event.target.value);
+                  setCreateKeyNameError(null);
+                  setCreateKeyError(null);
+                }}
+              />
+              <UiTextarea
+                label={t("Description")}
+                value={createKeyDescription}
+                placeholder={t("Optional details about where this key is used")}
+                hint={t("Add operational details that help distinguish this key later.")}
+                maxLength={500}
+                rows={4}
+                onChange={(event) => {
+                  setCreateKeyDescription(event.target.value);
+                  setCreateKeyError(null);
+                }}
+              />
+              <ModalActions>
+                <SettingsButton
+                  variant="secondary"
+                  onClick={createKeyCloseGuard.requestClose}
+                >
+                  {t("Cancel")}
+                </SettingsButton>
+                <SettingsButton type="submit">
+                  {busy === "create" ? t("Creating…") : t("Create key")}
+                </SettingsButton>
+              </ModalActions>
+            </fieldset>
+          </form>
+          {createKeyCloseGuard.confirmationDialog}
+        </SettingsDialog>
+      )}
       {canProvisionManagedPrivateAccess && showPrivateAccessModal && (
         <CreateManagedPrivateAccessModal
           variant="rgw_user"

@@ -7,6 +7,8 @@ import { S3AccountSelector, withS3AccountParam } from "./accountParams";
 
 export type ManagerCephAccessKey = {
   access_key_id: string;
+  name?: string | null;
+  description?: string | null;
   status?: string | null;
   created_at?: string | null;
   is_ui_managed: boolean;
@@ -18,7 +20,15 @@ export type ManagerCephAccessKey = {
 export type ManagerCephGeneratedAccessKey = {
   access_key_id: string;
   secret_access_key: string;
+  name?: string | null;
+  description?: string | null;
   created_at?: string | null;
+  metadata_warning?: string | null;
+};
+
+type ManagerCephAccessKeyCreate = {
+  name: string;
+  description?: string | null;
 };
 
 export async function listManagerCephAccessKeys(accountId?: S3AccountSelector): Promise<ManagerCephAccessKey[]> {
@@ -28,10 +38,13 @@ export async function listManagerCephAccessKeys(accountId?: S3AccountSelector): 
   return data;
 }
 
-export async function createManagerCephAccessKey(accountId?: S3AccountSelector): Promise<ManagerCephGeneratedAccessKey> {
+export async function createManagerCephAccessKey(
+  accountId?: S3AccountSelector,
+  payload?: ManagerCephAccessKeyCreate,
+): Promise<ManagerCephGeneratedAccessKey> {
   const { data } = await client.post<ManagerCephGeneratedAccessKey>(
     "/manager/ceph/keys",
-    {},
+    payload ?? {},
     { params: withS3AccountParam(undefined, accountId) }
   );
   return data;

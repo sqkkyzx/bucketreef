@@ -19,6 +19,7 @@ from app.routers.ceph_admin.audit import record_ceph_admin_action
 from app.routers.ceph_admin.dependencies import CephAdminContext, get_ceph_admin_context
 from app.routers.ceph_admin.user_common import load_user_payload, serialize_access_keys
 from app.services.managed_private_access_service import ManagedPrivateAccessService
+from app.services.rgw_access_key_creation_lock import rgw_access_key_creation_lock
 from app.services.rgw_admin import RGWAdminError
 from app.services.rgw_user_key_parser import RgwUserKeyParser
 from app.utils.http_errors import raise_http_exception_from_exception
@@ -86,21 +87,35 @@ def create_rgw_user_key(
     user_id: str,
     tenant: Optional[str] = None,
     ctx: CephAdminContext = Depends(get_ceph_admin_context),
+    db: Session = Depends(get_db),
 ) -> CephAdminRgwGeneratedAccessKey:
     uid = user_id.strip()
-    load_user_payload(uid, tenant, ctx)
-    try:
-        response = ctx.rgw_admin.create_access_key(uid, tenant=tenant)
-    except RGWAdminError as exc:
-        raise_http_exception_from_exception(status.HTTP_502_BAD_GATEWAY, exc)
-    access_key, secret_key = RgwUserKeyParser.select_complete_credentials(
-        ctx.rgw_admin.extract_keys(response)
-    )
-    if not access_key or not secret_key:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="RGW did not return access credentials for this key",
+    with rgw_access_key_creation_lock(
+        db,
+        storage_endpoint_id=ctx.endpoint.id,
+        uid=uid,
+        tenant=tenant,
+    ):
+        before_payload = load_user_payload(uid, tenant, ctx)
+        existing_access_keys = RgwUserKeyParser.access_key_ids(
+            ctx.rgw_admin.extract_keys(before_payload)
         )
+        try:
+            response = ctx.rgw_admin.create_access_key(uid, tenant=tenant)
+        except RGWAdminError as exc:
+            raise_http_exception_from_exception(status.HTTP_502_BAD_GATEWAY, exc)
+        try:
+            generated = RgwUserKeyParser.to_generated_key(
+                ctx.rgw_admin.extract_keys(response),
+                existing_access_keys=existing_access_keys,
+            )
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=str(exc),
+            ) from exc
+    access_key = generated.access_key_id
+    secret_key = generated.secret_access_key
     record_ceph_admin_action(
         ctx,
         action="rgw_user_key.create",

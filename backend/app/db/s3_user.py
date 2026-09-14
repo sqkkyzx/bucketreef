@@ -3,7 +3,7 @@
 from app.db.utc_datetime import UTCDateTime
 from app.utils.time import utcnow
 
-from sqlalchemy import Boolean, Column, ForeignKey, Index, Integer, String, UniqueConstraint
+from sqlalchemy import Boolean, CheckConstraint, Column, ForeignKey, Index, Integer, String, UniqueConstraint
 from sqlalchemy.orm import relationship
 
 from app.core.security import EncryptedString
@@ -48,6 +48,48 @@ class S3User(Base):
     )
     storage_endpoint = relationship("StorageEndpoint", lazy="joined")
     tag_links = relationship("S3UserTag", back_populates="s3_user", cascade="all, delete-orphan")
+    access_key_metadata = relationship(
+        "S3UserAccessKeyMetadata",
+        back_populates="s3_user",
+        cascade="all, delete-orphan",
+    )
+
+
+class S3UserAccessKeyMetadata(Base):
+    __tablename__ = "s3_user_access_key_metadata"
+    __table_args__ = (
+        UniqueConstraint(
+            "s3_user_id",
+            "access_key_id",
+            name="uq_s3_user_access_key_metadata_user_key",
+        ),
+        CheckConstraint(
+            "TRIM(access_key_id) <> ''",
+            name="ck_s3_user_access_key_metadata_key_nonempty",
+        ),
+        CheckConstraint(
+            "TRIM(name) <> '' AND LENGTH(name) <= 128",
+            name="ck_s3_user_access_key_metadata_name",
+        ),
+        CheckConstraint(
+            "description IS NULL OR LENGTH(description) <= 500",
+            name="ck_s3_user_access_key_metadata_description",
+        ),
+        Index("ix_s3_user_access_key_metadata_user", "s3_user_id"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    s3_user_id = Column(
+        Integer,
+        ForeignKey("s3_users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    access_key_id = Column(String, nullable=False)
+    name = Column(String(128), nullable=False)
+    description = Column(String(500), nullable=True)
+    created_at = Column(UTCDateTime(), default=utcnow, nullable=False)
+
+    s3_user = relationship("S3User", back_populates="access_key_metadata")
 
 
 class UserS3User(Base):

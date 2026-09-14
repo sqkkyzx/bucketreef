@@ -5,12 +5,14 @@ import re
 from typing import Any, Optional
 
 from sqlalchemy import exists, func, or_
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.core.sensitive_data import sanitized_error_log_detail
 from app.db import (
     S3UserTag,
     S3User as S3UserModel,
+    S3UserAccessKeyMetadata,
     StorageEndpoint,
     StorageProvider,
     TagDefinition,
@@ -37,6 +39,7 @@ from app.models.s3_user import (
     S3UserUpdate,
 )
 from app.services.rgw_admin import RGWAdminClient, RGWAdminError
+from app.services.rgw_access_key_creation_lock import rgw_access_key_creation_lock
 from app.services.rgw_endpoint_clients import get_endpoint_admin_rgw_client
 from app.services.rgw_user_key_parser import RgwUserKeyParser
 from app.services import s3_client
@@ -49,6 +52,10 @@ from app.utils.normalize import normalize_storage_provider
 from app.utils.usage_stats import aggregate_bucket_usage
 
 logger = logging.getLogger(__name__)
+
+
+class AccessKeyMetadataPersistenceError(RuntimeError):
+    pass
 
 
 def _extract_max_buckets(payload: Any) -> Optional[int]:
@@ -519,18 +526,39 @@ class S3UsersService:
 
     def rotate_keys(self, user_id: int) -> S3UserSchema:
         s3_user = self._get_s3_user(user_id)
+        with rgw_access_key_creation_lock(
+            self.db,
+            storage_endpoint_id=s3_user.storage_endpoint_id,
+            uid=s3_user.rgw_user_uid,
+        ):
+            self.db.refresh(s3_user)
+            return self._rotate_keys_locked(s3_user)
+
+    def _rotate_keys_locked(self, s3_user: S3UserModel) -> S3UserSchema:
         previous_access_key = s3_user.rgw_access_key
         admin = self._admin_for_user(s3_user)
+        try:
+            before_payload = admin.get_user(
+                s3_user.rgw_user_uid,
+                allow_not_found=True,
+            )
+        except RGWAdminError as exc:
+            raise ValueError(f"Unable to inspect existing access keys: {exc}") from exc
+        if not before_payload or before_payload.get("not_found"):
+            raise ValueError("RGW user not found")
+        existing_access_keys = RgwUserKeyParser.access_key_ids(
+            admin.extract_keys(before_payload)
+        )
         try:
             response = admin.create_access_key(s3_user.rgw_user_uid, tenant=None)
         except RGWAdminError as exc:
             raise ValueError(f"Unable to rotate keys: {exc}") from exc
-        access_key, secret_key = RgwUserKeyParser.select_credentials(
+        generated = RgwUserKeyParser.to_generated_key(
             admin.extract_keys(response),
-            exclude_access_key=previous_access_key,
+            existing_access_keys=existing_access_keys,
         )
-        if not access_key or not secret_key:
-            raise ValueError("RGW did not return new keys")
+        access_key = generated.access_key_id
+        secret_key = generated.secret_access_key
         if previous_access_key and previous_access_key != access_key:
             try:
                 admin.delete_access_key(
@@ -546,8 +574,12 @@ class S3UsersService:
                         access_key,
                         tenant=None,
                     )
-                except RGWAdminError:
-                    logger.warning("Unable to clean up new key %s after rotation failure", access_key)
+                except RGWAdminError as cleanup_exc:
+                    logger.warning(
+                        "Unable to clean up newly created access key after rotation failure for S3 user %s: %s",
+                        s3_user.id,
+                        sanitized_error_log_detail(cleanup_exc),
+                    )
                 raise ValueError(f"Unable to remove previous access key: {exc}") from exc
         s3_user.rgw_access_key = access_key
         s3_user.rgw_secret_key = secret_key
@@ -579,13 +611,67 @@ class S3UsersService:
             raise ValueError(f"Unable to list keys: {exc}") from exc
         if not user_info or user_info.get("not_found"):
             raise ValueError("RGW user not found")
-        return RgwUserKeyParser.to_access_keys(
+        keys = RgwUserKeyParser.to_access_keys(
             admin.extract_keys(user_info),
             ui_managed_access_key=s3_user.rgw_access_key,
         )
+        metadata_by_key = {
+            metadata.access_key_id: metadata
+            for metadata in (
+                self.db.query(S3UserAccessKeyMetadata)
+                .filter(S3UserAccessKeyMetadata.s3_user_id == s3_user.id)
+                .all()
+            )
+        }
+        for key in keys:
+            metadata = metadata_by_key.get(key.access_key_id)
+            if metadata is None:
+                continue
+            key.name = metadata.name
+            key.description = metadata.description
+            if key.created_at is None:
+                key.created_at = metadata.created_at
+        return keys
 
-    def create_access_key_entry(self, user_id: int) -> S3UserGeneratedKey:
+    def create_access_key_entry(
+        self,
+        user_id: int,
+        *,
+        name: Optional[str] = None,
+        description: Optional[str] = None,
+    ) -> S3UserGeneratedKey:
+        normalized_name = name.strip() if isinstance(name, str) else None
+        normalized_description = description.strip() if isinstance(description, str) else None
+        if name is not None and not normalized_name:
+            raise ValueError("name must not be blank")
+        if normalized_name is not None and len(normalized_name) > 128:
+            raise ValueError("name must contain at most 128 characters")
+        if normalized_description == "":
+            normalized_description = None
+        if normalized_description is not None and len(normalized_description) > 500:
+            raise ValueError("description must contain at most 500 characters")
+        if normalized_description is not None and normalized_name is None:
+            raise ValueError("name is required when description is provided")
+
         s3_user = self._get_s3_user(user_id)
+        with rgw_access_key_creation_lock(
+            self.db,
+            storage_endpoint_id=s3_user.storage_endpoint_id,
+            uid=s3_user.rgw_user_uid,
+        ):
+            return self._create_access_key_entry_locked(
+                s3_user,
+                name=normalized_name,
+                description=normalized_description,
+            )
+
+    def _create_access_key_entry_locked(
+        self,
+        s3_user: S3UserModel,
+        *,
+        name: Optional[str],
+        description: Optional[str],
+    ) -> S3UserGeneratedKey:
         admin = self._admin_for_user(s3_user)
         existing_access_keys: set[str] = set()
         try:
@@ -597,17 +683,54 @@ class S3UsersService:
                 existing_access_keys = RgwUserKeyParser.access_key_ids(
                     admin.extract_keys(before_payload)
                 )
-        except RGWAdminError:
-            # Creation can still succeed even if pre-read fails.
-            pass
+        except RGWAdminError as exc:
+            raise ValueError(f"Unable to inspect existing access keys: {exc}") from exc
         try:
             response = admin.create_access_key(s3_user.rgw_user_uid, tenant=None)
         except RGWAdminError as exc:
             raise ValueError(f"Unable to create access key: {exc}") from exc
-        return RgwUserKeyParser.to_generated_key(
+        generated = RgwUserKeyParser.to_generated_key(
             admin.extract_keys(response),
             existing_access_keys=existing_access_keys,
         )
+        if name is None:
+            return generated
+
+        metadata = S3UserAccessKeyMetadata(
+            s3_user_id=s3_user.id,
+            access_key_id=generated.access_key_id,
+            name=name,
+            description=description,
+        )
+        s3_user_id = s3_user.id
+        rgw_user_uid = s3_user.rgw_user_uid
+        self.db.add(metadata)
+        try:
+            self.db.commit()
+        except SQLAlchemyError as exc:
+            self.db.rollback()
+            try:
+                admin.delete_access_key(
+                    rgw_user_uid,
+                    generated.access_key_id,
+                    tenant=None,
+                )
+            except Exception as cleanup_exc:
+                logger.error(
+                    "Unable to compensate access key creation for S3 user %s after metadata persistence failure: %s",
+                    s3_user_id,
+                    sanitized_error_log_detail(cleanup_exc),
+                )
+                generated.metadata_warning = (
+                    "Access key was created, but its name and description could not be saved."
+                )
+                return generated
+            raise AccessKeyMetadataPersistenceError(
+                "Unable to save access key metadata"
+            ) from exc
+        generated.name = name
+        generated.description = description
+        return generated
 
     def set_key_status(self, user_id: int, access_key: str, active: bool) -> S3UserAccessKey:
         s3_user = self._get_s3_user(user_id)
@@ -634,6 +757,7 @@ class S3UsersService:
 
     def delete_key(self, user_id: int, access_key: str) -> None:
         s3_user = self._get_s3_user(user_id)
+        s3_user_id = s3_user.id
         admin = self._admin_for_user(s3_user)
         normalized = (access_key or "").strip()
         if not normalized:
@@ -648,6 +772,25 @@ class S3UsersService:
             )
         except RGWAdminError as exc:
             raise ValueError(f"Unable to delete access key: {exc}") from exc
+        try:
+            metadata = (
+                self.db.query(S3UserAccessKeyMetadata)
+                .filter(
+                    S3UserAccessKeyMetadata.s3_user_id == s3_user_id,
+                    S3UserAccessKeyMetadata.access_key_id == normalized,
+                )
+                .first()
+            )
+            if metadata is not None:
+                self.db.delete(metadata)
+                self.db.commit()
+        except SQLAlchemyError as exc:
+            self.db.rollback()
+            logger.error(
+                "Unable to remove local access key metadata after remote deletion for S3 user %s: %s",
+                s3_user_id,
+                sanitized_error_log_detail(exc),
+            )
 
     def delete_user_db_only(self, user_id: int) -> None:
         s3_user = self.db.query(S3UserModel).filter(S3UserModel.id == user_id).first()

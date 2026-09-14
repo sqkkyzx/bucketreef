@@ -15,6 +15,7 @@ from app.models.key_rotation import (
     KeyRotationSummary,
     KeyRotationType,
 )
+from app.services.rgw_access_key_creation_lock import rgw_access_key_creation_lock
 from app.services.key_rotation_rgw import RgwAccessKeyRotator
 from app.services.rgw_admin import RGWAdminClient
 from app.services.rgw_endpoint_clients import get_endpoint_admin_rgw_client
@@ -419,74 +420,121 @@ class KeyRotationService:
         disabled_old_keys = 0
 
         for identity in identities:
-            label = target_label(identity)
-            old_access_key = normalize_optional_string(identity.rgw_access_key)
-            new_access_key: Optional[str] = None
-            active_tenant: Optional[str] = None
-            try:
-                active_tenant = self._rgw.detect_user_tenant(
-                    admin,
+            if isinstance(identity, S3User):
+                with rgw_access_key_creation_lock(
+                    self.db,
+                    storage_endpoint_id=identity.storage_endpoint_id,
                     uid=identity.rgw_user_uid,
-                    preferred_tenant=preferred_tenant(identity),
-                )
-                (
-                    new_access_key,
-                    new_secret_key,
-                    retired_action,
-                    active_tenant,
-                ) = self._rgw.rotate_identity_access_key(
-                    admin,
-                    uid=identity.rgw_user_uid,
-                    tenant=active_tenant,
-                    previous_access_key=old_access_key,
+                    tenant=preferred_tenant(identity),
+                ):
+                    self.db.refresh(identity)
+                    result, deleted_count, disabled_count = self._rotate_persisted_identity_key(
+                        endpoint=endpoint,
+                        key_type=key_type,
+                        deactivate_only=deactivate_only,
+                        admin=admin,
+                        identity=identity,
+                        target_type=target_type,
+                        target_label=target_label,
+                        preferred_tenant=preferred_tenant,
+                        success_message=success_message,
+                    )
+            else:
+                result, deleted_count, disabled_count = self._rotate_persisted_identity_key(
+                    endpoint=endpoint,
+                    key_type=key_type,
                     deactivate_only=deactivate_only,
+                    admin=admin,
+                    identity=identity,
+                    target_type=target_type,
+                    target_label=target_label,
+                    preferred_tenant=preferred_tenant,
+                    success_message=success_message,
                 )
-                identity.rgw_access_key = new_access_key
-                identity.rgw_secret_key = new_secret_key
-                self.db.add(identity)
-                self.db.commit()
-                self.db.refresh(identity)
-
-                if retired_action == "deleted":
-                    deleted_old_keys += 1
-                elif retired_action == "disabled":
-                    disabled_old_keys += 1
-
-                results.append(
-                    self._build_result(
-                        endpoint=endpoint,
-                        key_type=key_type,
-                        target_type=target_type,
-                        target_id=str(identity.id),
-                        target_label=label,
-                        status="rotated",
-                        message=success_message,
-                        old_access_key=self._rgw.mask_access_key(old_access_key),
-                        new_access_key=self._rgw.mask_access_key(new_access_key),
-                    )
-                )
-            except ValueError as exc:
-                self.db.rollback()
-                if new_access_key and new_access_key != old_access_key:
-                    self._rgw.cleanup_new_key(
-                        admin,
-                        uid=identity.rgw_user_uid,
-                        access_key=new_access_key,
-                        tenant=active_tenant,
-                    )
-                results.append(
-                    self._build_result(
-                        endpoint=endpoint,
-                        key_type=key_type,
-                        target_type=target_type,
-                        target_id=str(identity.id),
-                        target_label=label,
-                        status="failed",
-                        message=sanitized_error_log_detail(exc),
-                    )
-                )
+            results.append(result)
+            deleted_old_keys += deleted_count
+            disabled_old_keys += disabled_count
 
         return results, deleted_old_keys, disabled_old_keys
+
+    def _rotate_persisted_identity_key(
+        self,
+        *,
+        endpoint: StorageEndpoint,
+        key_type: KeyRotationType,
+        deactivate_only: bool,
+        admin: RGWAdminClient,
+        identity: S3Account | S3User,
+        target_type: str,
+        target_label: Callable[[S3Account | S3User], Optional[str]],
+        preferred_tenant: Callable[[S3Account | S3User], Optional[str]],
+        success_message: str,
+    ) -> tuple[KeyRotationResultItem, int, int]:
+        label = target_label(identity)
+        old_access_key = normalize_optional_string(identity.rgw_access_key)
+        new_access_key: Optional[str] = None
+        active_tenant: Optional[str] = None
+        try:
+            active_tenant = self._rgw.detect_user_tenant(
+                admin,
+                uid=identity.rgw_user_uid,
+                preferred_tenant=preferred_tenant(identity),
+            )
+            (
+                new_access_key,
+                new_secret_key,
+                retired_action,
+                active_tenant,
+            ) = self._rgw.rotate_identity_access_key(
+                admin,
+                uid=identity.rgw_user_uid,
+                tenant=active_tenant,
+                previous_access_key=old_access_key,
+                deactivate_only=deactivate_only,
+            )
+            identity.rgw_access_key = new_access_key
+            identity.rgw_secret_key = new_secret_key
+            self.db.add(identity)
+            self.db.commit()
+            self.db.refresh(identity)
+
+            return (
+                self._build_result(
+                    endpoint=endpoint,
+                    key_type=key_type,
+                    target_type=target_type,
+                    target_id=str(identity.id),
+                    target_label=label,
+                    status="rotated",
+                    message=success_message,
+                    old_access_key=self._rgw.mask_access_key(old_access_key),
+                    new_access_key=self._rgw.mask_access_key(new_access_key),
+                ),
+                1 if retired_action == "deleted" else 0,
+                1 if retired_action == "disabled" else 0,
+            )
+        except ValueError as exc:
+            self.db.rollback()
+            if new_access_key and new_access_key != old_access_key:
+                self._rgw.cleanup_new_key(
+                    admin,
+                    uid=identity.rgw_user_uid,
+                    access_key=new_access_key,
+                    tenant=active_tenant,
+                )
+            return (
+                self._build_result(
+                    endpoint=endpoint,
+                    key_type=key_type,
+                    target_type=target_type,
+                    target_id=str(identity.id),
+                    target_label=label,
+                    status="failed",
+                    message=sanitized_error_log_detail(exc),
+                ),
+                0,
+                0,
+            )
 
     def _rotate_endpoint_identity_key(
         self,
