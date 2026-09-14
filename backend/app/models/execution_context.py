@@ -43,6 +43,7 @@ class ManagerContext(ApiModel):
     manager_browser_message: Optional[str] = None
     manager_bucket_quota_enabled: bool = False
     manager_ceph_keys_enabled: bool = False
+    manager_ceph_key_labels_supported: bool = False
     manager_private_access_enabled: bool = False
     quota_max_size_gb: Optional[float] = None
     quota_max_objects: Optional[int] = None

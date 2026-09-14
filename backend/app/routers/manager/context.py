@@ -287,6 +287,7 @@ def get_manager_context(
         manager_browser_message=browser_state.message,
         manager_bucket_quota_enabled=manager_bucket_quota_enabled,
         manager_ceph_keys_enabled=manager_ceph_keys_enabled,
+        manager_ceph_key_labels_supported=True,
         manager_private_access_enabled=manager_private_access_enabled,
         quota_max_size_gb=limits.quota_max_size_gb,
         quota_max_objects=limits.quota_max_objects,
