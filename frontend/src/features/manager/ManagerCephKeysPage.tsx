@@ -58,6 +58,7 @@ export default function ManagerCephKeysPage() {
     selectedS3AccountName,
     selectedS3AccountType,
     managerCephKeysEnabled,
+    managerCephKeyLabelsSupported,
     managerPrivateAccessEnabled,
     accessMode,
   } = useS3AccountContext();
@@ -138,6 +139,23 @@ export default function ManagerCephKeysPage() {
     setCreateKeyError(null);
     setCreateKeyNameError(null);
     setShowCreateKeyModal(true);
+  };
+
+  const handleLegacyCreateKey = async () => {
+    if (!canManageCephKeys || busy === "create") return;
+    setBusy("create");
+    setError(null);
+    setActionMessage(null);
+    try {
+      const key = await createManagerCephAccessKey(accountIdForApi);
+      setCreatedKey(key);
+      setActionMessage("Access key created");
+      void loadKeys();
+    } catch (err) {
+      setError(parseError(err));
+    } finally {
+      setBusy(null);
+    }
   };
 
   const handleCreateKey = async (event: FormEvent<HTMLFormElement>) => {
@@ -346,7 +364,9 @@ export default function ManagerCephKeysPage() {
           ? [
               {
                 label: t("New key"),
-                onClick: openCreateKeyModal,
+                onClick: managerCephKeyLabelsSupported
+                  ? openCreateKeyModal
+                  : handleLegacyCreateKey,
                 variant: "primary" as const,
                 disabled: Boolean(busy),
               },
