@@ -193,6 +193,8 @@ class RgwUserKeyParser:
                 chosen_entry = entry
                 break
         if chosen_entry is None:
+            if existing_access_keys:
+                raise ValueError("RGW did not return new access credentials")
             chosen_entry = next(
                 (entry for entry in entries if cls._secret_key(entry)),
                 entries[0],

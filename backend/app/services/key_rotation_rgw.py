@@ -101,17 +101,17 @@ class RgwAccessKeyRotator:
         deactivate_only: bool,
     ) -> tuple[str, str, Optional[str], Optional[str]]:
         old_access_key = normalize_optional_string(previous_access_key)
-        response, active_tenant = self._create_access_key_with_fallback(
+        response, active_tenant, existing_access_keys = self._create_access_key_with_fallback(
             admin,
             uid=uid,
             tenant=tenant,
         )
-        new_access_key, new_secret_key = RgwUserKeyParser.select_credentials(
+        generated = RgwUserKeyParser.to_generated_key(
             admin.extract_keys(response),
-            exclude_access_key=old_access_key,
+            existing_access_keys=existing_access_keys,
         )
-        if not new_access_key or not new_secret_key:
-            raise ValueError(f"RGW did not return the new key pair for '{uid}'.")
+        new_access_key = generated.access_key_id
+        new_secret_key = generated.secret_access_key
         if old_access_key and new_access_key == old_access_key:
             raise ValueError(
                 f"RGW returned the existing key for '{uid}' instead of generating a new one."
@@ -145,8 +145,7 @@ class RgwAccessKeyRotator:
             admin.delete_access_key(uid, candidate, tenant=tenant)
         except RGWAdminError:
             logger.warning(
-                "Unable to clean up newly created key '%s' for '%s'",
-                candidate,
+                "Unable to clean up newly created access key for RGW user '%s'",
                 uid,
             )
 
@@ -214,7 +213,7 @@ class RgwAccessKeyRotator:
         *,
         uid: str,
         tenant: Optional[str],
-    ) -> tuple[dict, Optional[str]]:
+    ) -> tuple[dict, Optional[str], set[str]]:
         attempts: list[Optional[str]] = []
         for candidate in (normalize_optional_string(tenant), None):
             if candidate in attempts:
@@ -224,8 +223,19 @@ class RgwAccessKeyRotator:
         last_error: Optional[Exception] = None
         for candidate in attempts:
             try:
+                before_payload = admin.get_user(
+                    uid,
+                    tenant=candidate,
+                    allow_not_found=True,
+                )
+                if not before_payload or before_payload.get("not_found"):
+                    last_error = ValueError(f"RGW user '{uid}' was not found.")
+                    continue
+                existing_access_keys = RgwUserKeyParser.access_key_ids(
+                    admin.extract_keys(before_payload)
+                )
                 response = admin.create_access_key(uid, tenant=candidate)
-                return response, candidate
+                return response, candidate, existing_access_keys
             except RGWAdminError as exc:
                 last_error = exc
 

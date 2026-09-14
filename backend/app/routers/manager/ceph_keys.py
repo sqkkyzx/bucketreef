@@ -8,14 +8,23 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.db import User
 from app.services.s3_execution_context import S3ExecutionContext
-from app.models.s3_user import S3UserAccessKey, S3UserAccessKeyStatusChange, S3UserGeneratedKey
+from app.models.s3_user import (
+    S3UserAccessKey,
+    S3UserAccessKeyCreate,
+    S3UserAccessKeyStatusChange,
+    S3UserGeneratedKey,
+)
 from app.routers.dependencies import (
     get_audit_service,
     get_current_account_user,
     require_manager_rgw_access_key_management,
 )
 from app.services.audit_service import AuditService
-from app.services.s3_users_service import S3UsersService, get_s3_users_service
+from app.services.s3_users_service import (
+    AccessKeyMetadataPersistenceError,
+    S3UsersService,
+    get_s3_users_service,
+)
 from app.services.managed_private_access_service import ManagedPrivateAccessService
 from app.core.sensitive_data import sanitize_error_detail
 
@@ -71,6 +80,7 @@ def list_ceph_access_keys(
 
 @router.post("", response_model=S3UserGeneratedKey, status_code=status.HTTP_201_CREATED)
 def create_ceph_access_key(
+    payload: S3UserAccessKeyCreate | None = None,
     account: S3ExecutionContext = Depends(require_manager_rgw_access_key_management),
     service: S3UsersService = Depends(get_manager_ceph_s3_users_service),
     current_user: User = Depends(get_current_account_user),
@@ -78,7 +88,14 @@ def create_ceph_access_key(
 ) -> S3UserGeneratedKey:
     s3_user_id = _resolve_s3_user_id(account)
     try:
-        key = service.create_access_key_entry(s3_user_id)
+        if payload is None:
+            key = service.create_access_key_entry(s3_user_id)
+        else:
+            key = service.create_access_key_entry(
+                s3_user_id,
+                name=payload.name,
+                description=payload.description,
+            )
         audit_service.record_action(
             user=current_user,
             scope="manager",
@@ -89,6 +106,11 @@ def create_ceph_access_key(
             metadata={"access_key_id": key.access_key_id},
         )
         return key
+    except AccessKeyMetadataPersistenceError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=sanitize_error_detail(str(exc)),
+        ) from exc
     except ValueError as exc:
         raise _translate_s3_user_error(exc) from exc
 

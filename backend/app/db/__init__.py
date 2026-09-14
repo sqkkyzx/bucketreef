@@ -26,7 +26,7 @@ from .auth_security import (
     WebAuthnCredential,
 )
 from .api_token import ApiToken
-from .s3_user import S3User, UserS3User
+from .s3_user import S3User, S3UserAccessKeyMetadata, UserS3User
 from .s3_connection import ManagedPrivateAccess, S3Connection, UserS3Connection
 from .ui_group import UiGroup, UserUiGroup, UiGroupS3Account, UiGroupS3User, UiGroupS3Connection
 from .tag_definition import (
@@ -81,6 +81,7 @@ __all__ = [
     "AuthRateLimit",
     "ApiToken",
     "S3User",
+    "S3UserAccessKeyMetadata",
     "UserS3User",
     "S3Connection",
     "UserS3Connection",

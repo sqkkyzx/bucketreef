@@ -51,6 +51,18 @@ export const managerCephKeysZhMessages: ManagerZhMessages = {
   "Next step": "下一步",
   "Creating...": "正在创建…",
   "New key": "新建密钥",
+  "Create access key": "创建访问密钥",
+  Name: "名称",
+  "Application or purpose": "应用或用途",
+  "Use a short name that identifies the application or purpose of this key.":
+    "使用简短名称标识此密钥对应的应用或用途。",
+  "Key name is required.": "必须填写密钥名称。",
+  Description: "描述",
+  "Optional details about where this key is used": "此密钥使用位置等可选说明",
+  "Add operational details that help distinguish this key later.":
+    "填写便于日后区分此密钥的使用说明。",
+  "Search by key, name, description, or status": "按访问密钥、名称、描述或状态搜索",
+  "Create key": "创建密钥",
   "Create my private access": "创建我的私有访问",
   "The secret is shown only once.": "秘密访问密钥仅显示一次。",
   "Copy these values now": "请立即复制这些值",
@@ -79,7 +91,6 @@ export const managerCephKeysZhMessages: ManagerZhMessages = {
   "BucketReef interface keys and managed private-access keys are locked; delete a managed key through its private connection.":
     "BucketReef 界面密钥和托管私有访问密钥均已锁定；如需删除托管密钥，请通过其私有连接操作。",
   Search: "搜索",
-  "Search by access key or status": "按访问密钥或状态搜索",
   "Loading keys...": "正在加载密钥…",
   "Unable to load keys.": "无法加载密钥。",
   "No keys.": "没有密钥。",
@@ -168,7 +179,15 @@ export const managerCephKeysZhMessages: ManagerZhMessages = {
   "Unable to validate IAM groups and policies": "无法验证 IAM 用户组和策略",
   "RGW IAM did not return complete access credentials": "RGW IAM 未返回完整的访问凭据",
   "RGW did not return access credentials": "RGW 未返回访问凭据",
+  "RGW did not return new access credentials": "RGW 未返回新生成的访问凭据",
   "RGW did not return full access credentials": "RGW 未返回完整的访问凭据",
+  "name must not be blank": "密钥名称不能为空",
+  "name must contain at most 128 characters": "密钥名称最多可包含 128 个字符",
+  "description must contain at most 500 characters": "密钥描述最多可包含 500 个字符",
+  "name is required when description is provided": "填写密钥描述时必须同时填写名称",
+  "Unable to save access key metadata": "无法保存访问密钥的名称和描述",
+  "Access key was created, but its name and description could not be saved.":
+    "访问密钥已创建，但无法保存其名称和描述。",
   "Unable to create managed private access": "无法创建托管私有访问",
   "A managed private access already exists or requires cleanup for this execution context":
     "此执行上下文已存在托管私有访问，或有待清理的托管私有访问",
@@ -224,6 +243,7 @@ export function managerRemoveInlinePolicyLabel(locale: UiLanguage, policyName: s
 
 const zhErrorPrefixes: ReadonlyArray<readonly [string, string]> = [
   ["Unable to list keys: ", "无法列出密钥："],
+  ["Unable to inspect existing access keys: ", "无法在创建前检查现有访问密钥："],
   ["Unable to create access key: ", "无法创建访问密钥："],
   ["Unable to update access key status: ", "无法更新访问密钥状态："],
   ["Unable to delete access key: ", "无法删除访问密钥："],
