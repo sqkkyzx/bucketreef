@@ -33,7 +33,7 @@ export default function TopbarWorkspaceSelector({
   section,
   workspaceSwitcher,
 }: TopbarWorkspaceSelectorProps) {
-  const { t } = useI18n();
+  const { locale, t } = useI18n();
   const [menuOpen, setMenuOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
@@ -153,7 +153,7 @@ export default function TopbarWorkspaceSelector({
         ref={triggerRef}
         type="button"
         onClick={() => setMenuOpen((open) => !open)}
-        aria-label={t({ en: "Switch workspace", fr: "Changer d’espace de travail", de: "Arbeitsbereich wechseln", zh: "切换工作区" })}
+        aria-label={locale === "zh" ? t({ en: "Switch workspace", fr: "Changer d’espace de travail", de: "Arbeitsbereich wechseln", zh: "切换工作区" }) : "Switch workspace"}
         aria-haspopup="listbox"
         aria-expanded={menuOpen}
         aria-controls={menuOpen ? listboxId : undefined}
@@ -192,7 +192,7 @@ export default function TopbarWorkspaceSelector({
               className="max-h-72 overflow-y-auto focus:outline-none"
               role="listbox"
               tabIndex={0}
-              aria-label={t({ en: "Switch workspace", fr: "Changer d’espace de travail", de: "Arbeitsbereich wechseln", zh: "切换工作区" })}
+              aria-label={locale === "zh" ? t({ en: "Switch workspace", fr: "Changer d’espace de travail", de: "Arbeitsbereich wechseln", zh: "切换工作区" }) : "Switch workspace"}
               aria-activedescendant={activeIndex >= 0 ? `${listboxId}-option-${activeIndex}` : undefined}
               onKeyDown={handleListboxKeyDown}
             >

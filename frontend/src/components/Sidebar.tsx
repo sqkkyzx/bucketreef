@@ -99,7 +99,7 @@ export default function Sidebar({
   compact = false,
   onCollapseToggle,
 }: SidebarProps) {
-  const { t } = useI18n();
+  const { locale, t } = useI18n();
   const effectiveSections: SidebarSection[] = useMemo(
     () => (sections && sections.length > 0 ? sections : links.length > 0 ? [{ label: "Navigation", links }] : []),
     [links, sections]
@@ -255,7 +255,9 @@ export default function Sidebar({
             ref={navRef}
             className={`shell-sidebar-scroll ${compact ? "shell-sidebar-scroll-compact" : ""} flex min-h-0 flex-1 flex-col overflow-y-auto ${navScrolling ? "shell-sidebar-scroll-active" : ""} ${navSpacingClasses}`}
             onScroll={handleNavScroll}
-            aria-label={t({ en: `${title} navigation`, fr: `Navigation ${title}`, de: `${title}-Navigation`, zh: `${title}导航` })}
+            aria-label={locale === "zh"
+              ? t({ en: `${title} navigation`, fr: `Navigation ${title}`, de: `${title}-Navigation`, zh: `${title}导航` })
+              : `${title} navigation`}
           >
             {!compact && headerAction ? <div className="pb-1">{headerAction}</div> : null}
             {effectiveSections.map((section, index) => {

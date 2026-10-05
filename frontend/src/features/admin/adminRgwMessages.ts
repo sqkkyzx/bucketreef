@@ -38,6 +38,7 @@ export const rgwMessages = {
   importUsers: rgwText("Import RGW users", "导入 RGW 用户"),
   importing: rgwText("Importing...", "正在导入…"),
   createUser: rgwText("Create user", "创建用户"),
+  createRgwUser: rgwText("Create RGW user", "创建 RGW 用户"),
   creating: rgwText("Creating...", "正在创建…"),
   edit: rgwText("Edit", "编辑"),
   saveChanges: rgwText("Save changes", "保存更改"),

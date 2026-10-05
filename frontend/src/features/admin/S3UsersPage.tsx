@@ -912,8 +912,8 @@ export default function S3UsersPage() {
       </ListPageSection>
 
       {showCreateModal && (
-        <SettingsDialog title={t(rgwMessages.createUser)} onClose={createCloseGuard.requestClose} closeDisabled={creating} maxWidthClass="max-w-2xl">
-          <SettingsForm label={t(rgwMessages.createUser)} presentation="dialog" busy={creating} onSubmit={submitCreate}
+        <SettingsDialog title={t(rgwMessages.createRgwUser)} onClose={createCloseGuard.requestClose} closeDisabled={creating} maxWidthClass="max-w-2xl">
+          <SettingsForm label={t(rgwMessages.createRgwUser)} presentation="dialog" busy={creating} onSubmit={submitCreate}
             submitDisabled={createPermissionLoading || !createEndpointCanWrite}
             onCancel={createCloseGuard.requestClose} submitLabel={t(rgwMessages.createUser)} busyLabel={t(rgwMessages.creating)}>
             <AdminRgwCreateFields kind="user" value={createForm} onChange={patch => setCreateForm(current => ({...current, ...patch}))}

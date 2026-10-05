@@ -129,10 +129,10 @@ export default function BrowserWorkspaceSidebar({
   workspaceAccountAction,
 }: BrowserWorkspaceSidebarProps) {
   const tr = useBrowserText();
-  const { t } = useI18n();
+  const { locale, t } = useI18n();
   const [tab, setTab] = useState<"buckets" | "favorites">("buckets");
   const title = isPortalContext
-    ? t({ en: "Storage Spaces", fr: "Espaces de stockage", de: "Speicherbereiche", zh: "存储空间" })
+    ? t({ en: "Spaces", fr: "Espaces", de: "Speicherbereiche", zh: "存储空间" })
     : t({ en: "Buckets", fr: "Buckets", de: "Buckets", zh: "存储桶" });
   const searchPlaceholder = isPortalContext
     ? t({ en: "Search storage spaces", fr: "Rechercher des espaces de stockage", de: "Speicherbereiche suchen", zh: "搜索存储空间" })
@@ -166,7 +166,7 @@ export default function BrowserWorkspaceSidebar({
   return (
     <div
       className="flex min-h-0 flex-1 flex-col overflow-hidden"
-      aria-label={title}
+      aria-label={isPortalContext && locale !== "zh" ? "Spaces" : title}
       data-testid="browser-workspace-sidebar"
     >
       {favorites && <div role="tablist" aria-label={tr("Favorites")} className="flex shrink-0 border-b border-[color:var(--shell-border-soft)]">
