@@ -5,6 +5,7 @@ import BrowserFavoritesControl from "./BrowserFavoritesControl";
  * Copyright (c) 2025 Laurent Barbe
  * Licensed under the Apache License, Version 2.0
  */
+import { useI18n } from "../../i18n";
 import {
   useCallback,
   useEffect,
@@ -168,6 +169,7 @@ import {
 } from "./browserPanelLayout";
 import {
   COLUMN_DEFINITIONS,
+  localizedBrowserColumns,
   COMFORTABLE_ROW_ACTION_TARGET_SIZE_PX,
   COMPACT_ROW_ACTION_TARGET_SIZE_PX,
   DEFAULT_VISIBLE_COLUMN_IDS,
@@ -224,6 +226,7 @@ export default function BrowserPage({
   refreshToken,
   transferReporter,
 }: BrowserPageProps = {}) {
+  const { t, locale } = useI18n();
   const browserContext = useBrowserContext();
   const { setSidebarBody } = useBrowserSidebarSlot();
   const selectedContext = browserContext.selectedContext;
@@ -824,12 +827,13 @@ export default function BrowserPage({
     return formatted === "-" ? "" : formatted;
   }, [stsCredentials?.expiration]);
   const directCredentialStsTooltip = useMemo(
-    () => resolveDirectCredentialStsTooltip(directCredentialContextKind),
-    [directCredentialContextKind],
+    () => resolveDirectCredentialStsTooltip(directCredentialContextKind, locale),
+    [directCredentialContextKind, locale],
   );
   const accessBadge = useMemo(
     () =>
       resolveBrowserTransferAccessBadge({
+        locale,
         hasContext: hasS3AccountContext,
         corsEnabled,
         proxyAllowed,
@@ -840,6 +844,7 @@ export default function BrowserPage({
         directCredentialStsTooltip,
       }),
     [
+      locale,
       corsEnabled,
       hasS3AccountContext,
       directCredentialStsTooltip,
@@ -1012,12 +1017,13 @@ export default function BrowserPage({
     clearActiveItem();
   }, [accountSwitchInFlight, clearActiveItem]);
 
+  const localizedColumns = useMemo(() => localizedBrowserColumns(locale), [locale]);
   const visibleColumnDefinitions = useMemo(
     () =>
-      COLUMN_DEFINITIONS.filter((definition) =>
+      localizedColumns.filter((definition) =>
         visibleColumnSet.has(definition.id),
       ),
-    [visibleColumnSet],
+    [visibleColumnSet, localizedColumns],
   );
   const nameColumnWidthPx = useMemo(
     () => resolveColumnWidthPx("name", columnWidths),
@@ -1409,10 +1415,16 @@ export default function BrowserPage({
     updateOperation,
   });
 
-  const copyUrlDisabledReason = "Copy URL is disabled in SSE-C mode.";
+  const copyUrlDisabledReason = t({
+    en: "Copy URL is disabled in SSE-C mode.",
+    fr: "La copie d’URL est désactivée en mode SSE-C.",
+    de: "Das Kopieren von URLs ist im SSE-C-Modus deaktiviert.",
+    zh: "SSE-C 模式下无法复制 URL。",
+  });
   const pathActionStates = useMemo(
     () =>
       resolveBrowserActions({
+        locale,
         scope: "path",
         bucketName,
         hasS3AccountContext,
@@ -1431,6 +1443,7 @@ export default function BrowserPage({
         bucketConfigurationReadOnly: workspaceSurface === "browser",
       }),
     [
+      locale,
       bucketName,
       canPasteInFunctionalProfile,
       clipboard?.mode,
@@ -1450,6 +1463,7 @@ export default function BrowserPage({
   const selectionActionStates = useMemo(
     () =>
       resolveBrowserActions({
+        locale,
         scope: "selection",
         items: selectionItems,
         bucketName,
@@ -1463,6 +1477,7 @@ export default function BrowserPage({
         capabilityFacts: resolvedCapabilityFacts,
       }),
     [
+      locale,
       bucketName,
       canPasteInFunctionalProfile,
       clipboard?.mode,
@@ -1478,6 +1493,7 @@ export default function BrowserPage({
   const resolveItemActionStates = useCallback(
     (item: BrowserItem) =>
       resolveBrowserActions({
+        locale,
         scope: "item",
         items: [item],
         bucketName,
@@ -1499,6 +1515,7 @@ export default function BrowserPage({
         previewAvailable: isBrowserItemPreviewAvailable(item),
       }),
     [
+      locale,
       bucketName,
       canOpenExternalObjectDetails,
       canPasteInFunctionalProfile,
@@ -2443,7 +2460,7 @@ export default function BrowserPage({
         }),
       toggleShowFolders: toggleFolderItems,
       toggleShowDeleted: toggleDeletedObjects,
-    });
+    }, locale);
   };
 
   const runSelectionAction = (actionId: BrowserActionId) => {
@@ -2454,8 +2471,9 @@ export default function BrowserPage({
       },
       download: () => {
         if (
-          selectionActionStates.download.label === "Download folder" &&
-          selectionPrimary
+          selectionItems.length === 1 &&
+          selectionPrimary?.type === "folder" &&
+          !selectionPrimary.isDeleted
         ) {
           handleDownloadFolder(selectionPrimary);
           return;
@@ -2478,7 +2496,7 @@ export default function BrowserPage({
       },
       restoreToDate: () => openBulkRestoreModal(selectionItems),
       delete: () => handleDeleteItems(selectionItems),
-    });
+    }, locale);
   };
 
   const runItemAction = (item: BrowserItem, actionId: BrowserActionId) => {
@@ -2500,7 +2518,7 @@ export default function BrowserPage({
       restoreToDate: () => openBulkRestoreModal([item]),
       advanced: () => openAdvancedForItem(item),
       delete: () => handleDeleteItems([item]),
-    });
+    }, locale);
     if (!result.executed) {
       setWarningMessage(result.reason);
     }
@@ -2568,7 +2586,12 @@ export default function BrowserPage({
   const hasToolbarStatusSection = Boolean(accessBadge) || hasToolbarOperationsAction;
   const hasToolbarColumnsSection =
     resolvedFunctionalProfile === "advanced";
-  const toolbarColumnsSummary = `${effectiveVisibleColumns.length}/${COLUMN_DEFINITIONS.length} visible`;
+  const toolbarColumnsSummary = t({
+    en: `${effectiveVisibleColumns.length}/${COLUMN_DEFINITIONS.length} visible`,
+    fr: `${effectiveVisibleColumns.length}/${COLUMN_DEFINITIONS.length} visibles`,
+    de: `${effectiveVisibleColumns.length}/${COLUMN_DEFINITIONS.length} sichtbar`,
+    zh: `显示 ${effectiveVisibleColumns.length}/${COLUMN_DEFINITIONS.length} 列`,
+  });
   const handleToolbarDownload = () => {
     runSelectionAction("download");
   };
@@ -2747,7 +2770,7 @@ export default function BrowserPage({
               columns: hasToolbarColumnsSection
                 ? {
                     summary: toolbarColumnsSummary,
-                    columns: COLUMN_DEFINITIONS,
+                    columns: localizedColumns,
                     visibleColumnIds: visibleColumnSet,
                     onToggleColumn: handleToggleVisibleColumn,
                     onReset: handleResetVisibleColumns,
@@ -3066,7 +3089,7 @@ export default function BrowserPage({
         canConfigureColumns={canConfigureRootBrowserColumns}
         compactMode={compactMode}
         onSetCompactMode={setCompactMode}
-        columnOptions={COLUMN_DEFINITIONS.map((column) => ({
+        columnOptions={localizedColumns.map((column) => ({
           id: column.id,
           label: column.label,
         }))}

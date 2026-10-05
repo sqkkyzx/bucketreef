@@ -1,3 +1,4 @@
+import { useI18n } from "../../i18n";
 import { ListActionButton } from "../../components/list/ListControls";
 import type { RefObject } from "react";
 
@@ -85,6 +86,7 @@ export default function BrowserObjectSearchHeader({
   onClear,
   onClose,
 }: BrowserObjectSearchHeaderProps) {
+  const { t } = useI18n();
   return (
     <div className="flex min-w-0 items-center gap-2 pr-3">
       <button
@@ -92,7 +94,7 @@ export default function BrowserObjectSearchHeader({
         onClick={onSortName}
         className="group inline-flex h-6 shrink-0 items-center gap-1 whitespace-nowrap text-left text-slate-500 transition hover:text-primary-700 dark:text-slate-400 dark:hover:text-primary-100"
       >
-        <span>Name</span>
+        <span>{t({ en: "Name", fr: "Nom", de: "Name", zh: "名称" })}</span>
         <ChevronDownIcon
           className={`h-3 w-3 transition ${
             nameSortActive ? "opacity-100" : "opacity-30"
@@ -110,8 +112,8 @@ export default function BrowserObjectSearchHeader({
           type="text"
           value={filter}
           onChange={(event) => onFilterChange(event.target.value)}
-          placeholder={`Search ${objectNounPlural}`}
-          aria-label={`Search ${objectNounPlural}`}
+          placeholder={t({ en: `Search ${objectNounPlural}`, fr: objectNounPlural === "files" ? "Rechercher des fichiers" : "Rechercher des objets", de: objectNounPlural === "files" ? "Dateien suchen" : "Objekte suchen", zh: objectNounPlural === "files" ? "搜索文件" : "搜索对象" })}
+          aria-label={t({ en: `Search ${objectNounPlural}`, fr: objectNounPlural === "files" ? "Rechercher des fichiers" : "Rechercher des objets", de: objectNounPlural === "files" ? "Dateien suchen" : "Objekte suchen", zh: objectNounPlural === "files" ? "搜索文件" : "搜索对象" })}
           size="compact"
           fieldClassName="w-full"
           className={cx(
@@ -153,18 +155,18 @@ export default function BrowserObjectSearchHeader({
                 onScopeChange(event.target.value as BrowserSearchScope)
               }
               className="ui-list-control h-9 w-full"
-              aria-label="Search scope"
+              aria-label={t({ en: "Search scope", fr: "Portée de recherche", de: "Suchbereich", zh: "搜索范围" })}
               disabled={!hasSearchQuery}
             >
-              <option value="prefix">Current path</option>
-              <option value="bucket">Whole bucket</option>
+              <option value="prefix">{t({ en: "Current path", fr: "Chemin actuel", de: "Aktueller Pfad", zh: "当前路径" })}</option>
+              <option value="bucket">{t({ en: "Whole bucket", fr: "Tout le bucket", de: "Gesamter Bucket", zh: "整个存储桶" })}</option>
             </UiSelect>
             <UiCheckboxField
               checked={recursive}
               onChange={(event) => onRecursiveChange(event.target.checked)}
               disabled={!hasSearchQuery || searchScope === "bucket"}
               className={optionCardClasses}
-              aria-label="Search recursively in subfolders"
+              aria-label={t({ en: "Search recursively in subfolders", fr: "Rechercher récursivement dans les sous-dossiers", de: "Unterordner rekursiv durchsuchen", zh: "递归搜索子文件夹" })}
             >
               Recursive
             </UiCheckboxField>
@@ -173,7 +175,7 @@ export default function BrowserObjectSearchHeader({
               onChange={(event) => onExactMatchChange(event.target.checked)}
               disabled={!hasSearchQuery}
               className={optionCardClasses}
-              aria-label="Use exact match"
+              aria-label={t({ en: "Use exact match", fr: "Utiliser la correspondance exacte", de: "Exakte Übereinstimmung verwenden", zh: "使用精确匹配" })}
             >
               Exact match
             </UiCheckboxField>
@@ -182,7 +184,7 @@ export default function BrowserObjectSearchHeader({
               onChange={(event) => onCaseSensitiveChange(event.target.checked)}
               disabled={!hasSearchQuery}
               className={optionCardClasses}
-              aria-label="Case-sensitive search"
+              aria-label={t({ en: "Case-sensitive search", fr: "Recherche sensible à la casse", de: "Groß-/Kleinschreibung beachten", zh: "区分大小写搜索" })}
             >
               Case-sensitive
             </UiCheckboxField>
@@ -196,11 +198,11 @@ export default function BrowserObjectSearchHeader({
                 )
               }
               className="ui-list-control h-9 w-full"
-              aria-label="Object type filter"
+              aria-label={t({ en: "Object type filter", fr: "Filtre du type d’objet", de: "Objekttypfilter", zh: "对象类型筛选" })}
             >
-              <option value="all">All</option>
-              <option value="file">Files</option>
-              <option value="folder">Folders</option>
+              <option value="all">{t({ en: "All", fr: "Tous", de: "Alle", zh: "全部" })}</option>
+              <option value="file">{t({ en: "Files", fr: "Fichiers", de: "Dateien", zh: "文件" })}</option>
+              <option value="folder">{t({ en: "Folders", fr: "Dossiers", de: "Ordner", zh: "文件夹" })}</option>
             </UiSelect>
             <UiSelect
               label="Storage class"
@@ -210,9 +212,9 @@ export default function BrowserObjectSearchHeader({
                 onStorageFilterChange(event.target.value)
               }
               className="ui-list-control h-9 w-full"
-              aria-label="Storage class filter"
+              aria-label={t({ en: "Storage class filter", fr: "Filtre de classe de stockage", de: "Speicherklassenfilter", zh: "存储类别筛选" })}
             >
-              <option value="all">All classes</option>
+              <option value="all">{t({ en: "All classes", fr: "Toutes les classes", de: "Alle Klassen", zh: "全部类别" })}</option>
               {storageClasses.map((value) => (
                 <option key={value} value={value}>
                   {value}
@@ -225,14 +227,14 @@ export default function BrowserObjectSearchHeader({
                 onClick={onClear}
                 disabled={!canReset}
               >
-                Clear
+                {t({ en: "Clear", fr: "Effacer", de: "Leeren", zh: "清除" })}
               </ListActionButton>
               <ListActionButton
                 type="button"
                 onClick={onClose}
 
               >
-                Close
+                {t({ en: "Close", fr: "Fermer", de: "Schließen", zh: "关闭" })}
               </ListActionButton>
             </div>
           </div>

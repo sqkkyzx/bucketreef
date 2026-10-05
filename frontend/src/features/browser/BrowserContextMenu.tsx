@@ -2,6 +2,16 @@
  * Copyright (c) 2025 Laurent Barbe
  * Licensed under the Apache License, Version 2.0
  */
+import {
+  messageComfortable,
+  messageCompact,
+  messageColumns,
+  messageResetColumns,
+} from "../../uiMessages";
+import {
+  browserActive,
+} from "./browserMessages";
+import { useI18n } from "../../i18n";
 import type { RefObject } from "react";
 import {
   contextMenuItemClasses,
@@ -156,10 +166,12 @@ export default function BrowserContextMenu({
   onToggleVisibleColumn,
   onResetVisibleColumns,
 }: BrowserContextMenuProps) {
+  const { t, locale } = useI18n();
   if (!contextMenu) return null;
 
   const contextItem = contextMenu.kind === "item" ? contextMenu.item ?? null : null;
   const pathActionStates = resolveBrowserActions({
+        locale,
     scope: "path",
     bucketName,
     hasS3AccountContext,
@@ -181,6 +193,7 @@ export default function BrowserContextMenu({
   const selectionItems = contextMenu.kind === "selection" ? contextMenu.items ?? [] : [];
   const selectionActionStates = contextMenu.kind === "selection"
     ? resolveBrowserActions({
+        locale,
           scope: "selection",
           items: selectionItems,
           bucketName,
@@ -217,7 +230,7 @@ export default function BrowserContextMenu({
       copyPath: () => onCopyPath(currentPath),
       toggleShowFolders: onToggleShowFolders,
       toggleShowDeleted: onToggleShowDeleted,
-    });
+    }, locale);
   };
 
   const runItemAction = (actionId: BrowserActionId) => {
@@ -233,7 +246,7 @@ export default function BrowserContextMenu({
       downloadZip: () => onDownloadZip?.(selectionItems),
       download: () => {
         const info = selectionItems;
-        const summary = selectionActionStates.download.label === "Download folder"
+        const summary = selectionItems.length === 1 && selectionItems[0]?.type === "folder" && !selectionItems[0].isDeleted
           ? selectionItems[0] ?? null
           : null;
         if (summary) {
@@ -257,7 +270,7 @@ export default function BrowserContextMenu({
         }
       },
       delete: () => onDeleteItems(selectionItems),
-    });
+    }, locale);
   };
 
   const iconByActionId = {
@@ -323,7 +336,12 @@ export default function BrowserContextMenu({
         <>
           {canConfigureDensity && (
             <>
-              <p className="px-2 py-1 ui-caption font-semibold uppercase tracking-wide text-slate-400">View</p>
+              <p className="px-2 py-1 ui-caption font-semibold uppercase tracking-wide text-slate-400">{t({
+                en: "View",
+                fr: "Affichage",
+                de: "Ansicht",
+                zh: "视图",
+              })}</p>
               <button
                 type="button"
                 role="menuitemradio"
@@ -335,14 +353,12 @@ export default function BrowserContextMenu({
                 disabled={!onSetCompactMode}
               >
                 <ListIcon className="h-3.5 w-3.5" />
-                Comfortable
-                {!compactMode && (
+                {t(messageComfortable)}{!compactMode && (
                   <span
                     aria-hidden="true"
                     className="ml-auto rounded-full bg-primary-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary-700 dark:bg-primary-500/20 dark:text-primary-100"
                   >
-                    Active
-                  </span>
+                    {t(browserActive)}</span>
                 )}
               </button>
               <button
@@ -356,14 +372,12 @@ export default function BrowserContextMenu({
                 disabled={!onSetCompactMode}
               >
                 <CompactIcon className="h-3.5 w-3.5" />
-                Compact
-                {compactMode && (
+                {t(messageCompact)}{compactMode && (
                   <span
                     aria-hidden="true"
                     className="ml-auto rounded-full bg-primary-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary-700 dark:bg-primary-500/20 dark:text-primary-100"
                   >
-                    Active
-                  </span>
+                    {t(browserActive)}</span>
                 )}
               </button>
             </>
@@ -373,7 +387,7 @@ export default function BrowserContextMenu({
               {canConfigureDensity && (
                 <div className={contextMenuSeparatorClasses} />
               )}
-              <p className="px-2 py-1 ui-caption font-semibold uppercase tracking-wide text-slate-400">Columns</p>
+              <p className="px-2 py-1 ui-caption font-semibold uppercase tracking-wide text-slate-400">{t(messageColumns)}</p>
               {columnOptions.map((column) => {
                 const checked = visibleColumns?.has(column.id) ?? false;
                 return (
@@ -403,8 +417,7 @@ export default function BrowserContextMenu({
                 disabled={!onResetVisibleColumns}
               >
                 <SlidersIcon className="h-3.5 w-3.5" />
-                Reset columns
-              </button>
+                {t(messageResetColumns)}</button>
             </>
           )}
         </>

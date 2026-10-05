@@ -1,5 +1,6 @@
 /* Copyright (c) 2026 Laurent Barbe. Licensed under the Apache License, Version 2.0. */
 import { useCallback } from "react";
+import type { I18nMessage } from "../../i18n";
 import { useI18n } from "../../i18n";
 const messages: Record<string, readonly [string, string, string]> = {
   "Search scope": [
@@ -122,3 +123,22 @@ export function useBrowserText() {
   const { locale } = useI18n();
   return useCallback((message: string) => messages[message]?.[({ fr: 0, de: 1, zh: 2 } as Record<string, number>)[locale]] ?? message, [locale]);
 }
+
+const browserMessage = (en: string, fr: string, de: string, zh: string): I18nMessage => ({ en, fr, de, zh });
+
+export const browserDownloadFolder = browserMessage("Download folder", "Télécharger le dossier", "Ordner herunterladen", "下载文件夹");
+export const browserDownload = browserMessage("Download", "Télécharger", "Herunterladen", "下载");
+export const browserVersions = browserMessage("Versions", "Versions", "Versionen", "版本");
+export const browserRestoreToDate = browserMessage("Restore to date", "Restaurer à une date", "Bis zu einem Datum wiederherstellen", "恢复到指定日期");
+export const browserOpen = browserMessage("Open", "Ouvrir", "Öffnen", "打开");
+export const browserCopyURL = browserMessage("Copy URL", "Copier l’URL", "URL kopieren", "复制 URL");
+export const browserCopy = browserMessage("Copy", "Copier", "Kopieren", "复制");
+export const browserCut = browserMessage("Cut", "Couper", "Ausschneiden", "剪切");
+export const browserBulkAttributes = browserMessage("Bulk attributes", "Attributs en masse", "Massenattribute", "批量属性");
+export const browserDelete = browserMessage("Delete", "Supprimer", "Löschen", "删除");
+export const browserActive = browserMessage("Active", "Actif", "Aktiv", "活动");
+export const browserType = browserMessage("Type", "Type", "Typ", "类型");
+export const browserStorageClass = browserMessage("Storage class", "Classe de stockage", "Speicherklasse", "存储类别");
+export const browserName = browserMessage("Name", "Nom", "Name", "名称");
+export const browserSearchOptions = browserMessage("Search options", "Options de recherche", "Suchoptionen", "搜索选项");
+export const browserActions = browserMessage("Actions", "Actions", "Aktionen", "操作");

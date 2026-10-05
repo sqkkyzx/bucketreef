@@ -2,6 +2,8 @@
  * Copyright (c) 2026 Laurent Barbe
  * Licensed under the Apache License, Version 2.0
  */
+import { translate } from "../../i18n";
+import type { UiLanguage } from "../../components/language";
 import type { BrowserSettings, BucketCorsStatus } from "../../api/browserContracts";
 import {
   DEFAULT_DIRECT_DOWNLOAD_PARALLELISM,
@@ -116,17 +118,19 @@ export function buildBrowserTransferWarnings({
 
 export function resolveDirectCredentialStsTooltip(
   contextKind: "connection" | "s3_user" | null,
+  locale: UiLanguage = "en",
 ): string {
   if (contextKind === "connection") {
-    return "STS is not available for S3 connections. Presigned URLs are used instead.";
+    return translate({ en: "STS is not available for S3 connections. Presigned URLs are used instead.", fr: "STS n’est pas disponible pour les connexions S3. Des URL présignées sont utilisées.", de: "STS ist für S3-Verbindungen nicht verfügbar. Stattdessen werden vorsignierte URLs verwendet.", zh: "S3 连接不支持 STS，将使用预签名 URL。" }, locale);
   }
   if (contextKind === "s3_user") {
-    return "STS is not available for S3 users. Presigned URLs are used instead.";
+    return translate({ en: "STS is not available for S3 users. Presigned URLs are used instead.", fr: "STS n’est pas disponible pour les utilisateurs S3. Des URL présignées sont utilisées.", de: "STS ist für S3-Benutzer nicht verfügbar. Stattdessen werden vorsignierte URLs verwendet.", zh: "S3 用户不支持 STS，将使用预签名 URL。" }, locale);
   }
   return "";
 }
 
 type BrowserTransferAccessBadgeInput = {
+  locale?: UiLanguage;
   hasContext: boolean;
   corsEnabled: boolean | null;
   proxyAllowed: boolean;
@@ -138,6 +142,7 @@ type BrowserTransferAccessBadgeInput = {
 };
 
 export function resolveBrowserTransferAccessBadge({
+  locale = "en",
   hasContext,
   corsEnabled,
   proxyAllowed,

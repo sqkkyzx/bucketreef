@@ -1,3 +1,4 @@
+import { useI18n } from "../../i18n";
 import type {
   MouseEventHandler,
   PointerEventHandler,
@@ -61,6 +62,7 @@ export function BrowserObjectTableScaffold({
   onResetColumnWidth,
   onHeaderContextMenu,
 }: BrowserObjectTableScaffoldProps) {
+  const { t } = useI18n();
   return (
     <table
       className="ui-data-table ui-data-table-fixed ui-browser-table min-w-full border-separate border-spacing-0 divide-y divide-slate-200 dark:divide-slate-800"
@@ -97,12 +99,12 @@ export function BrowserObjectTableScaffold({
             />
           </th>
           <th
-            aria-label="Name"
+            aria-label={t({ en: "Name", fr: "Nom", de: "Name", zh: "名称" })}
             className={`relative  ${headerPaddingClasses} !align-middle text-left `}
           >
             {nameHeader}
             <BrowserColumnResizeHandle
-              label="Name"
+              label={t({ en: "Name", fr: "Nom", de: "Name", zh: "名称" })}
               active={activeResizeColumnId === "name"}
               onPointerDown={onStartResize("name")}
               onReset={() => onResetColumnWidth("name")}
@@ -137,10 +139,10 @@ export function BrowserObjectTableScaffold({
             </th>
           ))}
           <th
-            aria-label="Actions"
+            aria-label={t({ en: "Actions", fr: "Actions", de: "Aktionen", zh: "操作" })}
             className={` ${headerPaddingClasses} !align-middle text-right `}
           >
-            <span className="inline-flex h-6 items-center">Actions</span>
+            <span className="inline-flex h-6 items-center">{t({ en: "Actions", fr: "Actions", de: "Aktionen", zh: "操作" })}</span>
           </th>
         </tr>
       </thead>
@@ -168,6 +170,7 @@ export function BrowserParentFolderRow({
   iconBoxClasses,
   onGoUp,
 }: BrowserParentFolderRowProps) {
+  const { t } = useI18n();
   return (
     <tr
       className={`${rowHeightClasses} text-slate-600 transition-colors hover:bg-slate-50/70 dark:text-slate-300 dark:hover:bg-slate-800/40`}
@@ -187,7 +190,7 @@ export function BrowserParentFolderRow({
           >
             <UpIcon className="h-3.5 w-3.5" />
           </span>
-          <span className="truncate">Parent folder</span>
+          <span className="truncate">{t({ en: "Parent folder", fr: "Dossier parent", de: "Übergeordneter Ordner", zh: "上级文件夹" })}</span>
         </button>
       </td>
       {columns.map((column) => (
