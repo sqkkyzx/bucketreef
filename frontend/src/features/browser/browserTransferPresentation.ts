@@ -155,9 +155,8 @@ export function resolveBrowserTransferAccessBadge({
   if (!hasContext) return null;
   if (corsEnabled === false && !proxyAllowed) {
     return {
-      label: "Unavailable",
-      title:
-        "Download/Upload unavailable: CORS is disabled and proxy transfers are disabled.",
+      label: translate({ en: "Unavailable", fr: "Indisponible", de: "Nicht verfügbar", zh: "不可用" }, locale),
+      title: translate({ en: "Download/Upload unavailable: CORS is disabled and proxy transfers are disabled.", fr: "Téléchargement et téléversement indisponibles : CORS et les transferts par proxy sont désactivés.", de: "Download/Upload nicht verfügbar: CORS und Proxyübertragungen sind deaktiviert.", zh: "无法下载或上传：CORS 和代理传输均已禁用。" }, locale),
       tone: "danger",
       indicatorClassName:
         "border-rose-200/70 bg-rose-200/60 dark:border-rose-400/40 dark:bg-rose-400/25",
@@ -165,8 +164,8 @@ export function resolveBrowserTransferAccessBadge({
   }
   if (useProxyTransfers) {
     return {
-      label: "Proxy",
-      title: "Download/Upload mode: Backend proxy transfers are active.",
+      label: translate({ en: "Proxy", fr: "Proxy", de: "Proxy", zh: "代理" }, locale),
+      title: translate({ en: "Download/Upload mode: Backend proxy transfers are active.", fr: "Mode de transfert : proxy du backend actif.", de: "Download/Upload-Modus: Backend-Proxyübertragungen sind aktiv.", zh: "下载/上传模式：后端代理传输已启用。" }, locale),
       tone: "info",
       indicatorClassName:
         "border-amber-200/70 bg-amber-200/60 dark:border-amber-400/40 dark:bg-amber-400/25",
@@ -175,8 +174,7 @@ export function resolveBrowserTransferAccessBadge({
   if (sseActive) {
     return {
       label: "SSE-C",
-      title:
-        "Download/Upload mode: SSE-C customer key is active for this bucket.",
+      title: translate({ en: "Download/Upload mode: SSE-C customer key is active for this bucket.", fr: "Mode de transfert : clé client SSE-C active pour ce bucket.", de: "Download/Upload-Modus: Der SSE-C-Kundenschlüssel ist für diesen Bucket aktiv.", zh: "下载/上传模式：此存储桶已启用 SSE-C 客户密钥。" }, locale),
       tone: "info",
       indicatorClassName:
         "border-sky-200/70 bg-sky-200/60 dark:border-sky-400/40 dark:bg-sky-400/25",
@@ -186,18 +184,18 @@ export function resolveBrowserTransferAccessBadge({
     return {
       label: "STS",
       title: stsExpirationLabel
-        ? `Download/Upload mode: STS credentials active (expires at ${stsExpirationLabel}).`
-        : "Download/Upload mode: STS credentials are active.",
+        ? translate({ en: `Download/Upload mode: STS credentials active (expires at ${stsExpirationLabel}).`, fr: `Mode de transfert : identifiants STS actifs (expiration : ${stsExpirationLabel}).`, de: `Download/Upload-Modus: STS-Zugangsdaten aktiv (Ablauf: ${stsExpirationLabel}).`, zh: `下载/上传模式：STS 凭据已启用（到期时间：${stsExpirationLabel}）。` }, locale)
+        : translate({ en: "Download/Upload mode: STS credentials are active.", fr: "Mode de transfert : identifiants STS actifs.", de: "Download/Upload-Modus: STS-Zugangsdaten sind aktiv.", zh: "下载/上传模式：STS 凭据已启用。" }, locale),
       tone: "success",
       indicatorClassName:
         "border-emerald-200/70 bg-emerald-200/60 dark:border-emerald-400/40 dark:bg-emerald-400/25",
     };
   }
   return {
-    label: "Presign",
+    label: translate({ en: "Presign", fr: "URL présignée", de: "Vorsigniert", zh: "预签名" }, locale),
     title: directCredentialStsTooltip
-      ? `Download/Upload mode: Presigned URLs are active. ${directCredentialStsTooltip}`
-      : "Download/Upload mode: Presigned URLs are active.",
+      ? translate({ en: `Download/Upload mode: Presigned URLs are active. ${directCredentialStsTooltip}`, fr: `Mode de transfert : URL présignées actives. ${directCredentialStsTooltip}`, de: `Download/Upload-Modus: Vorsignierte URLs sind aktiv. ${directCredentialStsTooltip}`, zh: `下载/上传模式：预签名 URL 已启用。${directCredentialStsTooltip}` }, locale)
+      : translate({ en: "Download/Upload mode: Presigned URLs are active.", fr: "Mode de transfert : URL présignées actives.", de: "Download/Upload-Modus: Vorsignierte URLs sind aktiv.", zh: "下载/上传模式：预签名 URL 已启用。" }, locale),
     tone: "success",
     indicatorClassName:
       "border-emerald-200/70 bg-emerald-200/60 dark:border-emerald-400/40 dark:bg-emerald-400/25",
