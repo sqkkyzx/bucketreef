@@ -8,6 +8,7 @@ import UiButton from "../../components/ui/UiButton";
 import UiInput from "../../components/ui/UiInput";
 import UiSelect from "../../components/ui/UiSelect";
 import { cx } from "../../components/ui/styles";
+import { useI18n } from "../../i18n";
 
 const authFieldLabelClass =
   "normal-case tracking-normal ui-body font-medium text-slate-700";
@@ -33,8 +34,11 @@ export function AuthPasswordInput({
   secretLabel = "password",
   ...props
 }: AuthPasswordInputProps) {
+  const { t } = useI18n();
   const [visible, setVisible] = useState(false);
-  const actionLabel = `${visible ? "Hide" : "Show"} ${secretLabel}`;
+  const actionLabel = visible
+    ? t({ en: `Hide ${secretLabel}`, fr: `Masquer ${secretLabel}`, de: `${secretLabel} ausblenden`, zh: `隐藏${secretLabel}` })
+    : t({ en: `Show ${secretLabel}`, fr: `Afficher ${secretLabel}`, de: `${secretLabel} anzeigen`, zh: `显示${secretLabel}` });
 
   return (
     <div className="relative">
@@ -50,7 +54,7 @@ export function AuthPasswordInput({
         onClick={() => setVisible((current) => !current)}
         className="absolute bottom-2.5 right-3 ui-caption font-semibold text-primary-700 hover:text-primary-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-400"
       >
-        {visible ? "Hide" : "Show"}
+        {visible ? t({ en: "Hide", fr: "Masquer", de: "Ausblenden", zh: "隐藏" }) : t({ en: "Show", fr: "Afficher", de: "Anzeigen", zh: "显示" })}
       </button>
     </div>
   );
