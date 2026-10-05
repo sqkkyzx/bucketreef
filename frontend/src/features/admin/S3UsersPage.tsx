@@ -779,16 +779,16 @@ export default function S3UsersPage() {
 
               {...dataTableDefaultActionProps}
             >
-              Edit
+              {t(rgwMessages.edit)}
             </ListActionButton>
             <ListActionLink to={buildAccessAuditHref({
               scope: "rgw_user",
               targetId: user.id,
             })}>
-              Review access
+              {t({ en: "Review access", zh: "查看访问权限" })}
             </ListActionLink>
             <ListActionLink to={`/admin/s3-users/${user.id}/keys`}>
-              Keys
+              {t(rgwMessages.keys)}
             </ListActionLink>
             <ListActionButton type="button" onClick={() => startDeleteUser(user)}  variant="danger" disabled={deleteBusy}>
               {deleteBusy ? t(rgwMessages.deleting) : t(rgwMessages.delete)}
@@ -918,7 +918,7 @@ export default function S3UsersPage() {
             onCancel={createCloseGuard.requestClose} submitLabel={t(rgwMessages.createUser)} busyLabel={t(rgwMessages.creating)}>
             <AdminRgwCreateFields kind="user" value={createForm} onChange={patch => setCreateForm(current => ({...current, ...patch}))}
               errors={createValidation.errors} busy={creating}
-              endpoint={{label: "Ceph endpoint *", endpoints: adminCephEndpoints, loading: loadingEndpoints,
+              endpoint={{label: t(rgwMessages.cephEndpoint), endpoints: adminCephEndpoints, loading: loadingEndpoints,
                 operation: "users", permissionLoading: createPermissionLoading, permissionError: createPermissionError, canWrite: createEndpointCanWrite}}
               tags={{catalog: adminTagCatalog, loading: adminTagCatalogLoading, error: adminTagCatalogError}} />
             {createError && <UiInlineMessage tone="error" role="alert">{createError}</UiInlineMessage>}
@@ -933,7 +933,7 @@ export default function S3UsersPage() {
             submitDisabled={importPermissionLoading || !importEndpointCanWrite}
             onCancel={importCloseGuard.requestClose} submitLabel={t(rgwMessages.import)} busyLabel={t(rgwMessages.importing)}>
             <div className="settings-fields settings-form">
-              <p className="settings-body text-[var(--ui-text-muted)]">Enter RGW user IDs, one per line. The platform will fetch or generate keys.</p>
+              <p className="settings-body text-[var(--ui-text-muted)]">{t({ en: "Enter RGW user IDs, one per line. The platform will fetch or generate keys.", zh: "每行输入一个 RGW 用户 ID。平台将获取或生成密钥。" })}</p>
               <UiTextarea label={t({ en: "RGW user IDs", zh: "RGW 用户 ID" })} name="importText" rows={6} required value={importText}
                 error={importValidation.errors.importText} placeholder="user-alpha"
                 onChange={event => setImportText(event.target.value)} />
@@ -953,7 +953,7 @@ export default function S3UsersPage() {
         <WorkflowPage
           title={t({ en: `Edit ${editingUser.name}`, zh: `编辑 ${editingUser.name}` })}
           description={t({ en: "Manage quotas, usage, UI associations, and privileged access for this RGW user.", zh: "管理此 RGW 用户的配额、使用情况、界面关联和特权访问。" })}
-          breadcrumbs={adminPageBreadcrumbs("rgw-users", { label: "Edit" })}
+          breadcrumbs={adminPageBreadcrumbs("rgw-users", { label: t(rgwMessages.edit) })}
           backLabel={t({ en: "Back to RGW users", zh: "返回 RGW 用户" })}
           onBack={editCloseGuard.requestClose}
           contentVariant="plain"
@@ -963,7 +963,7 @@ export default function S3UsersPage() {
             <WorkflowMetadata
               items={[
                 {
-                  label: "UID",
+                  label: t(rgwMessages.uid),
                   value: editingUser.rgw_user_uid,
                 },
                 {
@@ -998,19 +998,19 @@ export default function S3UsersPage() {
               ].map((item) => ({ ...item, id: item.id as EditTab, disabled: editBusy }))}
             >
               <SettingsForm
-                label="Edit RGW user"
+                label={t({ en: "Edit RGW user", zh: "编辑 RGW 用户" })}
                 busy={editBusy}
                 onSubmit={submitEdit}
                 onCancel={editCloseGuard.requestClose}
-                submitLabel="Save changes"
-                busyLabel="Saving..."
+                submitLabel={t(rgwMessages.saveChanges)}
+                busyLabel={t(rgwMessages.saving)}
               >
                 {editError && <UiInlineMessage tone="error" role="alert">{editError}</UiInlineMessage>}
                 {showEditGeneralTab && (
                   <div className="settings-stack">
                     <SettingsSection
-                      title="User details"
-                      description="Update the display information and administrative tags for this RGW user."
+                      title={t(rgwMessages.userDetails)}
+                      description={t({ en: "Update the display information and administrative tags for this RGW user.", zh: "更新此 RGW 用户的显示信息和管理标签。" })}
                       presentation="compact"
                     >
                       <div className="settings-fields sm:grid-cols-2">
@@ -1039,8 +1039,8 @@ export default function S3UsersPage() {
                       </div>
                     </SettingsSection>
                     <SettingsSection title={t(rgwMessages.usage)} description={t({ en: "Observed storage use and the currently saved limits.", zh: "显示已观测的存储使用情况和当前保存的限制。" })} presentation="compact">
-                      {editingUsageLoading ? <p role="status">Loading storage usage...</p>
-                        : editingUsageError ? <UiInlineMessage tone="error">{editingUsageError} <SettingsButton variant="secondary" onClick={() => void editingUsageReload()}>Retry usage</SettingsButton></UiInlineMessage>
+                      {editingUsageLoading ? <p role="status">{t({ en: "Loading storage usage...", zh: "正在加载存储使用情况…" })}</p>
+                        : editingUsageError ? <UiInlineMessage tone="error">{editingUsageError} <SettingsButton variant="secondary" onClick={() => void editingUsageReload()}>{t({ en: "Retry usage", zh: "重试使用情况" })}</SettingsButton></UiInlineMessage>
                           : <>
                             <div className="grid gap-2 sm:grid-cols-2">
                               <UsageTile
@@ -1069,9 +1069,9 @@ export default function S3UsersPage() {
                             ]} />}
                           </>}
                     </SettingsSection>
-                    {editPermissionLoading ? <p role="status">Checking endpoint permissions...</p>
+                    {editPermissionLoading ? <p role="status">{t({ en: "Checking endpoint permissions...", zh: "正在检查端点权限…" })}</p>
                       : editPermissionError ? <UiInlineMessage tone="error" role="alert">
-                        {editPermissionError} <SettingsButton variant="secondary" onClick={() => editingEndpointId && void fetchEndpointUsersWritePermission(editingEndpointId)}>Retry permissions</SettingsButton>
+                        {editPermissionError} <SettingsButton variant="secondary" onClick={() => editingEndpointId && void fetchEndpointUsersWritePermission(editingEndpointId)}>{t({ en: "Retry permissions", zh: "重试权限检查" })}</SettingsButton>
                       </UiInlineMessage>
                         : !allowUserQuotaUpdates && <UiInlineMessage tone="info">Quota editing requires Admin Ops support and users=write on the endpoint.</UiInlineMessage>}
                 <AdminQuotaFields
