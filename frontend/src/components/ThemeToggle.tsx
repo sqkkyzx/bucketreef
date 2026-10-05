@@ -2,9 +2,11 @@
  * Copyright (c) 2025 Laurent Barbe
  * Licensed under the Apache License, Version 2.0
  */
+import { useI18n } from "../i18n";
 import { useTheme } from "./theme";
 
 export default function ThemeToggle() {
+  const { t } = useI18n();
   const { theme, toggle } = useTheme();
   const isDark = theme === "dark";
 
@@ -13,8 +15,18 @@ export default function ThemeToggle() {
       type="button"
       onClick={toggle}
       className="shell-icon-button inline-flex h-9 w-9 items-center justify-center rounded-lg border border-transparent bg-transparent transition focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-400"
-      aria-label="Toggle theme"
-      title="Toggle theme"
+      aria-label={t({
+        en: "Toggle theme",
+        fr: "Changer de thème",
+        de: "Design wechseln",
+        zh: "切换主题",
+      })}
+      title={t({
+        en: "Toggle theme",
+        fr: "Changer de thème",
+        de: "Design wechseln",
+        zh: "切换主题",
+      })}
     >
       {isDark ? <SunIcon className="h-4 w-4" /> : <MoonIcon className="h-4 w-4" />}
     </button>
