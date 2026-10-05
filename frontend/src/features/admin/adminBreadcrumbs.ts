@@ -67,3 +67,30 @@ export function adminPageBreadcrumbs(
     ...trailingBreadcrumbs,
   );
 }
+
+/** Localize navigation labels while preserving route and trailing entity names. */
+export function localizedAdminPageBreadcrumbs(
+  pageId: AdminPageId,
+  locale: "en" | "fr" | "de" | "zh",
+  ...trailingBreadcrumbs: PageBreadcrumb[]
+): PageBreadcrumb[] {
+  const crumbs = adminPageBreadcrumbs(pageId, ...trailingBreadcrumbs);
+  if (locale !== "zh") return crumbs;
+  const labels: Partial<Record<AdminPageId, string>> = {
+    accounts: "RGW 账户",
+    dashboard: "管理概览",
+    "endpoint-status": "端点状态",
+    "general-settings": "常规设置",
+    "authentication-settings": "身份认证",
+    "manager-settings": "管理控制台",
+    "browser-settings": "对象浏览器",
+    "key-rotation": "密钥轮换",
+    "api-tokens": "API 令牌",
+    metrics: "用量与指标",
+    "storage-endpoints": "S3 端点",
+  };
+  return crumbs.map((crumb, index) => ({
+    ...crumb,
+    label: index === 0 ? "管理后台" : index === 1 ? labels[pageId] ?? crumb.label : crumb.label,
+  }));
+}

@@ -22,6 +22,7 @@ import {
   type FieldErrors,
   type SettingsPath,
 } from "./appSettingsDraft";
+import { useAdminControlText } from "../adminControlMessages";
 
 export function useAppSettingsDraft(
   paths: readonly SettingsPath[],
@@ -32,6 +33,7 @@ export function useAppSettingsDraft(
     current: AppSettingsValues,
   ) => AppSettingsValues,
 ) {
+  const { t } = useAdminControlText();
   const { setGeneralSettings } = useGeneralSettings();
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const form = useSettingsDraft<AppSettingsValues>({});
@@ -54,12 +56,12 @@ export function useAppSettingsDraft(
       })
       .catch((err) => {
         if (!cancelled)
-          setError(extractApiError(err, "Unable to load settings."));
+          setError(extractApiError(err, t("Unable to load settings.")));
       });
     return () => {
       cancelled = true;
     };
-  }, [accept, paths]);
+  }, [accept, paths, t]);
   const setValue = useCallback(
     (path: SettingsPath, value: DraftValue) => {
       if (!paths.includes(path))
@@ -107,7 +109,7 @@ export function useAppSettingsDraft(
             Object.fromEntries(
               err.fields.map((path) => [
                 path,
-                "Changed on the server. Cancel to load the current value.",
+                t("Changed on the server. Cancel to load the current value."),
               ]),
             ),
           );
@@ -123,13 +125,13 @@ export function useAppSettingsDraft(
       conflict.current = null;
       setGeneralSettings(saved.general);
       onSaved?.(saved);
-      setMessage("Settings saved.");
+      setMessage(t("Settings saved."));
     } catch (err) {
       if (!isRecentWebAuthnVerificationCancelled(err))
         setError(
           err instanceof SettingsConflict
             ? err.message
-            : extractApiError(err, "Unable to save settings."),
+            : extractApiError(err, t("Unable to save settings.")),
         );
     } finally {
       pending.current = false;
@@ -151,7 +153,7 @@ export function useAppSettingsDraft(
       );
       setErrors({});
     } catch (err) {
-      setError(extractApiError(err, "Unable to load default settings."));
+      setError(extractApiError(err, t("Unable to load default settings.")));
     } finally {
       pending.current = false;
       setBusy(false);

@@ -21,6 +21,7 @@ import {
   PortalAccountRoleSelect,
 } from "./AccountAccessRoleSelectors";
 import "./adminAssociations.css";
+import { useI18n } from "../../i18n";
 
 const adminAssociationAddPanelClass = cx(uiCardMutedClass, "space-y-2 px-3 py-2");
 export const adminAssociationPanelClass = "mt-3 min-w-0 space-y-3";
@@ -206,6 +207,7 @@ export function AdminAssociationAccessPickerTable({
   onToggle,
   onAccessChange,
 }: AdminAssociationAccessPickerTableProps) {
+  const { t } = useI18n();
   const prefix = "admin-association-picker-" + useId().replaceAll(":", "");
   if (options.length === 0) return null;
 
@@ -215,8 +217,8 @@ export function AdminAssociationAccessPickerTable({
         <thead>
           <tr>
             <th className="text-left">{principalLabel}</th>
-            <th className="text-left">Manager role</th>
-            <th className="text-left">Portal role</th>
+            <th className="text-left">{t({ en: "Manager role", zh: "管理器角色" })}</th>
+            <th className="text-left">{t({ en: "Portal role", zh: "门户角色" })}</th>
           </tr>
         </thead>
         <tbody>
@@ -346,33 +348,34 @@ export function AdminAssociationPickerPanel({
   addDisabled,
   loadingLabel,
   searchAriaLabel,
-  emptyLabel = "No results.",
-  addLabel = "Add selected",
+  emptyLabel,
+  addLabel,
   children,
 }: AdminAssociationPickerPanelProps) {
+  const { t } = useI18n();
   return (
     <div className={adminAssociationAddPanelClass}>
       <ListToolbar variant="section" title={title} description={hint}
-        search={<ToolbarSearchInput label={searchAriaLabel ?? "Search"} value={search} onChange={onSearchChange} placeholder="Search..." />}
+        search={<ToolbarSearchInput label={searchAriaLabel ?? t({ en: "Search", zh: "搜索" })} value={search} onChange={onSearchChange} placeholder={t({ en: "Search...", zh: "搜索…" })} />}
       />
       <div className="max-h-48 space-y-1 overflow-y-auto pr-1">
         {loading ? <p className={cx("ui-caption", uiMutedTextClass)}>{loadingLabel}</p> : null}
-        {!loading && availableCount === 0 ? <p className={cx("ui-caption", uiMutedTextClass)}>{emptyLabel}</p> : null}
+        {!loading && availableCount === 0 ? <p className={cx("ui-caption", uiMutedTextClass)}>{emptyLabel ?? t({ en: "No results.", zh: "没有结果。" })}</p> : null}
         {children}
         {availableCount > maxVisibleOptions ? (
           <p className={cx("ui-caption", uiMutedTextClass)}>
-            Showing first {maxVisibleOptions} matches. Use the search box to narrow down the list.
+            {t({ en: "Showing first", zh: "显示前" })} {maxVisibleOptions} {t({ en: "matches. Use the search box to narrow down the list.", zh: "条匹配结果。请使用搜索框缩小范围。" })}
           </p>
         ) : null}
       </div>
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <span className={cx("ui-caption", uiMutedTextClass)}>{selectedCount} selected</span>
+        <span className={cx("ui-caption", uiMutedTextClass)}>{selectedCount} {t({ en: "selected", zh: "已选择" })}</span>
         <div className="flex items-center gap-2">
           <UiButton variant="secondary" size="xs" onClick={onCancel}>
-            Cancel
+            {t({ en: "Cancel", zh: "取消" })}
           </UiButton>
           <UiButton size="xs" disabled={addDisabled} onClick={onAdd}>
-            {addLabel}
+            {addLabel ?? t({ en: "Add selected", zh: "添加所选项" })}
           </UiButton>
         </div>
       </div>

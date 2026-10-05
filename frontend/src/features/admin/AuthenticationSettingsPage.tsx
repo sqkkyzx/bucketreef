@@ -12,6 +12,7 @@ import AuthProviderList from "./settings/AuthProviderList";
 import { AppSettingsToggle } from "./settings/AppSettingsFields";
 import { useAppSettingsDraft } from "./settings/useAppSettingsDraft";
 import type { SettingsPath } from "./settings/appSettingsDraft";
+import { useAdminControlText } from "./adminControlMessages";
 
 const paths = [
   "general.allow_login_access_keys",
@@ -23,6 +24,7 @@ const paths = [
   "general.allow_user_external_identity_unlink",
 ] as const satisfies readonly SettingsPath[];
 export default function AuthenticationSettingsPage() {
+  const { t } = useAdminControlText();
   const form = useAppSettingsDraft(paths);
   const [disableProtection, setDisableProtection] = useState(false);
   const location = useLocation();
@@ -32,22 +34,22 @@ export default function AuthenticationSettingsPage() {
       : null;
   return (
     <AdminSettingsFrame
-      title="Authentication settings"
-      description="Sign-in methods, identity policy and external providers."
+      title={t("Authentication settings")}
+      description={t("Sign-in methods, identity policy and external providers.")}
       page="authentication-settings"
-      resetTitle="Reset authentication settings draft?"
+      resetTitle={t("Reset authentication settings draft?")}
       form={form}
       dialogs={
         <>
           {disableProtection && (
             <ConfirmActionDialog
-              title="Disable required admin passkeys?"
-              description="Administrator sessions will no longer require a recent passkey verification for sensitive actions."
-              confirmLabel="Disable protection"
+              title={t("Disable required admin passkeys?")}
+              description={t("Administrator sessions will no longer require a recent passkey verification for sensitive actions.")}
+              confirmLabel={t("Disable protection")}
               tone="danger"
-              warning="This weakens protection for every administrator account. The change is applied only after saving."
+              warning={t("This weakens protection for every administrator account. The change is applied only after saving.")}
               impacts={[
-                "Any active authorized Admin or Superadmin session will be sufficient for sensitive administration actions.",
+                t("Any active authorized Admin or Superadmin session will be sufficient for sensitive administration actions."),
               ]}
               onCancel={() => setDisableProtection(false)}
               onConfirm={() => {
@@ -72,41 +74,41 @@ export default function AuthenticationSettingsPage() {
     >
       <SettingsSection
         presentation="compact"
-        title="Access-key sign-in"
-        description="Options for users signing in with S3 credentials."
+        title={t("Access-key sign-in")}
+        description={t("Options for users signing in with S3 credentials.")}
       >
         <AppSettingsToggle
           form={form}
           field="general.allow_login_access_keys"
-          title="Access-key login"
+          title={t("Access-key login")}
         />
         <AppSettingsToggle
           form={form}
           field="general.allow_login_endpoint_list"
-          title="Access-key endpoint list"
-          description="Show configured endpoints on the access-key login screen."
+          title={t("Access-key endpoint list")}
+          description={t("Show configured endpoints on the access-key login screen.")}
           disabled={!form.draft["general.allow_login_access_keys"]}
         />
         <AppSettingsToggle
           form={form}
           field="general.allow_login_custom_endpoint"
-          title="Custom login endpoint"
-          description="Public HTTPS targets only. The backend rejects private/local hosts and insecure transport. Admin-managed HTTP endpoints remain available through administration."
+          title={t("Custom login endpoint")}
+          description={t("Public HTTPS targets only. The backend rejects private/local hosts and insecure transport. Admin-managed HTTP endpoints remain available through administration.")}
           disabled={!form.draft["general.allow_login_access_keys"]}
         />
       </SettingsSection>
       <SettingsSection
         presentation="compact"
-        title="Identity security policy"
-        description="Requirements at sign-in and changes users can make themselves."
+        title={t("Identity security policy")}
+        description={t("Requirements at sign-in and changes users can make themselves.")}
       >
         <SettingsItem
           compact
-          title="Require passkeys for administrators"
-          description="Also requires recent WebAuthn verification for sensitive administration actions."
+          title={t("Require passkeys for administrators")}
+          description={t("Also requires recent WebAuthn verification for sensitive administration actions.")}
           action={
             <SettingsSwitch
-              ariaLabel="Require passkeys for administrators"
+              ariaLabel={t("Require passkeys for administrators")}
               checked={Boolean(
                 form.draft["general.require_passkey_for_admins"],
               )}
@@ -121,19 +123,19 @@ export default function AuthenticationSettingsPage() {
         <AppSettingsToggle
           form={form}
           field="general.require_passkey_for_users"
-          title="Require passkeys for standard users"
-          description="Applies at their next sign-in."
+          title={t("Require passkeys for standard users")}
+          description={t("Applies at their next sign-in.")}
         />
         <AppSettingsToggle
           form={form}
           field="general.allow_user_profile_name_edit"
-          title="Allow users to edit their profile name"
+          title={t("Allow users to edit their profile name")}
         />
         <AppSettingsToggle
           form={form}
           field="general.allow_user_external_identity_unlink"
-          title="Allow users to unlink external identities"
-          description="Another primary sign-in method must remain."
+          title={t("Allow users to unlink external identities")}
+          description={t("Another primary sign-in method must remain.")}
         />
       </SettingsSection>
     </AdminSettingsFrame>

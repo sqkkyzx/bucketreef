@@ -23,7 +23,7 @@ import UiInput from "../../components/ui/UiInput";
 import OneTimeSecretPanel from "../../components/OneTimeSecretPanel";
 import PageBanner from "../../components/PageBanner";
 import PageHeader from "../../components/PageHeader";
-import { adminPageBreadcrumbs } from "./adminBreadcrumbs";
+import { localizedAdminPageBreadcrumbs } from "./adminBreadcrumbs";
 import { useUnsavedChangesGuard } from "../../components/useUnsavedChangesGuard";
 import { useConfirmActionDialog } from "../../components/useConfirmActionDialog";
 import DataTableShell, { type DataTableColumn } from "../../components/list/DataTableShell";
@@ -33,6 +33,7 @@ import { toolbarCompactToggleClasses } from "../../components/toolbarControlClas
 import { extractApiError } from "../../utils/apiError";
 import { copyTextToClipboard } from "../../utils/clipboard";
 import { stableSignature } from "../../utils/stableSignature";
+import { useAdminControlText } from "./adminControlMessages";
 
 const isDemo = import.meta.env.MODE === "demo";
 
@@ -50,15 +51,15 @@ const API_SCOPES = [
   "storage-ops:read", "storage-ops:write",
 ];
 
-function extractError(error: unknown): string {
-  return extractApiError(error, "Unable to complete request.");
+function extractError(error: unknown, fallback = "Unable to complete request."): string {
+  return extractApiError(error, fallback);
 }
 
-function formatDate(value?: string | null): string {
+function formatDate(value?: string | null, locale?: string): string {
   if (!value) return "-";
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return value;
-  return parsed.toLocaleString();
+  return parsed.toLocaleString(locale);
 }
 
 function resolveTokenStatus(token: ApiTokenInfo): TokenStatus {
@@ -69,9 +70,10 @@ function resolveTokenStatus(token: ApiTokenInfo): TokenStatus {
 }
 
 function StatusBadge({ status }: { status: TokenStatus }) {
+  const { t } = useAdminControlText();
   return (
     <ListBadge tone={status === "active" ? "success" : status === "expired" ? "warning" : "neutral"} className="uppercase tracking-wide">
-      {status}
+      {t(status)}
     </ListBadge>
   );
 }
@@ -82,6 +84,7 @@ type ApiTokensPageProps = {
 };
 
 export default function ApiTokensPage({ showPageHeader = true, onUnsavedChangesChange }: ApiTokensPageProps) {
+  const { locale, t } = useAdminControlText();
   const [tokens, setTokens] = useState<ApiTokenInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -143,11 +146,11 @@ export default function ApiTokensPage({ showPageHeader = true, onUnsavedChangesC
       const data = await listApiTokens(includeRevoked);
       if (generation === loadGeneration.current) setTokens(data);
     } catch (loadError) {
-      if (generation === loadGeneration.current) setLoadError(extractError(loadError));
+      if (generation === loadGeneration.current) setLoadError(extractError(loadError, t("Unable to complete request.")));
     } finally {
       if (generation === loadGeneration.current) setLoading(false);
     }
-  }, [includeRevoked]);
+  }, [includeRevoked, t]);
 
   useEffect(() => {
     void loadTokens();
@@ -190,11 +193,11 @@ export default function ApiTokensPage({ showPageHeader = true, onUnsavedChangesC
     disabled: creating,
   });
 
-  const nameError = !tokenName.trim() ? "Token name is required." : undefined;
-  const scopesError = scopes.length === 0 ? "Select at least one scope." : undefined;
+  const nameError = !tokenName.trim() ? t("Token name is required.") : undefined;
+  const scopesError = scopes.length === 0 ? t("Select at least one scope.") : undefined;
   const normalizedDays = expiresInDays.trim();
   const expiryError = invalidExpiryInput || (normalizedDays && (!Number.isSafeInteger(Number(normalizedDays)) || Number(normalizedDays) < 1))
-    ? "Expiry must be a positive integer (days)." : undefined;
+    ? t("Expiry must be a positive integer (days).") : undefined;
 
   const handleCreate = async (event: FormEvent) => {
     event.preventDefault();
@@ -220,12 +223,12 @@ export default function ApiTokensPage({ showPageHeader = true, onUnsavedChangesC
         }));
       setRevealedToken({ value: created.access_token, token: created.api_token });
       setCopyMessage(null);
-      setActionMessage("API token created.");
+      setActionMessage(t("API token created."));
       setShowCreateModal(false);
       await loadTokens();
     } catch (createError) {
       if (!isRecentWebAuthnVerificationCancelled(createError)) {
-        setFormError(extractError(createError));
+        setFormError(extractError(createError, t("Unable to complete request.")));
       }
     } finally {
       creatingRef.current = false;
@@ -241,11 +244,11 @@ export default function ApiTokensPage({ showPageHeader = true, onUnsavedChangesC
     setActionError(null);
     try {
       await revokeApiToken(token.id);
-      setActionMessage("API token revoked.");
+      setActionMessage(t("API token revoked."));
       await loadTokens();
     } catch (revokeError) {
       if (!isRecentWebAuthnVerificationCancelled(revokeError)) {
-        setActionError(extractError(revokeError));
+        setActionError(extractError(revokeError, t("Unable to complete request.")));
       }
     } finally {
       setBusyTokenId(null);
@@ -255,14 +258,14 @@ export default function ApiTokensPage({ showPageHeader = true, onUnsavedChangesC
   const handleRevoke = (token: ApiTokenInfo) => {
     if (resolveTokenStatus(token) !== "active") return;
     revokeConfirmation.requestConfirmation({
-      title: "Revoke API token?",
-      description: "Immediately invalidate this automation token.",
-      confirmLabel: "Revoke token",
+      title: t("Revoke API token?"),
+      description: t("Immediately invalidate this automation token."),
+      confirmLabel: t("Revoke token"),
       details: [
-        { label: "Token", value: token.name },
-        { label: "Scopes", value: token.scopes.join(", "), mono: true },
+        { label: t("Token"), value: token.name },
+        { label: t("Scopes"), value: token.scopes.join(", "), mono: true },
       ],
-      impacts: ["Existing scripts and integrations using this token will stop authenticating."],
+      impacts: [t("Existing scripts and integrations using this token will stop authenticating.")],
       onConfirm: () => revokeToken(token),
     });
   };
@@ -273,7 +276,7 @@ export default function ApiTokensPage({ showPageHeader = true, onUnsavedChangesC
       setCopyMessage(message);
       window.setTimeout(() => setCopyMessage(null), 2500);
     } catch (copyError) {
-      setActionError(extractError(copyError));
+      setActionError(extractError(copyError, t("Unable to complete request.")));
     }
   };
 
@@ -354,7 +357,7 @@ export default function ApiTokensPage({ showPageHeader = true, onUnsavedChangesC
         <PageHeader actionPresentation="listing"
           title="API tokens"
           description="Manage personal API tokens linked to your account for automation and integrations."
-          breadcrumbs={adminPageBreadcrumbs("api-tokens")}
+          breadcrumbs={localizedAdminPageBreadcrumbs("api-tokens", locale)}
           actions={headerActions}
         />
       ) : null}

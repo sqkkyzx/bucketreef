@@ -7,6 +7,7 @@ import {
 import { SettingsField } from "../../../components/settings/SettingsControls";
 import type { useAppSettingsDraft } from "./useAppSettingsDraft";
 import type { SettingsPath } from "./appSettingsDraft";
+import { useAdminControlText } from "../adminControlMessages";
 
 type Props = {
   form: ReturnType<typeof useAppSettingsDraft>;
@@ -26,6 +27,7 @@ export function AppSettingsToggle({
   disabled,
   experimental,
 }: Props & { experimental?: boolean }) {
+  const { t } = useAdminControlText();
   const errorId = useId();
   return (
     <SettingsItem
@@ -54,7 +56,7 @@ export function AppSettingsToggle({
           onChange={(value) => form.setValue(field, value)}
           ariaLabel={ariaLabel ?? title}
           badge={
-            experimental ? { visible: true, label: "Experimental" } : undefined
+            experimental ? { visible: true, label: t("Experimental") } : undefined
           }
         />
       }

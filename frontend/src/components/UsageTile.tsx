@@ -5,6 +5,7 @@
 import { formatPercentage } from "../utils/format";
 import UiMeterBar from "./ui/UiMeterBar";
 import { cx, uiCardMutedClass, uiMutedTextClass, uiTitleTextClass } from "./ui/styles";
+import { useI18n } from "../i18n";
 
 type UsageTileProps = {
   label: string;
@@ -27,9 +28,10 @@ export default function UsageTile({
   unitHint,
   emptyHint,
 }: UsageTileProps) {
+  const { t } = useI18n();
   const hasUsage = typeof used === "number" && !Number.isNaN(used);
   const ratio = quota && quota > 0 && hasUsage ? Math.min(100, (used / quota) * 100) : null;
-  const usedDisplay = hasUsage ? formatter(used) : loading ? "Loading..." : "—";
+  const usedDisplay = hasUsage ? formatter(used) : loading ? t({ en: "Loading...", zh: "正在加载…" }) : "—";
   const quotaDisplay = quota && quota > 0 ? (quotaFormatter ? quotaFormatter(quota) : formatter(quota)) : null;
   const ratioLabel = ratio !== null ? formatPercentage(ratio) : "—";
 
@@ -39,7 +41,7 @@ export default function UsageTile({
         <div className="shrink-0">
           {ratio === null ? (
             <div className={cx("flex h-16 w-16 items-center justify-center rounded-full border border-dashed border-[color:var(--ui-border)] ui-caption font-semibold", uiMutedTextClass)}>
-              N/A
+              {t({ en: "N/A", zh: "无数据" })}
             </div>
           ) : (
             <UsageGauge ratio={ratio} />
@@ -56,7 +58,7 @@ export default function UsageTile({
               {usedDisplay} / {quotaDisplay} · {ratioLabel}
             </p>
           ) : (
-            <p className={cx("ui-caption", uiMutedTextClass)}>{emptyHint ?? "No quota defined."}</p>
+            <p className={cx("ui-caption", uiMutedTextClass)}>{emptyHint ?? t({ en: "No quota defined.", zh: "未定义配额。" })}</p>
           )}
         </div>
       </div>

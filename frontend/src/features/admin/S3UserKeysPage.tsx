@@ -27,8 +27,11 @@ import { resolveListTableStatus } from "../../components/list/listTableStatus";
 import { cx } from "../../components/ui/styles";
 import { extractApiError } from "../../utils/apiError";
 import { useConfirmActionDialog } from "../../components/useConfirmActionDialog";
+import { useI18n } from "../../i18n";
+import { rgwMessages } from "./adminRgwMessages";
 
 export default function S3UserKeysPage() {
+  const { t } = useI18n();
   const { userId } = useParams<{ userId: string }>();
   const numericUserId = userId ? Number(userId) : NaN;
   const [user, setUser] = useState<S3User | null>(null);
@@ -40,7 +43,7 @@ export default function S3UserKeysPage() {
   const [createdKey, setCreatedKey] = useState<CreatedS3UserAccessKey | null>(null);
   const keyConfirmation = useConfirmActionDialog();
 
-  const extractError = (err: unknown): string => extractApiError(err, "Unexpected error");
+  const extractError = (err: unknown): string => extractApiError(err, t(rgwMessages.unexpectedError));
 
   const formatDate = (value?: string | null) => {
     if (!value) return "-";
@@ -56,7 +59,7 @@ export default function S3UserKeysPage() {
     } catch (err) {
       setError(extractError(err));
     }
-  }, [numericUserId]);
+  }, [numericUserId, t]);
 
   const loadKeys = useCallback(async () => {
     if (!Number.isFinite(numericUserId)) return;
@@ -70,11 +73,11 @@ export default function S3UserKeysPage() {
     } finally {
       setLoading(false);
     }
-  }, [numericUserId]);
+  }, [numericUserId, t]);
 
   useEffect(() => {
     if (!Number.isFinite(numericUserId)) {
-      setError("Invalid user id.");
+      setError(t({ en: "Invalid user id.", zh: "用户 ID 无效。" }));
       return;
     }
     loadUser();
@@ -90,7 +93,7 @@ export default function S3UserKeysPage() {
       const key = await createS3UserKey(numericUserId);
       setCreatedKey(key);
       await loadKeys();
-      setActionMessage("Access key created.");
+      setActionMessage(t({ en: "Access key created.", zh: "访问密钥已创建。" }));
     } catch (err) {
       setError(extractError(err));
     } finally {
@@ -106,7 +109,7 @@ export default function S3UserKeysPage() {
     try {
       await deleteS3UserKey(numericUserId, accessKeyId);
       await loadKeys();
-      setActionMessage("Access key deleted.");
+      setActionMessage(t({ en: "Access key deleted.", zh: "访问密钥已删除。" }));
     } catch (err) {
       setError(extractError(err));
     } finally {
@@ -122,7 +125,7 @@ export default function S3UserKeysPage() {
     try {
       await updateS3UserKeyStatus(numericUserId, accessKeyId, nextActive);
       await loadKeys();
-      setActionMessage(nextActive ? "Access key enabled." : "Access key disabled.");
+      setActionMessage(nextActive ? t({ en: "Access key enabled.", zh: "访问密钥已启用。" }) : t({ en: "Access key disabled.", zh: "访问密钥已禁用。" }));
     } catch (err) {
       setError(extractError(err));
     } finally {
@@ -132,14 +135,14 @@ export default function S3UserKeysPage() {
 
   const handleDeleteKey = (accessKeyId: string) => {
     keyConfirmation.requestConfirmation({
-      title: "Delete access key?",
-      description: "Permanently remove this RGW access key from the selected user.",
-      confirmLabel: "Delete key",
+      title: t({ en: "Delete access key?", zh: "删除访问密钥？" }),
+      description: t({ en: "Permanently remove this RGW access key from the selected user.", zh: "永久删除所选用户的 RGW 访问密钥。" }),
+      confirmLabel: t({ en: "Delete key", zh: "删除密钥" }),
       details: [
-        { label: "User", value: pageTitle },
-        { label: "Access key", value: accessKeyId, mono: true },
+        { label: t(rgwMessages.user), value: pageTitle },
+        { label: t({ en: "Access key", zh: "访问密钥" }), value: accessKeyId, mono: true },
       ],
-      impacts: ["Applications using this key will immediately lose access."],
+      impacts: [t({ en: "Applications using this key will immediately lose access.", zh: "使用此密钥的应用将立即失去访问权限。" })],
       onConfirm: () => deleteKey(accessKeyId),
     });
   };
@@ -150,14 +153,14 @@ export default function S3UserKeysPage() {
       return;
     }
     keyConfirmation.requestConfirmation({
-      title: "Disable access key?",
-      description: "Temporarily prevent this RGW access key from authenticating.",
-      confirmLabel: "Disable key",
+      title: t({ en: "Disable access key?", zh: "禁用访问密钥？" }),
+      description: t({ en: "Temporarily prevent this RGW access key from authenticating.", zh: "暂时禁止此 RGW 访问密钥进行身份验证。" }),
+      confirmLabel: t({ en: "Disable key", zh: "禁用密钥" }),
       details: [
-        { label: "User", value: pageTitle },
-        { label: "Access key", value: accessKeyId, mono: true },
+        { label: t(rgwMessages.user), value: pageTitle },
+        { label: t({ en: "Access key", zh: "访问密钥" }), value: accessKeyId, mono: true },
       ],
-      impacts: ["Applications using this key will lose access until the key is enabled again."],
+      impacts: [t({ en: "Applications using this key will lose access until the key is enabled again.", zh: "在重新启用密钥前，使用它的应用将失去访问权限。" })],
       onConfirm: () => toggleKey(accessKeyId, false),
     });
   };
@@ -170,7 +173,7 @@ export default function S3UserKeysPage() {
     try {
       await rotateS3UserKeys(numericUserId);
       await Promise.all([loadUser(), loadKeys()]);
-      setActionMessage("Interface key rotated.");
+      setActionMessage(t({ en: "Interface key rotated.", zh: "界面密钥已轮换。" }));
     } catch (err) {
       setError(extractError(err));
     } finally {
@@ -180,9 +183,9 @@ export default function S3UserKeysPage() {
 
   const pageTitle = useMemo(() => {
     if (user?.name) return user.name;
-    if (userId) return `User #${userId}`;
-    return "User";
-  }, [user?.name, userId]);
+    if (userId) return t({ en: `User #${userId}`, zh: `用户 #${userId}` });
+    return t(rgwMessages.user);
+  }, [t, user?.name, userId]);
 
   const interfaceKey = keys.find((k) => k.is_ui_managed);
   const tableStatus = resolveListTableStatus({
@@ -193,7 +196,7 @@ export default function S3UserKeysPage() {
   const keyTableColumns: Array<DataTableColumn<S3UserAccessKey>> = [
     {
       id: "access-key",
-      label: "Access key",
+      label: t({ en: "Access key", zh: "访问密钥" }),
       primary: true,
       mobileRole: "primary",
       cellClassName: "font-mono",
@@ -201,26 +204,26 @@ export default function S3UserKeysPage() {
     },
     {
       id: "status",
-      label: "Status",
+      label: t({ en: "Status", zh: "状态" }),
       cellClassName: "text-slate-700 dark:text-slate-200",
-      render: (key) => (key.is_active ? "Active" : "Disabled"),
+      render: (key) => (key.is_active ? t(rgwMessages.active) : t(rgwMessages.disabled)),
     },
-    { id: "created", label: "Created on", render: (key) => formatDate(key.created_at) },
+    { id: "created", label: t({ en: "Created on", zh: "创建时间" }), render: (key) => formatDate(key.created_at) },
     {
       id: "usage",
-      label: "Usage",
+      label: t(rgwMessages.usage),
       render: (key) =>
         key.is_ui_managed ? (
           <ListBadge tone="neutral">
-            Interface key
+            {t({ en: "Interface key", zh: "界面密钥" })}
           </ListBadge>
         ) : (
-          <span className="ui-caption text-slate-500 dark:text-slate-400">Custom</span>
+          <span className="ui-caption text-slate-500 dark:text-slate-400">{t({ en: "Custom", zh: "自定义" })}</span>
         ),
     },
     {
       id: "actions",
-      label: "Actions",
+      label: t(rgwMessages.actions),
       align: "right",
       mobileRole: "actions",
       render: (key) =>
@@ -230,7 +233,7 @@ export default function S3UserKeysPage() {
             onClick={handleRotateUiKey}
             disabled={busy === "rotate"}
           >
-            {busy === "rotate" ? "Rotating..." : "Rotate"}
+            {busy === "rotate" ? t(rgwMessages.rotating) : t(rgwMessages.rotate)}
           </ListActionButton>
         ) : (
           <ListActions>
@@ -239,7 +242,7 @@ export default function S3UserKeysPage() {
               onClick={() => handleToggleKey(key.access_key_id, !key.is_active)}
               disabled={Boolean(busy)}
             >
-              {busy === `toggle:${key.access_key_id}` ? "Saving..." : key.is_active ? "Disable" : "Enable"}
+              {busy === `toggle:${key.access_key_id}` ? t(rgwMessages.saving) : key.is_active ? t(rgwMessages.disable) : t(rgwMessages.enable)}
             </ListActionButton>
             <ListActionButton
               type="button"
@@ -247,7 +250,7 @@ export default function S3UserKeysPage() {
                variant="danger"
               disabled={Boolean(busy)}
             >
-              {busy === `delete:${key.access_key_id}` ? "Deleting..." : "Delete"}
+              {busy === `delete:${key.access_key_id}` ? t(rgwMessages.deleting) : t(rgwMessages.delete)}
             </ListActionButton>
           </ListActions>
         ),
@@ -257,28 +260,28 @@ export default function S3UserKeysPage() {
   if (!userId || Number.isNaN(numericUserId)) {
     return (
       <PageShell actionPresentation="listing"
-        title="User access keys"
-        description="Manage RGW keys for the selected user."
-        breadcrumbs={adminPageBreadcrumbs("rgw-users", { label: "Access keys" })}
+        title={t(rgwMessages.userAccessKeys)}
+        description={t({ en: "Manage RGW keys for the selected user.", zh: "管理所选用户的 RGW 密钥。" })}
+        breadcrumbs={adminPageBreadcrumbs("rgw-users", { label: t(rgwMessages.accessKeys) })}
       >
-        <PageBanner tone="error">Invalid user id provided.</PageBanner>
+        <PageBanner tone="error">{t({ en: "Invalid user id provided.", zh: "提供的用户 ID 无效。" })}</PageBanner>
       </PageShell>
     );
   }
 
   return (
     <PageShell actionPresentation="listing"
-      title="User access keys"
+      title={t(rgwMessages.userAccessKeys)}
       description={
         <>
-          Manage keys for <span className="font-semibold text-slate-700 dark:text-slate-100">{pageTitle}</span>.
+          {t({ en: "Manage keys for", zh: "管理" })} <span className="font-semibold text-slate-700 dark:text-slate-100">{pageTitle}</span>{t({ en: ".", zh: "的密钥。" })}
         </>
       }
-      breadcrumbs={adminPageBreadcrumbs("rgw-users", { label: pageTitle }, { label: "Access keys" })}
+      breadcrumbs={adminPageBreadcrumbs("rgw-users", { label: pageTitle }, { label: t(rgwMessages.accessKeys) })}
       actions={[
-        { label: "← Back to users", to: "/admin/s3-users", variant: "ghost" },
+        { label: t({ en: "← Back to users", zh: "← 返回用户" }), to: "/admin/s3-users", variant: "ghost" },
         {
-          label: busy === "create" ? "Creating..." : "New key",
+          label: busy === "create" ? t(rgwMessages.creating) : t(rgwMessages.newKey),
           onClick: handleCreateKey,
           variant: "primary",
         },
@@ -287,7 +290,7 @@ export default function S3UserKeysPage() {
 
       {interfaceKey && (
         <PageBanner tone="info">
-          The interface key is reserved for the console. Delete other keys as needed, and rotate the interface key instead of deleting it.
+          {t({ en: "The interface key is reserved for the console. Delete other keys as needed, and rotate the interface key instead of deleting it.", zh: "界面密钥专供控制台使用。请按需删除其他密钥，并轮换界面密钥，不要删除它。" })}
         </PageBanner>
       )}
 
@@ -296,19 +299,19 @@ export default function S3UserKeysPage() {
 
       {createdKey && createdKey.secret_access_key && (
         <OneTimeSecretPanel
-          title={`Key created for ${pageTitle}`}
-          description="The secret is shown only once."
-          badge="Copy these values now"
+          title={t({ en: `Key created for ${pageTitle}`, zh: `已为 ${pageTitle} 创建密钥` })}
+          description={t({ en: "The secret is shown only once.", zh: "私有密钥仅显示一次。" })}
+          badge={t({ en: "Copy these values now", zh: "请立即复制这些值" })}
           values={[
-            { label: "Access key", value: createdKey.access_key_id, copyLabel: "Copy" },
-            { label: "Secret key", value: createdKey.secret_access_key, copyLabel: "Copy" },
+            { label: t({ en: "Access key", zh: "访问密钥" }), value: createdKey.access_key_id, copyLabel: t(rgwMessages.copy) },
+            { label: t({ en: "Secret key", zh: "私有密钥" }), value: createdKey.secret_access_key, copyLabel: t(rgwMessages.copy) },
           ]}
         />
       )}
 
       <ListPageSection variant="page"
-        title="Keys"
-        countLabel={`${keys.length} key${keys.length === 1 ? "" : "s"}`}
+        title={t(rgwMessages.keys)}
+        countLabel={`${keys.length} ${t({ en: keys.length === 1 ? "key" : "keys", zh: "个密钥" })}`}
       >
         <DataTableShell
           responsiveCards
@@ -319,9 +322,9 @@ export default function S3UserKeysPage() {
             cx("hover:bg-slate-50 dark:hover:bg-slate-800/50", !key.is_active && "bg-slate-50/70 dark:bg-slate-900/40")
           }
           status={tableStatus}
-          loadingMessage="Loading keys..."
-          errorMessage="Unable to load keys."
-          emptyMessage="No keys for this user."
+          loadingMessage={t(rgwMessages.loadingKeys)}
+          errorMessage={t({ en: "Unable to load keys.", zh: "无法加载密钥。" })}
+          emptyMessage={t(rgwMessages.noKeys)}
           tableLayout="fixed"
         />
       </ListPageSection>
