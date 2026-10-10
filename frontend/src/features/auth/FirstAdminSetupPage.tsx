@@ -17,6 +17,7 @@ import { PRODUCT_NAME } from "../../constants/product";
 import { extractApiError } from "../../utils/apiError";
 import { AuthButton, AuthInput } from "./AuthFormControls";
 import { AuthCard, AuthCenteredPage } from "./AuthSurface";
+import { useI18n } from "../../i18n";
 
 
 function readBootstrapTokenFragment(): string {
@@ -37,6 +38,7 @@ function clearBootstrapTokenFragment(): void {
 }
 
 export default function FirstAdminSetupPage() {
+  const { t } = useI18n();
   const navigate = useNavigate();
   const { refresh: refreshSession } = useSession();
   const [token] = useState(readBootstrapTokenFragment);
@@ -64,7 +66,7 @@ export default function FirstAdminSetupPage() {
         }
         if (!token) {
           setError(
-            "The bootstrap token is missing. Open the complete one-time URL issued by the backend.",
+            t({ en: "The bootstrap token is missing. Open the complete one-time URL issued by the backend.", zh: "缺少引导令牌，请打开后端生成的完整一次性 URL。" }),
           );
         }
       })
@@ -79,19 +81,19 @@ export default function FirstAdminSetupPage() {
     return () => {
       mounted = false;
     };
-  }, [navigate, token]);
+  }, [navigate, token, t]);
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
     setError(null);
     if (!token) {
       setError(
-        "The bootstrap token is missing. Issue a new one-time URL from the backend.",
+        t({ en: "The bootstrap token is missing. Issue a new one-time URL from the backend.", zh: "缺少引导令牌，请从后端生成新的一次性 URL。" }),
       );
       return;
     }
     if (password !== passwordConfirmation) {
-      setError("Passwords do not match.");
+      setError(t({ en: "Passwords do not match.", zh: "两次输入的密码不一致。" }));
       return;
     }
     setSubmitting(true);
@@ -105,7 +107,7 @@ export default function FirstAdminSetupPage() {
       if (response.status === "authenticated") {
         const session = await refreshSession();
         if (!session) {
-          throw new Error("The administrator session could not be loaded.");
+          throw new Error(t({ en: "The administrator session could not be loaded.", zh: "无法加载管理员会话。" }));
         }
         navigate("/", { replace: true });
         return;
@@ -114,12 +116,12 @@ export default function FirstAdminSetupPage() {
         navigate("/login?mfa=mfa_enrollment_required", { replace: true });
         return;
       }
-      throw new Error("Administrator authentication did not complete.");
+      throw new Error(t({ en: "Administrator authentication did not complete.", zh: "管理员认证未完成。" }));
     } catch (submitError) {
       setError(
         extractApiError(
           submitError,
-          "The bootstrap link is invalid, expired, or already used.",
+          t({ en: "The bootstrap link is invalid, expired, or already used.", zh: "引导链接无效、已过期或已使用。" }),
         ),
       );
     } finally {
@@ -141,15 +143,13 @@ export default function FirstAdminSetupPage() {
       <AuthCard className="max-w-lg p-7 sm:p-8">
         <BrandMark alt={PRODUCT_NAME} className="mb-5 h-16 w-16" />
         <p className="ui-caption font-semibold uppercase tracking-wide text-primary-700">
-          Initial setup
+          {t({ en: "Initial setup", zh: "初始设置" })}
         </p>
         <h1 className="mt-2 text-2xl font-semibold">
-          Create the first administrator
+          {t({ en: "Create the first administrator", zh: "创建首个管理员" })}
         </h1>
         <p className="mt-3 ui-body text-slate-600">
-          This one-time setup creates the platform super-administrator. A
-          passkey is optional during onboarding and should be enabled before
-          production.
+          {t({ en: "This one-time setup creates the platform super-administrator. A passkey is optional during onboarding and should be enabled before production.", zh: "此一次性设置将创建平台超级管理员。引导期间可选用通行密钥，但应在生产环境启用。" })}
         </p>
 
         {error ? (
@@ -160,20 +160,20 @@ export default function FirstAdminSetupPage() {
 
         {checking ? (
           <p className="mt-6 ui-body text-slate-600">
-            Checking the bootstrap link…
+            {t({ en: "Checking the bootstrap link…", zh: "正在检查引导链接…" })}
           </p>
         ) : (
           <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
             <AuthInput
               id="bootstrap-full-name"
-              label="Full name"
+              label={t({ en: "Full name", zh: "姓名" })}
               value={fullName}
               onChange={(event) => setFullName(event.target.value)}
               autoComplete="name"
             />
             <AuthInput
               id="bootstrap-email"
-              label="Email"
+              label={t({ en: "Email", zh: "邮箱" })}
               type="email"
               required
               value={email}
@@ -183,7 +183,7 @@ export default function FirstAdminSetupPage() {
             <div>
               <AuthInput
                 id="bootstrap-password"
-                label="Password"
+                label={t({ en: "Password", zh: "密码" })}
                 type="password"
                 required
                 minLength={12}
@@ -196,12 +196,12 @@ export default function FirstAdminSetupPage() {
                 id="bootstrap-password-help"
                 className="mt-1 block ui-caption text-slate-500"
               >
-                Use at least 12 characters.
+                {t({ en: "Use at least 12 characters.", zh: "至少使用 12 个字符。" })}
               </span>
             </div>
             <AuthInput
               id="bootstrap-password-confirmation"
-              label="Confirm password"
+              label={t({ en: "Confirm password", zh: "确认密码" })}
               type="password"
               required
               minLength={12}
@@ -220,15 +220,15 @@ export default function FirstAdminSetupPage() {
               }
             >
               {submitting
-                ? "Creating administrator…"
-                : "Create administrator"}
+                ? t({ en: "Creating administrator…", zh: "正在创建管理员…" })
+                : t({ en: "Create administrator", zh: "创建管理员" })}
             </AuthButton>
           </form>
         )}
         <p className="mt-5 ui-caption text-slate-500">
-          Already initialized?{" "}
+          {t({ en: "Already initialized?", zh: "已经初始化？" })}{" "}
           <Link className="font-semibold text-primary-700" to="/login">
-            Return to sign in
+            {t({ en: "Return to sign in", zh: "返回登录" })}
           </Link>
         </p>
       </AuthCard>

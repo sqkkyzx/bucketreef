@@ -22,8 +22,10 @@ import {
   type SessionUser,
 } from "../../utils/workspaces";
 import { AuthCard, AuthCenteredPage } from "./AuthSurface";
+import { useI18n } from "../../i18n";
 
 export default function OidcCallbackPage() {
+  const { t } = useI18n();
   const { provider } = useParams<{ provider: string }>();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -41,13 +43,13 @@ export default function OidcCallbackPage() {
 
     if (!provider) {
       setProcessing(false);
-      setError("Missing identity provider.");
+      setError(t({ en: "Missing identity provider.", zh: "缺少身份提供方。" }));
       return;
     }
     const providerId = provider;
     if (!code || !state) {
       setProcessing(false);
-      setError("Incomplete authentication response.");
+      setError(t({ en: "Incomplete authentication response.", zh: "认证响应不完整。" }));
       return;
     }
     const codeValue = code;
@@ -67,11 +69,11 @@ export default function OidcCallbackPage() {
           return;
         }
         if (res.status === "link_approval_required") {
-          setError("This identity must be approved by a superadministrator before it can be linked.");
+          setError(t({ en: "This identity must be approved by a superadministrator before it can be linked.", zh: "此身份必须先由超级管理员批准，才能完成关联。" }));
           setProcessing(false);
           return;
         }
-        if (!res.user) throw new Error("OIDC session did not return a user");
+        if (!res.user) throw new Error(t({ en: "OIDC session did not return a user", zh: "OIDC 会话未返回用户" }));
         acceptAuthentication(res, "oidc");
         const sessionUser: SessionUser = { ...res.user, authType: "oidc" };
         setLanguagePreference(res.user.ui_language ?? "auto");
@@ -103,7 +105,7 @@ export default function OidcCallbackPage() {
       } catch (err) {
         console.error(err);
         if (!cancelled) {
-          setError("Unable to complete the sign-in. Please try again.");
+          setError(t({ en: "Unable to complete the sign-in. Please try again.", zh: "无法完成登录，请重试。" }));
           setProcessing(false);
         }
       }
@@ -113,7 +115,7 @@ export default function OidcCallbackPage() {
     return () => {
       cancelled = true;
     };
-  }, [acceptAuthentication, navigate, provider, runtimeSurfaces, searchParams, setGeneralSettings, setLanguagePreference, setTheme]);
+  }, [acceptAuthentication, navigate, provider, runtimeSurfaces, searchParams, setGeneralSettings, setLanguagePreference, setTheme, t]);
 
   if (error) return <ErrorState kind="auth_failed" description={error} presentation="full" />;
 
@@ -121,8 +123,8 @@ export default function OidcCallbackPage() {
     <AuthCenteredPage>
       <AuthCard className="max-w-md p-8 text-center">
           <BrandMark alt={PRODUCT_NAME} className="mx-auto mb-5 h-16 w-16" />
-          <h1 className="mb-2 text-2xl font-semibold text-slate-900">Signing you in</h1>
-          {processing && <p className="ui-body text-slate-500">Please wait...</p>}
+          <h1 className="mb-2 text-2xl font-semibold text-slate-900">{t({ en: "Signing you in", zh: "正在登录" })}</h1>
+          {processing && <p className="ui-body text-slate-500">{t({ en: "Please wait...", zh: "请稍候…" })}</p>}
       </AuthCard>
     </AuthCenteredPage>
   );
