@@ -455,7 +455,6 @@ const zhMessages: Record<string, string> = {
   "Changed on the server. Cancel to load the current value.": "服务器上的值已更改。请取消以加载当前值。",
   "Settings saved.": "设置已保存。",
   "Saving...": "正在保存…",
-  "Read-only demo settings. Feature execution and external integrations are disabled.": "只读演示设置。功能执行和外部集成已禁用。",
   "Replace this page's draft with application defaults.": "使用应用默认值替换此页面的草稿。",
   "Load defaults": "加载默认值",
   "Defaults are loaded into this form only. Review them, then use Save changes to apply them.": "默认值只会载入当前表单。请检查后点击“保存更改”应用。",

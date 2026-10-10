@@ -62,7 +62,13 @@ export default function AdminSettingsFrame({
       }
     >
       <div className="settings-compact">
-        {isDemo && <UiInlineMessage tone="info">{t("Read-only demo settings. Feature execution and external integrations are disabled.")}</UiInlineMessage>}
+        {isDemo && (
+          <UiInlineMessage tone="info">
+            {locale === "zh"
+              ? "只读演示设置。功能执行和外部集成已禁用。"
+              : "Read-only demo settings. Feature execution and external integrations are disabled."}
+          </UiInlineMessage>
+        )}
         {form.error && (
           <div className="mb-4" role="alert">
             <UiInlineMessage tone="error">{form.error}</UiInlineMessage>
