@@ -1,4 +1,5 @@
 import type { RefObject } from "react";
+import { useI18n } from "../../i18n";
 
 import type { BrowserBucket } from "../../api/browserContracts";
 import { ListActionButton } from "../../components/list/ListControls";
@@ -71,6 +72,13 @@ export default function BrowserBucketSelector({
   onSelectBucket,
   onLoadMore,
 }: BrowserBucketSelectorProps) {
+  const { t } = useI18n();
+  const workspaceLabelZh =
+    workspaceNoun === "storage space" ? "存储空间" : "存储桶";
+  const workspaceTitle = t({
+    en: workspaceNounTitle,
+    zh: workspaceNounTitle === "Storage Spaces" ? "存储空间" : "存储桶",
+  });
   const buttonClassName = cx(
     bucketButtonClasses,
     needsAttention
@@ -103,16 +111,16 @@ export default function BrowserBucketSelector({
           className={`absolute left-0 top-[calc(100%+8px)] z-[60] w-80 max-w-[calc(100vw-1rem)] ui-caption ${menuClasses}`}
         >
           <div className="flex items-center justify-between gap-3 px-2 pb-2 pt-1">
-            <p className={eyebrowClasses}>{workspaceNounTitle}</p>
+            <p className={eyebrowClasses}>{workspaceTitle}</p>
             {bucketManagementEnabled && (
               <ListActionButton
                 type="button"
                 onClick={onCreateBucket}
                 disabled={!hasContext}
-                title="Create bucket"
-                aria-label="Create bucket"
+                title={t({ en: "Create bucket", zh: "创建存储桶" })}
+                aria-label={t({ en: "Create bucket", zh: "创建存储桶" })}
               >
-                + Bucket
+                + {t({ en: "Bucket", zh: "存储桶" })}
               </ListActionButton>
             )}
           </div>
@@ -124,8 +132,14 @@ export default function BrowserBucketSelector({
                 type="text"
                 value={filter}
                 onChange={(event) => onFilterChange(event.target.value)}
-                placeholder={`Filter ${workspaceNounPlural}`}
-                aria-label={`Filter ${workspaceNounPlural}`}
+                placeholder={t({
+                  en: `Filter ${workspaceNounPlural}`,
+                  zh: `筛选${workspaceLabelZh}`,
+                })}
+                aria-label={t({
+                  en: `Filter ${workspaceNounPlural}`,
+                  zh: `筛选${workspaceLabelZh}`,
+                })}
                 size="compact"
                 fieldClassName="w-full"
                 className="ui-list-control ui-list-control-with-icon w-full font-medium"
@@ -136,26 +150,40 @@ export default function BrowserBucketSelector({
           <div className="max-h-56 overflow-y-auto px-1 pb-1">
             {loading && items.length === 0 ? (
               <div className="px-2 py-2 ui-caption text-slate-500 dark:text-slate-400">
-                {`Loading ${workspaceNounPlural}...`}
+                {t({
+                  en: `Loading ${workspaceNounPlural}...`,
+                  zh: `正在加载${workspaceLabelZh}…`,
+                })}
               </div>
             ) : totalCount === 0 ? (
               <div className="space-y-2 px-2 py-2">
                 <div className="ui-caption text-slate-500 dark:text-slate-400">
                   {hasError
-                    ? `Unable to load ${workspaceNounPlural}.`
-                    : `No ${workspaceNounPlural} available.`}
+                    ? t({
+                        en: `Unable to load ${workspaceNounPlural}.`,
+                        zh: `无法加载${workspaceLabelZh}。`,
+                      })
+                    : t({
+                        en: `No ${workspaceNounPlural} available.`,
+                        zh: `没有可用的${workspaceLabelZh}。`,
+                      })}
                 </div>
                 <ListActionButton
                   type="button"
                   onClick={onRetry}
                   disabled={loading || !hasContext}
                 >
-                  {loading ? "Retrying..." : "Retry"}
+                  {loading
+                    ? t({ en: "Retrying...", zh: "正在重试…" })
+                    : t({ en: "Retry", zh: "重试" })}
                 </ListActionButton>
               </div>
             ) : items.length === 0 ? (
               <div className="px-2 py-2 ui-caption text-slate-500 dark:text-slate-400">
-                {`No ${workspaceNounPlural} match this filter.`}
+                {t({
+                  en: `No ${workspaceNounPlural} match this filter.`,
+                  zh: `没有匹配此筛选条件的${workspaceLabelZh}。`,
+                })}
               </div>
             ) : (
               items.map((bucket) => {
@@ -180,7 +208,7 @@ export default function BrowserBucketSelector({
                     </span>
                     {isActive && (
                       <span className="ui-caption font-semibold text-primary-600 dark:text-primary-200">
-                        Active
+                        {t({ en: "Active", zh: "当前" })}
                       </span>
                     )}
                   </button>
@@ -190,7 +218,10 @@ export default function BrowserBucketSelector({
           </div>
           {!loading && totalCount > 0 && (
             <div className="border-t border-slate-200 px-2.5 py-2 ui-caption text-slate-400 dark:border-slate-700 dark:text-slate-500">
-              {`${items.length} of ${total} ${workspaceNoun}${total === 1 ? "" : "s"}`}
+              {t({
+                en: `${items.length} of ${total} ${workspaceNoun}${total === 1 ? "" : "s"}`,
+                zh: `${items.length} / ${total} ${workspaceLabelZh}`,
+              })}
             </div>
           )}
           {canLoadMore && (
@@ -200,7 +231,9 @@ export default function BrowserBucketSelector({
                 onClick={onLoadMore}
                 disabled={loadingMore}
               >
-                {loadingMore ? "Loading..." : "Load more"}
+                {loadingMore
+                  ? t({ en: "Loading...", zh: "正在加载…" })
+                  : t({ en: "Load more", zh: "加载更多" })}
               </ListActionButton>
             </div>
           )}

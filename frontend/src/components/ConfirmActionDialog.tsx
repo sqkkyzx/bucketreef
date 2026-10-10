@@ -9,6 +9,7 @@ import Modal from "./Modal";
 import UiButton from "./ui/UiButton";
 import UiInlineMessage from "./ui/UiInlineMessage";
 import "./settings/compactSettings.css";
+import { useI18n } from "../i18n";
 
 type ConfirmActionDialogDetail = {
   label: string;
@@ -61,6 +62,10 @@ export default function ConfirmActionDialog({
   onCancel,
   onConfirm,
 }: ConfirmActionDialogProps) {
+  const { t } = useI18n();
+  const resolvedCancelLabel = cancelLabel === "Cancel" ? t({ en: "Cancel", zh: "取消" }) : cancelLabel;
+  const resolvedProcessingLabel = processingLabel === "Processing..." ? t({ en: "Processing...", zh: "正在处理…" }) : processingLabel;
+  const resolvedImpactLabel = impactLabel === "Impact" ? t({ en: "Impact", zh: "影响" }) : impactLabel;
   const descriptionId = useId();
   return (
     <Modal
@@ -92,7 +97,7 @@ export default function ConfirmActionDialog({
 
         {impacts.length > 0 && (
           <UiInlineMessage tone="warning">
-            <p className="settings-label">{impactLabel}</p>
+            <p className="settings-label">{resolvedImpactLabel}</p>
             <ul className="settings-body mt-1 list-disc space-y-1 pl-4 [overflow-wrap:anywhere]">
               {impacts.map((impact, index) => <li key={index}>{impact}</li>)}
             </ul>
@@ -108,9 +113,9 @@ export default function ConfirmActionDialog({
         {error && <UiInlineMessage tone="error" role="alert" className="[overflow-wrap:anywhere]">{error}</UiInlineMessage>}
 
         <ModalActions>
-          <UiButton variant="secondary" onClick={onCancel} disabled={loading}>{cancelLabel}</UiButton>
+          <UiButton variant="secondary" onClick={onCancel} disabled={loading}>{resolvedCancelLabel}</UiButton>
           <UiButton variant={tone === "danger" ? "danger" : "primary"} onClick={onConfirm} disabled={loading || confirmDisabled}>
-            {loading ? processingLabel : confirmLabel}
+            {loading ? resolvedProcessingLabel : confirmLabel}
           </UiButton>
         </ModalActions>
       </div>

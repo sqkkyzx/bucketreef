@@ -2,6 +2,7 @@
  * Copyright (c) 2026 Laurent Barbe
  * Licensed under the Apache License, Version 2.0
  */
+import { useI18n, type I18nMessage } from "../../i18n";
 import { useState, type Ref, type ReactNode } from "react";
 import BrowserUtilityIcon from "./BrowserUtilityIcon";
 import { useBrowserText } from "./browserMessages";
@@ -70,13 +71,15 @@ const accessIndicatorClasses: Record<BucketAccessStatus, string> = {
     "border-amber-300 bg-amber-200 text-amber-800 dark:border-amber-400/50 dark:bg-amber-500/30 dark:text-amber-100",
 };
 
-const accessLabel: Record<BucketAccessStatus, string> = {
-  unknown: "Idle",
-  checking: "Checking",
-  available: "Ready",
-  unavailable: "No list access",
+const accessLabel: Record<BucketAccessStatus, I18nMessage> = {
+  unknown: { en: "Idle", zh: "待检查" },
+  checking: { en: "Checking", zh: "正在检查" },
+  available: { en: "Ready", zh: "就绪" },
+  unavailable: { en: "No list access", zh: "无列表访问权限" },
 };
-const unavailableBucketTitle = "Listing not allowed with current credentials.";
+const unavailableBucketTitle: I18nMessage = {
+  en: "Listing not allowed with current credentials.", zh: "当前凭据无权列出内容。",
+};
 
 function getBucketDisplayName(bucket: BrowserBucket, isPortalContext: boolean): string {
   if (isPortalContext) {
@@ -123,9 +126,14 @@ export default function BrowserWorkspaceSidebar({
   workspaceAccountAction,
 }: BrowserWorkspaceSidebarProps) {
   const tr = useBrowserText();
+  const { locale, t } = useI18n();
   const [tab, setTab] = useState<"buckets" | "favorites">("buckets");
-  const title = isPortalContext ? "Spaces" : "Buckets";
-  const searchPlaceholder = isPortalContext ? "Search storage spaces" : "Search buckets";
+  const title = isPortalContext
+    ? t({ en: "Spaces", zh: "存储空间" })
+    : t({ en: "Buckets", zh: "存储桶" });
+  const searchPlaceholder = isPortalContext
+    ? t({ en: "Search storage spaces", zh: "搜索存储空间" })
+    : t({ en: "Search buckets", zh: "搜索存储桶" });
   const hasUsageGauge =
     usageSummary?.available === true && usageSummary.used_bytes != null;
   const usagePercent = usageSummary ? formatUsagePercent(usageSummary) : null;
@@ -135,27 +143,24 @@ export default function BrowserWorkspaceSidebar({
     usageSummary?.quota_max_size_bytes != null && usageSummary.quota_max_size_bytes > 0
       ? formatBytes(usageSummary.quota_max_size_bytes)
       : null;
-  const itemNoun = isPortalContext ? "space" : "bucket";
-  const totalLabel =
-    bucketTotalCount === 1
-      ? `1 ${itemNoun}`
-      : `${bucketTotalCount} ${itemNoun}s`;
-  const filteredLabel =
-    bucketFilter.trim().length > 0 && bucketMenuTotal !== bucketTotalCount
-      ? `${bucketMenuTotal} result${bucketMenuTotal === 1 ? "" : "s"}`
-      : totalLabel;
+  const totalLabel = t({
+    en: isPortalContext ? `${bucketTotalCount} storage space${bucketTotalCount === 1 ? "" : "s"}` : `${bucketTotalCount} bucket${bucketTotalCount === 1 ? "" : "s"}`, zh: `${bucketTotalCount} 项`,
+  });
+  const filteredLabel = bucketFilter.trim().length > 0 && bucketMenuTotal !== bucketTotalCount
+    ? t({ en: `${bucketMenuTotal} result${bucketMenuTotal === 1 ? "" : "s"}`, zh: `${bucketMenuTotal} 个结果` })
+    : totalLabel;
   const emptyListLabel = bucketError
     ? isPortalContext
-      ? "Storage Spaces list unavailable."
-      : "Bucket list unavailable."
+      ? t({ en: "Storage Spaces list unavailable.", zh: "存储空间列表不可用。" })
+      : t({ en: "Bucket list unavailable.", zh: "存储桶列表不可用。" })
     : bucketFilter.trim()
-      ? "No matching item."
-      : `No ${title.toLowerCase()} available.`;
+      ? t({ en: "No matching item.", zh: "没有匹配项。" })
+      : t({ en: "No items available.", zh: "没有可用项目。" });
 
   return (
     <div
       className="flex min-h-0 flex-1 flex-col overflow-hidden"
-      aria-label={title}
+      aria-label={isPortalContext && locale !== "zh" ? "Spaces" : title}
       data-testid="browser-workspace-sidebar"
     >
       {favorites && <div role="tablist" aria-label={tr("Favorites")} className="flex shrink-0 border-b border-[color:var(--shell-border-soft)]">
@@ -189,15 +194,15 @@ export default function BrowserWorkspaceSidebar({
             {bucketManagementEnabled && (
               <UiIconButton
                 onClick={onCreateBucket}
-                label="Create bucket"
+                label={t({ en: "Create bucket", zh: "创建存储桶" })}
                 icon={<PlusIcon className="h-3.5 w-3.5" />}
               />
             )}
             <UiIconButton
               onClick={onRetryBuckets}
               disabled={loadingBuckets}
-              label={`Refresh ${title.toLowerCase()}`}
-              title={loadingBuckets ? "Refreshing" : "Refresh"}
+              label={t({ en: `Refresh ${title.toLowerCase()}`, zh: `刷新${title}` })}
+              title={loadingBuckets ? t({ en: "Refreshing", zh: "正在刷新" }) : t({ en: "Refresh", zh: "刷新" })}
               icon={<RefreshIcon className={cx("h-3.5 w-3.5", loadingBuckets ? "animate-spin" : "")} />}
             />
           </div>
@@ -215,7 +220,7 @@ export default function BrowserWorkspaceSidebar({
             const description = isPortalContext ? bucket.description?.trim() : "";
             const rowTitle =
               access.status === "unavailable"
-                ? unavailableBucketTitle
+                ? t(unavailableBucketTitle)
                 : isPortalContext
                   ? displayName
                   : bucket.name;
@@ -273,14 +278,14 @@ export default function BrowserWorkspaceSidebar({
                     </span>
                     <span
                       className={`inline-flex h-2.5 w-2.5 shrink-0 rounded-full border ${accessIndicatorClasses[access.status]}`}
-                      aria-label={accessLabel[access.status]}
+                      aria-label={t(accessLabel[access.status])}
                       title={
                         access.status === "unavailable"
-                          ? unavailableBucketTitle
-                          : accessLabel[access.status]
+                          ? t(unavailableBucketTitle)
+                          : t(accessLabel[access.status])
                       }
                     >
-                      <span className="sr-only">{accessLabel[access.status]}</span>
+                      <span className="sr-only">{t(accessLabel[access.status])}</span>
                     </span>
                   </>
                 )}
@@ -288,7 +293,7 @@ export default function BrowserWorkspaceSidebar({
             );
           })}
           {loadingBuckets && rows.length === 0 && !compact && (
-            <p className="px-2 py-2 ui-caption text-[var(--shell-muted-text)]">Loading...</p>
+            <p className="px-2 py-2 ui-caption text-[var(--shell-muted-text)]">{t({ en: "Loading...", zh: "正在加载…" })}</p>
           )}
           {!loadingBuckets && rows.length === 0 && !compact && (
             <p className="px-2 py-2 ui-caption text-[var(--shell-muted-text)]">
@@ -302,7 +307,7 @@ export default function BrowserWorkspaceSidebar({
               onClick={onLoadMore}
               disabled={bucketMenuLoadingMore}
             >
-              {bucketMenuLoadingMore ? "Loading..." : "Load more"}
+              {bucketMenuLoadingMore ? t({ en: "Loading...", zh: "正在加载…" }) : t({ en: "Load more", zh: "加载更多" })}
             </button>
           )}
           {loadMoreSentinelRef && <div ref={loadMoreSentinelRef} aria-hidden="true" className="h-1" />}
@@ -328,27 +333,27 @@ export default function BrowserWorkspaceSidebar({
           </button>
         )}
         {!compact && usageLoading && (
-          <p className="ui-caption text-[var(--shell-muted-text)]">Loading usage...</p>
+          <p className="ui-caption text-[var(--shell-muted-text)]">{t({ en: "Loading usage...", zh: "正在加载用量…" })}</p>
         )}
         {!compact && usageError && (
           <p className="ui-caption font-semibold text-amber-700 dark:text-amber-200">{usageError}</p>
         )}
         {!compact && hasUsageGauge && usageSummary && (
-          <div className="space-y-2" aria-label="Usage summary">
+          <div className="space-y-2" aria-label={t({ en: "Usage summary", zh: "用量概览" })}>
             {usagePercent != null && (
               <UiMeterBar
                 value={usagePercent}
-                label="Storage usage"
+                label={t({ en: "Storage usage", zh: "存储用量" })}
                 className="h-2 bg-slate-200 shadow-inner dark:bg-slate-800"
                 barClassName="bg-primary transition-[width]"
               />
             )}
             <p className="truncate text-[13px] font-medium text-[var(--shell-text)]">
-              <span className="text-[var(--shell-muted-text)]">Usage: </span>
+              <span className="text-[var(--shell-muted-text)]">{t({ en: "Usage:", zh: "用量：" })} </span>
               <span className="font-semibold">{usageUsedLabel}</span>
               {usageQuotaLabel && (
                 <>
-                  <span className="text-[var(--shell-muted-text)]"> of </span>
+                  <span className="text-[var(--shell-muted-text)]"> {t({ en: "of", zh: "/" })} </span>
                   <span className="font-semibold">{usageQuotaLabel}</span>
                 </>
               )}

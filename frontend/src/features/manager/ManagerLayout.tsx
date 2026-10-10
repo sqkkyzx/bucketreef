@@ -27,6 +27,7 @@ import {
   MANAGER_PAGE_CONTRACTS,
   workspacePageLink,
 } from "../../navigation/workspacePages";
+import { useI18n } from "../../i18n";
 
 type SessionCapabilities = {
   can_manage_iam?: boolean;
@@ -51,6 +52,7 @@ function ManagerShell() {
     managerPrivateAccessEnabled,
   } = useS3AccountContext();
   const { generalSettings } = useGeneralSettings();
+  const { t } = useI18n();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const selected = accounts.find((a) => a.id === selectedS3AccountId);
@@ -105,7 +107,7 @@ function ManagerShell() {
           ? "Metrics are unavailable for this endpoint capabilities."
           : undefined;
   const managerBrowserAvailable = managerBrowserEnabled === true;
-  const modeVisual = getContextAccessModeVisual(accessMode);
+  const modeVisual = getContextAccessModeVisual(accessMode, t);
   const identityLabel = iamIdentity
     ? accessMode === "connection"
       ? `S3 Identity: ${iamIdentity}`

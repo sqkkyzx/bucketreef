@@ -1,5 +1,5 @@
 /* Copyright (c) 2026 Laurent Barbe; Licensed under the Apache License, Version 2.0 */
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import {
   SettingsItem,
   SettingsSection,
@@ -18,6 +18,7 @@ import {
   type FieldErrors,
   type SettingsPath,
 } from "./settings/appSettingsDraft";
+import { useAdminControlText } from "./adminControlMessages";
 
 const migrationFields = [
   {
@@ -49,12 +50,12 @@ const paths = [
   ...migrationFields.map((field) => field.path),
 ] as const satisfies readonly SettingsPath[];
 
-function validate(values: AppSettingsValues): FieldErrors {
+function validate(values: AppSettingsValues, text = (message: string) => message): FieldErrors {
   const errors: FieldErrors = {};
   for (const field of migrationFields)
     errors[field.path] = validateInteger(
       values[field.path],
-      field.label,
+      text(field.label),
       1,
       field.max,
     );
@@ -64,26 +65,28 @@ function validate(values: AppSettingsValues): FieldErrors {
       Number(values[migrationFields[1].path])
   )
     errors[migrationFields[0].path] =
-      "Default parallelism must not exceed the maximum per migration.";
+      text("Default parallelism must not exceed the maximum per migration.");
   return errors;
 }
 
 export default function ManagerSettingsPage() {
-  const form = useAppSettingsDraft(paths, validate);
+  const { locale, t } = useAdminControlText();
+  const validateDraft = useCallback((values: AppSettingsValues) => validate(values, t), [t]);
+  const form = useAppSettingsDraft(paths, validateDraft);
   const [migrationOpen, setMigrationOpen] = useState(false);
   const [dialogDirty, setDialogDirty] = useState(false);
   return (
     <AdminSettingsFrame
-      title="Manager settings"
-      description="Configure measurements, administrative access and bucket tools."
+      title={t("Manager settings")}
+      description={t("Configure measurements, administrative access and bucket tools.")}
       page="manager-settings"
-      resetTitle="Reset Manager settings draft?"
+      resetTitle={t("Reset Manager settings draft?")}
       form={form}
       dialogDirty={dialogDirty}
       dialogs={
         migrationOpen && (
           <SettingsDraftDialog
-            title="Bucket migration controls"
+            title={t("Bucket migration controls")}
             initialValue={
               Object.fromEntries(
                 migrationFields.map((field) => [
@@ -92,7 +95,7 @@ export default function ManagerSettingsPage() {
                 ]),
               ) as AppSettingsValues
             }
-            validate={validate}
+            validate={validateDraft}
             onDirtyChange={setDialogDirty}
             onClose={() => setMigrationOpen(false)}
             onApply={(values) =>
@@ -105,9 +108,9 @@ export default function ManagerSettingsPage() {
               <>
                 {migrationFields.map((field) => (
                   <label key={field.path}>
-                    <span>{field.label}</span>
+                    <span>{t(field.label)}</span>
                     <SettingsField
-                      label={field.label}
+                      label={t(field.label)}
                       type="number"
                       min={1}
                       max={field.max}
@@ -131,86 +134,88 @@ export default function ManagerSettingsPage() {
     >
       <SettingsSection
         presentation="compact"
-        title="Usage and metrics"
-        description="Composition scans and RGW measurements remain independent."
+        title={t("Usage and metrics")}
+        description={t("Composition scans and RGW measurements remain independent.")}
       >
         <AppSettingsToggle
           form={form}
           field="general.bucket_usage_stats_enabled"
-          title="Bucket composition statistics"
-          description="Enables scan-calculated statistics in Manager and Portal."
+          title={t("Bucket composition statistics")}
+          description={t("Enables scan-calculated statistics in Manager and Portal.")}
         />
         <AppSettingsToggle
           form={form}
           field="manager.manager_rgw_usage_metrics_enabled"
-          title="RGW traffic and usage metrics"
-          description="Available when the selected context and endpoint meet the prerequisites."
+          title={t("RGW traffic and usage metrics")}
+          description={t("Available when the selected context and endpoint meet the prerequisites.")}
         />
       </SettingsSection>
       <SettingsSection
         presentation="compact"
-        title="Administration and access"
-        description="Enable tools without changing storage-side permissions."
+        title={t("Administration and access")}
+        description={t("Enable tools without changing storage-side permissions.")}
       >
         <AppSettingsToggle
           form={form}
           field="general.bucket_quota_management_enabled"
-          title="Bucket quota management"
-          description="Ceph account and RGW user contexts require buckets=write on the endpoint Admin Ops identity."
+          title={t("Bucket quota management")}
+          description={t("Ceph account and RGW user contexts require buckets=write on the endpoint Admin Ops identity.")}
         />
         <AppSettingsToggle
           form={form}
           field="general.manager_ceph_s3_user_keys_enabled"
-          title="Ceph S3 User access-key management"
-          description="RGW key management for eligible S3 User contexts."
+          title={t("Ceph S3 User access-key management")}
+          description={t("RGW key management for eligible S3 User contexts.")}
         />
         <AppSettingsToggle
           form={form}
           field="general.managed_private_connection_provisioning_enabled"
-          title="Provision managed private connections"
-          description="Provision credentials for eligible users without revealing generated secrets."
+          title={t("Provision managed private connections")}
+          description={t("Provision credentials for eligible users without revealing generated secrets.")}
           experimental
         />
       </SettingsSection>
       <SettingsSection
         presentation="compact"
-        title="Manager tools"
-        description="Optional administrative and operational tools available in Manager."
+        title={t("Manager tools")}
+        description={t("Optional administrative and operational tools available in Manager.")}
       >
         <AppSettingsToggle
           form={form}
           field="general.bucket_migration_enabled"
-          title="Bucket migration tool"
+          title={t("Bucket migration tool")}
           experimental
         />
         <SettingsItem
           compact
-          title="Bucket migration controls"
-          description={`Default: ${form.draft[migrationFields[0].path]} · Maximum: ${form.draft[migrationFields[1].path]} · Active per endpoint: ${form.draft[migrationFields[2].path]}`}
+          title={t("Bucket migration controls")}
+          description={locale === "zh"
+            ? `默认：${form.draft[migrationFields[0].path]} · 最大值：${form.draft[migrationFields[1].path]} · 每个端点活动数：${form.draft[migrationFields[2].path]}`
+            : `Default: ${form.draft[migrationFields[0].path]} · Maximum: ${form.draft[migrationFields[1].path]} · Active per endpoint: ${form.draft[migrationFields[2].path]}`}
           action={
             <SettingsButton
               variant="secondary"
               onClick={() => setMigrationOpen(true)}
             >
-              Configure migration
+              {t("Configure migration")}
             </SettingsButton>
           }
         />
         <AppSettingsToggle
           form={form}
           field="general.bucket_compare_enabled"
-          title="Bucket compare tool"
+          title={t("Bucket compare tool")}
         />
         <AppSettingsToggle
           form={form}
           field="general.bucket_integrity_check_enabled"
-          title="Bucket integrity check tool"
+          title={t("Bucket integrity check tool")}
         />
         <AppSettingsToggle
           form={form}
           field="general.bucket_purge_enabled"
-          title="Bucket purge tool"
-          description="Also controls purge actions in Ceph Admin and Storage Ops."
+          title={t("Bucket purge tool")}
+          description={t("Also controls purge actions in Ceph Admin and Storage Ops.")}
         />
       </SettingsSection>
     </AdminSettingsFrame>

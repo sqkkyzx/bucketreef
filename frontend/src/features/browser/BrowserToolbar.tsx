@@ -1,3 +1,4 @@
+import { useI18n } from "../../i18n";
 /*
  * Copyright (c) 2026 Laurent Barbe
  * Licensed under the Apache License, Version 2.0
@@ -149,6 +150,7 @@ export default function BrowserToolbar({
   onRunPathAction,
   onRunSelectionAction,
 }: BrowserToolbarProps) {
+  const { t } = useI18n();
   const uploadButtonRef = useRef<HTMLButtonElement | null>(null);
   const uploadMenuRef = useRef<HTMLDivElement | null>(null);
   const moreButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -257,7 +259,9 @@ export default function BrowserToolbar({
     <div className="flex flex-col gap-2.5">
       <div
         role="toolbar"
-        aria-label="Browser context bar"
+        aria-label={t({
+          en: "Browser context bar", zh: "对象浏览器上下文栏",
+        })}
         data-density={compactMode ? "compact" : "comfortable"}
         className={toolbarShellClasses}
       >
@@ -273,22 +277,34 @@ export default function BrowserToolbar({
               aria-pressed={deletedObjects.showDeleted}
               aria-label={
                 deletedObjects.showDeleted
-                  ? "Hide deleted files"
-                  : "Show deleted files"
+                  ? t({
+                    en: "Hide deleted files", zh: "隐藏已删除文件",
+                  })
+                  : t({
+                    en: "Show deleted files", zh: "显示已删除文件",
+                  })
               }
               onClick={() => onRunPathAction("toggleShowDeleted")}
               title={
                 deletedObjects.showDeleted
-                  ? "Hide deleted files"
-                  : "Show deleted files"
+                  ? t({
+                    en: "Hide deleted files", zh: "隐藏已删除文件",
+                  })
+                  : t({
+                    en: "Show deleted files", zh: "显示已删除文件",
+                  })
               }
             >
               <TrashIcon className="h-3.5 w-3.5" />
               {!compactMode && (
                 <span>
                   {deletedObjects.showDeleted
-                    ? "Hide deleted files"
-                    : "Show deleted files"}
+                    ? t({
+                      en: "Hide deleted files", zh: "隐藏已删除文件",
+                    })
+                    : t({
+                      en: "Show deleted files", zh: "显示已删除文件",
+                    })}
                 </span>
               )}
             </ListActionButton>
@@ -297,13 +313,19 @@ export default function BrowserToolbar({
             <ListActionButton iconOnly={compactMode} variant="secondary"
               type="button"
 
-              aria-label="Restore deleted files in this folder"
-              title="Restore deleted files in this folder"
+              aria-label={t({
+                en: "Restore deleted files in this folder", zh: "恢复此文件夹中已删除的文件",
+              })}
+              title={t({
+                en: "Restore deleted files in this folder", zh: "恢复此文件夹中已删除的文件",
+              })}
               onClick={() => onRunPathAction("restore")}
               disabled={!deletedObjects.restoreEnabled}
             >
               <HistoryIcon className="h-3.5 w-3.5" />
-              {!compactMode && <span>Restore deleted files in this folder</span>}
+              {!compactMode && <span>{t({
+                en: "Restore deleted files in this folder", zh: "恢复此文件夹中已删除的文件",
+              })}</span>}
             </ListActionButton>
           )}
           {contextActions.visible && (
@@ -326,11 +348,17 @@ export default function BrowserToolbar({
                     ? uploadMenuOpen
                     : undefined
                 }
-                aria-label="Upload"
-                title="Upload"
+                aria-label={t({
+                  en: "Upload", zh: "上传",
+                })}
+                title={t({
+                  en: "Upload", zh: "上传",
+                })}
               >
                 <UploadIcon className="h-3.5 w-3.5" />
-                {!compactMode && <span>Upload</span>}
+                {!compactMode && <span>{t({
+                  en: "Upload", zh: "上传",
+                })}</span>}
               </ListActionButton>
               <BrowserUploadQuickMenu
                 open={uploadMenuOpen}
@@ -345,21 +373,33 @@ export default function BrowserToolbar({
                 type="button"
                 onClick={() => onRunPathAction("newFolder")}
                 disabled={!contextActions.canCreateFolder}
-                aria-label="New folder"
-                title="New folder"
+                aria-label={t({
+                  en: "New folder", zh: "新建文件夹",
+                })}
+                title={t({
+                  en: "New folder", zh: "新建文件夹",
+                })}
               >
                 <FolderPlusIcon className="h-3.5 w-3.5" />
-                {!compactMode && <span>New folder</span>}
+                {!compactMode && <span>{t({
+                  en: "New folder", zh: "新建文件夹",
+                })}</span>}
               </ListActionButton>
               <ListActionButton iconOnly={compactMode} variant="secondary"
                 type="button"
                 onClick={() => onRunPathAction("refresh")}
                 disabled={!contextActions.canRefresh}
-                aria-label="Refresh"
-                title="Refresh"
+                aria-label={t({
+                  en: "Refresh", zh: "刷新",
+                })}
+                title={t({
+                  en: "Refresh", zh: "刷新",
+                })}
               >
                 <RefreshIcon className="h-3.5 w-3.5" />
-                {!compactMode && <span>Refresh</span>}
+                {!compactMode && <span>{t({
+                  en: "Refresh", zh: "刷新",
+                })}</span>}
               </ListActionButton>
               <ListActionButton iconOnly={compactMode} variant="secondary"
                 ref={moreButtonRef}
@@ -368,11 +408,17 @@ export default function BrowserToolbar({
                 disabled={!hasMoreMenu}
                 aria-haspopup={hasMoreMenu ? "menu" : undefined}
                 aria-expanded={hasMoreMenu ? moreMenuOpen : undefined}
-                aria-label="More"
-                title="More"
+                aria-label={t({
+                  en: "More", zh: "更多",
+                })}
+                title={t({
+                  en: "More", zh: "更多",
+                })}
               >
                 <MoreIcon className="h-3.5 w-3.5" />
-                {!compactMode && <span>More</span>}
+                {!compactMode && <span>{t({
+                  en: "More", zh: "更多",
+                })}</span>}
               </ListActionButton>
             </div>
           )}
@@ -389,41 +435,65 @@ export default function BrowserToolbar({
                 type="button"
                 onClick={() => onRunSelectionAction("open")}
                 disabled={!selectionActions.canOpen}
-                aria-label="Open"
-                title="Open"
+                aria-label={t({
+                  en: "Open", zh: "打开",
+                })}
+                title={t({
+                  en: "Open", zh: "打开",
+                })}
               >
                 <OpenIcon className="h-3.5 w-3.5" />
-                {!compactMode && <span>Open</span>}
+                {!compactMode && <span>{t({
+                  en: "Open", zh: "打开",
+                })}</span>}
               </ListActionButton>
               <ListActionButton iconOnly={compactMode} variant="secondary"
                 type="button"
                 onClick={() => onRunSelectionAction("copy")}
                 disabled={!selectionActions.canCopy}
-                aria-label="Copy"
-                title="Copy"
+                aria-label={t({
+                  en: "Copy", zh: "复制",
+                })}
+                title={t({
+                  en: "Copy", zh: "复制",
+                })}
               >
                 <CopyIcon className="h-3.5 w-3.5" />
-                {!compactMode && <span>Copy</span>}
+                {!compactMode && <span>{t({
+                  en: "Copy", zh: "复制",
+                })}</span>}
               </ListActionButton>
               <ListActionButton iconOnly={compactMode} variant="primary"
                 type="button"
                 onClick={() => onRunSelectionAction("download")}
                 disabled={!selectionActions.canDownload}
-                aria-label="Download"
-                title="Download"
+                aria-label={t({
+                  en: "Download", zh: "下载",
+                })}
+                title={t({
+                  en: "Download", zh: "下载",
+                })}
               >
                 <DownloadIcon className="h-3.5 w-3.5" />
-                {!compactMode && <span>Download</span>}
+                {!compactMode && <span>{t({
+                  en: "Download", zh: "下载",
+                })}</span>}
               </ListActionButton>
               <ListActionButton iconOnly={compactMode} variant="danger"
                 type="button"
                 onClick={() => onRunSelectionAction("delete")}
                 disabled={!selectionActions.canDelete}
-                aria-label="Delete"
-                title="Delete"
+                aria-label={t({
+                  en: "Delete", zh: "删除",
+                })}
+                title={t({
+                  en: "Delete", zh: "删除",
+                })}
               >
                 <TrashIcon className="h-3.5 w-3.5" />
-                {!compactMode && <span>Delete</span>}
+                {!compactMode && <span>{t({
+                  en: "Delete", zh: "删除",
+                })}</span>}
               </ListActionButton>
               <ListActionButton iconOnly={compactMode} variant="secondary"
                 ref={moreButtonRef}
@@ -432,11 +502,17 @@ export default function BrowserToolbar({
                 disabled={!hasMoreMenu}
                 aria-haspopup={hasMoreMenu ? "menu" : undefined}
                 aria-expanded={hasMoreMenu ? moreMenuOpen : undefined}
-                aria-label="More"
-                title="More"
+                aria-label={t({
+                  en: "More", zh: "更多",
+                })}
+                title={t({
+                  en: "More", zh: "更多",
+                })}
               >
                 <MoreIcon className="h-3.5 w-3.5" />
-                {!compactMode && <span>More</span>}
+                {!compactMode && <span>{t({
+                  en: "More", zh: "更多",
+                })}</span>}
               </ListActionButton>
             </div>
           )}
@@ -455,12 +531,16 @@ export default function BrowserToolbar({
           <div
             ref={moreMenuRef}
             role="menu"
-            aria-label="More"
+            aria-label={t({
+              en: "More", zh: "更多",
+            })}
             className="max-h-[min(76vh,36rem)] overflow-y-auto"
           >
             {hasPrioritizedSelectionActions && (
               <>
-                <p className={overflowSectionTitleClasses}>Selection</p>
+                <p className={overflowSectionTitleClasses}>{t({
+                  en: "Selection", zh: "已选项目",
+                })}</p>
                 {moreMenu.selectionActions.map((action) => (
                   <BrowserToolbarActionMenuItem
                     key={action.id}
@@ -475,7 +555,9 @@ export default function BrowserToolbar({
 
             {hasCurrentPathActions && !hasPrioritizedSelectionActions && (
               <>
-                <p className={overflowSectionTitleClasses}>Current path</p>
+                <p className={overflowSectionTitleClasses}>{t({
+                  en: "Current path", zh: "当前路径",
+                })}</p>
                 {currentPathMenuActions.map((action) => (
                   <BrowserToolbarActionMenuItem
                     key={action.id}
@@ -493,7 +575,9 @@ export default function BrowserToolbar({
                 {hasCurrentPathActions && (
                   <div className={contextMenuSeparatorClasses} />
                 )}
-                <p className={overflowSectionTitleClasses}>Technical tools</p>
+                <p className={overflowSectionTitleClasses}>{t({
+                  en: "Technical tools", zh: "技术工具",
+                })}</p>
                 {technicalPathMenuActions.map((action) => (
                   <BrowserToolbarActionMenuItem
                     key={action.id}
@@ -518,7 +602,9 @@ export default function BrowserToolbar({
 
             {!hasPrioritizedSelectionActions && moreMenu.view && (
               <>
-                <p className={overflowSectionTitleClasses}>Browser view</p>
+                <p className={overflowSectionTitleClasses}>{t({
+                  en: "Browser view", zh: "浏览器视图",
+                })}</p>
                 <button
                   type="button"
                   role="menuitemradio"
@@ -531,8 +617,9 @@ export default function BrowserToolbar({
                   }
                 >
                   <ListIcon className="h-3.5 w-3.5" />
-                  Comfortable
-                  {!moreMenu.view.compactMode && (
+                  {t({
+                    en: "Comfortable", zh: "宽松",
+                  })}{!moreMenu.view.compactMode && (
                     <span
                       aria-hidden="true"
                       className="ml-auto text-primary-600 dark:text-primary-300"
@@ -553,8 +640,9 @@ export default function BrowserToolbar({
                   }
                 >
                   <CompactIcon className="h-3.5 w-3.5" />
-                  Compact
-                  {moreMenu.view.compactMode && (
+                  {t({
+                    en: "Compact", zh: "紧凑",
+                  })}{moreMenu.view.compactMode && (
                     <span
                       aria-hidden="true"
                       className="ml-auto text-primary-600 dark:text-primary-300"
@@ -571,7 +659,9 @@ export default function BrowserToolbar({
                 {hasViewSection && (
                   <div className={contextMenuSeparatorClasses} />
                 )}
-                <p className={overflowSectionTitleClasses}>Status</p>
+                <p className={overflowSectionTitleClasses}>{t({
+                  en: "Status", zh: "状态",
+                })}</p>
                 {moreMenu.status.accessBadge && (
                   <div
                     className={overflowStatusRowClasses}
@@ -583,7 +673,7 @@ export default function BrowserToolbar({
                     <div className="min-w-0 flex-1">
                       <div className="flex items-start justify-between gap-2">
                         <p className="font-semibold text-slate-700 dark:text-slate-100">
-                          Transfers
+                          {t({ en: "Transfers", zh: "传输" })}
                         </p>
                         <ListBadge
                           tone={moreMenu.status.accessBadge.tone}
@@ -603,7 +693,9 @@ export default function BrowserToolbar({
                   <button
                     type="button"
                     role="menuitem"
-                    aria-label="Operations overview"
+                    aria-label={t({
+                      en: "Operations overview", zh: "操作概览",
+                    })}
                     className={contextMenuItemClasses}
                     onClick={() =>
                       runMoreAction(moreMenu.status.onOpenOperations)
@@ -611,14 +703,14 @@ export default function BrowserToolbar({
                   >
                     <ListIcon className="h-3.5 w-3.5" />
                     <span className="min-w-0 flex-1">
-                      <span className="block">Operations overview</span>
+                      <span className="block">{t({
+                        en: "Operations overview", zh: "操作概览",
+                      })}</span>
                       <span
                         aria-hidden="true"
                         className="block text-[11px] font-medium leading-tight text-slate-400 dark:text-slate-500"
                       >
-                        {moreMenu.status.operationsCount === 1
-                          ? "1 operation"
-                          : `${moreMenu.status.operationsCount} operations`}
+                        {t({ en: moreMenu.status.operationsCount === 1 ? "1 operation" : `${moreMenu.status.operationsCount} operations`, zh: `${moreMenu.status.operationsCount} 项操作` })}
                       </span>
                     </span>
                   </button>
@@ -631,10 +723,14 @@ export default function BrowserToolbar({
                 {(hasViewSection || hasStatusSection) && (
                   <div className={contextMenuSeparatorClasses} />
                 )}
-                <p className={overflowSectionTitleClasses}>Panels</p>
+                <p className={overflowSectionTitleClasses}>{t({
+                  en: "Panels", zh: "面板",
+                })}</p>
                 {moreMenu.layout.folders && (
                   <BrowserToolbarToggleMenuItem
-                    label="Folders panel"
+                    label={t({
+                      en: "Folders panel", zh: "文件夹面板",
+                    })}
                     icon={<FolderIcon className="h-3.5 w-3.5" />}
                     {...moreMenu.layout.folders}
                   />
@@ -647,7 +743,9 @@ export default function BrowserToolbar({
                 {(hasViewSection || hasStatusSection || hasLayoutSection) && (
                   <div className={contextMenuSeparatorClasses} />
                 )}
-                <p className={overflowSectionTitleClasses}>Columns</p>
+                <p className={overflowSectionTitleClasses}>{t({
+                  en: "Columns", zh: "列",
+                })}</p>
                 <button
                   ref={columnsButtonRef}
                   type="button"
@@ -659,7 +757,9 @@ export default function BrowserToolbar({
                 >
                   <SlidersIcon className="h-3.5 w-3.5" />
                   <span className="min-w-0 flex-1">
-                    <span className="block">Columns</span>
+                    <span className="block">{t({
+                      en: "Columns", zh: "列",
+                    })}</span>
                     <span className="block text-[11px] font-medium leading-tight text-slate-400 dark:text-slate-500">
                       {moreMenu.columns.summary}
                     </span>
@@ -692,7 +792,9 @@ export default function BrowserToolbar({
                 )}
                 {hasSelectionActions && !hasPrioritizedSelectionActions && (
                   <>
-                    <p className={overflowSectionTitleClasses}>Selection</p>
+                    <p className={overflowSectionTitleClasses}>{t({
+                      en: "Selection", zh: "已选项目",
+                    })}</p>
                     {moreMenu.selectionActions.map((action) => (
                       <BrowserToolbarActionMenuItem
                         key={action.id}
@@ -709,7 +811,9 @@ export default function BrowserToolbar({
                     {hasSelectionActions && !hasPrioritizedSelectionActions && (
                       <div className={contextMenuSeparatorClasses} />
                     )}
-                    <p className={overflowSectionTitleClasses}>Security</p>
+                    <p className={overflowSectionTitleClasses}>{t({
+                      en: "Security", zh: "安全",
+                    })}</p>
                     <button
                       type="button"
                       role="menuitem"
@@ -722,8 +826,12 @@ export default function BrowserToolbar({
                       disabled={!sse.enabled}
                       title={
                         sse.active
-                          ? "SSE-C enabled for this bucket."
-                          : "Configure SSE-C key for this bucket."
+                          ? t({
+                            en: "SSE-C enabled for this bucket.", zh: "此存储桶已启用 SSE-C。",
+                          })
+                          : t({
+                            en: "Configure SSE-C key for this bucket.", zh: "配置此存储桶的 SSE-C 密钥。",
+                          })
                       }
                     >
                       <SettingsIcon className="h-3.5 w-3.5" />
@@ -731,8 +839,12 @@ export default function BrowserToolbar({
                         <span className="block">SSE-C</span>
                         <span className="block text-[11px] font-medium leading-tight text-slate-400 dark:text-slate-500">
                           {sse.active
-                            ? "Enabled for this bucket"
-                            : "Configure customer key"}
+                            ? t({
+                              en: "Enabled for this bucket", zh: "已为此存储桶启用",
+                            })
+                            : t({
+                              en: "Configure customer key", zh: "配置客户提供的密钥",
+                            })}
                         </span>
                       </span>
                       <span
@@ -742,7 +854,11 @@ export default function BrowserToolbar({
                             : "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-300"
                         }`}
                       >
-                        {sse.active ? "On" : "Off"}
+                        {sse.active ? t({
+                          en: "On", zh: "开",
+                        }) : t({
+                          en: "Off", zh: "关",
+                        })}
                       </span>
                     </button>
                   </>

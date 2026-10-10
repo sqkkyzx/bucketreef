@@ -5,6 +5,7 @@ import BrowserFavoritesControl from "./BrowserFavoritesControl";
  * Copyright (c) 2025 Laurent Barbe
  * Licensed under the Apache License, Version 2.0
  */
+import { useI18n } from "../../i18n";
 import {
   useCallback,
   useEffect,
@@ -168,6 +169,7 @@ import {
 } from "./browserPanelLayout";
 import {
   COLUMN_DEFINITIONS,
+  localizedBrowserColumns,
   COMFORTABLE_ROW_ACTION_TARGET_SIZE_PX,
   COMPACT_ROW_ACTION_TARGET_SIZE_PX,
   DEFAULT_VISIBLE_COLUMN_IDS,
@@ -224,6 +226,7 @@ export default function BrowserPage({
   refreshToken,
   transferReporter,
 }: BrowserPageProps = {}) {
+  const { t, locale } = useI18n();
   const browserContext = useBrowserContext();
   const { setSidebarBody } = useBrowserSidebarSlot();
   const selectedContext = browserContext.selectedContext;
@@ -532,15 +535,17 @@ export default function BrowserPage({
   const requestDiscardDrawerChanges = useCallback(
     (onConfirm: () => void) => {
       openConfirmDialog({
-        title: "Discard changes?",
-        message:
-          "You have unapplied changes in the open details drawer. Continuing will discard them.",
-        confirmLabel: "Discard changes",
+        title: t({ en: "Discard changes?", zh: "放弃更改？" }),
+        message: t({
+          en: "You have unapplied changes in the open details drawer. Continuing will discard them.",
+          zh: "打开的详情抽屉中有尚未应用的更改。继续操作将放弃这些更改。",
+        }),
+        confirmLabel: t({ en: "Discard changes", zh: "放弃更改" }),
         tone: "danger",
         onConfirm,
       });
     },
-    [openConfirmDialog],
+    [openConfirmDialog, t],
   );
   const {
     bucketName: configBucketName,
@@ -767,7 +772,12 @@ export default function BrowserPage({
   const corsEnabled =
     corsAvailability === "unknown" ? null : corsAvailability === "enabled";
   const corsInformation =
-    corsEnabled === false ? CORS_DIRECT_TRANSFER_WARNING : null;
+    corsEnabled === false
+      ? t({
+          en: CORS_DIRECT_TRANSFER_WARNING,
+          zh: "此存储桶不允许直接下载或上传。",
+        })
+      : null;
   const useProxyTransfers = Boolean(
     bucketName &&
       hasS3AccountContext &&
@@ -804,6 +814,7 @@ export default function BrowserPage({
   const warnings = useMemo(
     () =>
       buildBrowserTransferWarnings({
+        locale,
         warningMessage,
         corsFixError,
         stsCredentialsError,
@@ -813,6 +824,7 @@ export default function BrowserPage({
     [
       corsFixError,
       corsEnabled,
+      locale,
       proxyAllowed,
       stsCredentialsError,
       warningMessage,
@@ -824,12 +836,13 @@ export default function BrowserPage({
     return formatted === "-" ? "" : formatted;
   }, [stsCredentials?.expiration]);
   const directCredentialStsTooltip = useMemo(
-    () => resolveDirectCredentialStsTooltip(directCredentialContextKind),
-    [directCredentialContextKind],
+    () => resolveDirectCredentialStsTooltip(directCredentialContextKind, locale),
+    [directCredentialContextKind, locale],
   );
   const accessBadge = useMemo(
     () =>
       resolveBrowserTransferAccessBadge({
+        locale,
         hasContext: hasS3AccountContext,
         corsEnabled,
         proxyAllowed,
@@ -840,6 +853,7 @@ export default function BrowserPage({
         directCredentialStsTooltip,
       }),
     [
+      locale,
       corsEnabled,
       hasS3AccountContext,
       directCredentialStsTooltip,
@@ -877,8 +891,11 @@ export default function BrowserPage({
     const primaryOps = newOps.filter((op) => op.kind !== "upload");
     if (primaryOps.length === 0) return;
     const latest = primaryOps[0];
-    setStatusMessage(`Queued: ${latest.label}.`);
-  }, [operations, setStatusMessage]);
+    setStatusMessage(t({
+      en: `Queued: ${latest.label}.`,
+      zh: `已排队：${latest.label}。`,
+    }));
+  }, [operations, setStatusMessage, t]);
 
   useEffect(() => {
     if (isVersioningEnabled) return;
@@ -927,7 +944,7 @@ export default function BrowserPage({
           className="mx-auto max-w-xl rounded-md border border-rose-200/70 bg-rose-50/70 px-2 py-1.5 text-left dark:border-rose-500/30 dark:bg-rose-900/20"
         >
           <summary className="list-none cursor-pointer ui-caption font-semibold text-rose-700 dark:text-rose-100 [&::-webkit-details-marker]:hidden">
-            Show technical details
+            {t({ en: "Show technical details", zh: "显示技术详情" })}
           </summary>
           {showObjectsIssueTechnicalDetails && (
             <p className="mt-2 break-words ui-caption text-rose-700 dark:text-rose-100">
@@ -941,6 +958,7 @@ export default function BrowserPage({
     objectsIssue,
     setShowObjectsIssueTechnicalDetails,
     showObjectsIssueTechnicalDetails,
+    t,
   ]);
 
   const displayPrefixForItems = useMemo(() => {
@@ -1012,12 +1030,13 @@ export default function BrowserPage({
     clearActiveItem();
   }, [accountSwitchInFlight, clearActiveItem]);
 
+  const localizedColumns = useMemo(() => localizedBrowserColumns(locale), [locale]);
   const visibleColumnDefinitions = useMemo(
     () =>
-      COLUMN_DEFINITIONS.filter((definition) =>
+      localizedColumns.filter((definition) =>
         visibleColumnSet.has(definition.id),
       ),
-    [visibleColumnSet],
+    [visibleColumnSet, localizedColumns],
   );
   const nameColumnWidthPx = useMemo(
     () => resolveColumnWidthPx("name", columnWidths),
@@ -1090,13 +1109,28 @@ export default function BrowserPage({
     [bucketMenuItems],
   );
   const bucketButtonLabel = useMemo(() => {
+    const selectorWorkspaceLabelZh =
+      selectorWorkspaceNoun === "storage space" ? "存储空间" : "存储桶";
     if (resolvedLockedBucketName) {
       return lockedBucketLabel?.trim() || resolvedLockedBucketName;
     }
     if (bucketName) return bucketDisplayNameByName.get(bucketName) ?? bucketName;
-    if (loadingBuckets) return `Loading ${selectorWorkspaceNounPlural}...`;
-    if (bucketTotalCount === 0) return `No ${selectorWorkspaceNounPlural}`;
-    return `Select ${selectorWorkspaceNoun}`;
+    if (loadingBuckets) {
+      return t({
+        en: `Loading ${selectorWorkspaceNounPlural}...`,
+        zh: `正在加载${selectorWorkspaceLabelZh}…`,
+      });
+    }
+    if (bucketTotalCount === 0) {
+      return t({
+        en: `No ${selectorWorkspaceNounPlural}`,
+        zh: `没有${selectorWorkspaceLabelZh}`,
+      });
+    }
+    return t({
+      en: `Select ${selectorWorkspaceNoun}`,
+      zh: `选择${selectorWorkspaceLabelZh}`,
+    });
   }, [
     bucketDisplayNameByName,
     bucketName,
@@ -1106,12 +1140,19 @@ export default function BrowserPage({
     resolvedLockedBucketName,
     selectorWorkspaceNoun,
     selectorWorkspaceNounPlural,
+    t,
   ]);
   const bucketSelectorNeedsAttention =
     hasS3AccountContext && !bucketName && bucketTotalCount > 0;
   const bucketButtonActionLabel = resolvedLockedBucketName
-    ? `Selected ${selectorWorkspaceNoun}`
-    : `Select ${selectorWorkspaceNoun}`;
+    ? t({
+        en: `Selected ${selectorWorkspaceNoun}`,
+        zh: `已选择${selectorWorkspaceNoun === "storage space" ? "存储空间" : "存储桶"}`,
+      })
+    : t({
+        en: `Select ${selectorWorkspaceNoun}`,
+        zh: `选择${selectorWorkspaceNoun === "storage space" ? "存储空间" : "存储桶"}`,
+      });
   const useBucketsPanel = showWorkspaceSidebar;
   const { currentBucket: currentBucketPanelItem } = useMemo(
     () => splitBucketPanelBuckets(bucketName, bucketMenuItems),
@@ -1164,20 +1205,20 @@ export default function BrowserPage({
   const workspaceAccountAction = useMemo(() => {
     if (workspaceAccountActionTarget === "manager") {
       return {
-        label: "Open in Manager",
-        title: "Open this account in Manager",
+        label: t({ en: "Open in Manager", zh: "在管理器中打开" }),
+        title: t({ en: "Open this account in Manager", zh: "在管理器中打开此账户" }),
         onClick: handleOpenWorkspaceAccount,
       };
     }
     if (workspaceAccountActionTarget === "portal") {
       return {
-        label: "Open in Portal",
-        title: "Open this account in Portal",
+        label: t({ en: "Open in Portal", zh: "在门户中打开" }),
+        title: t({ en: "Open this account in Portal", zh: "在门户中打开此账户" }),
         onClick: handleOpenWorkspaceAccount,
       };
     }
     return undefined;
-  }, [handleOpenWorkspaceAccount, workspaceAccountActionTarget]);
+  }, [handleOpenWorkspaceAccount, t, workspaceAccountActionTarget]);
 
   useLayoutEffect(() => {
     if (!useBucketsPanel) {
@@ -1310,10 +1351,11 @@ export default function BrowserPage({
   }, [availableStorageClasses]);
 
   const handleVersionsHardLimit = useCallback(() => {
-    setWarningMessage(
-      `Versions listing is limited to ${VERSIONS_LIST_HARD_LIMIT.toLocaleString()} entries. Narrow your path to continue.`,
-    );
-  }, [setWarningMessage]);
+    setWarningMessage(t({
+      en: `Versions listing is limited to ${VERSIONS_LIST_HARD_LIMIT.toLocaleString()} entries. Narrow your path to continue.`,
+      zh: `版本列表最多显示 ${VERSIONS_LIST_HARD_LIMIT.toLocaleString()} 项。请缩小路径范围后继续。`,
+    }));
+  }, [setWarningMessage, t]);
   const {
     canLoadMore: canLoadMorePrefixVersions,
     close: closePrefixVersions,
@@ -1409,10 +1451,13 @@ export default function BrowserPage({
     updateOperation,
   });
 
-  const copyUrlDisabledReason = "Copy URL is disabled in SSE-C mode.";
+  const copyUrlDisabledReason = t({
+    en: "Copy URL is disabled in SSE-C mode.", zh: "SSE-C 模式下无法复制 URL。",
+  });
   const pathActionStates = useMemo(
     () =>
       resolveBrowserActions({
+        locale,
         scope: "path",
         bucketName,
         hasS3AccountContext,
@@ -1431,6 +1476,7 @@ export default function BrowserPage({
         bucketConfigurationReadOnly: workspaceSurface === "browser",
       }),
     [
+      locale,
       bucketName,
       canPasteInFunctionalProfile,
       clipboard?.mode,
@@ -1450,6 +1496,7 @@ export default function BrowserPage({
   const selectionActionStates = useMemo(
     () =>
       resolveBrowserActions({
+        locale,
         scope: "selection",
         items: selectionItems,
         bucketName,
@@ -1463,6 +1510,7 @@ export default function BrowserPage({
         capabilityFacts: resolvedCapabilityFacts,
       }),
     [
+      locale,
       bucketName,
       canPasteInFunctionalProfile,
       clipboard?.mode,
@@ -1478,6 +1526,7 @@ export default function BrowserPage({
   const resolveItemActionStates = useCallback(
     (item: BrowserItem) =>
       resolveBrowserActions({
+        locale,
         scope: "item",
         items: [item],
         bucketName,
@@ -1499,6 +1548,7 @@ export default function BrowserPage({
         previewAvailable: isBrowserItemPreviewAvailable(item),
       }),
     [
+      locale,
       bucketName,
       canOpenExternalObjectDetails,
       canPasteInFunctionalProfile,
@@ -2072,8 +2122,8 @@ export default function BrowserPage({
     name: string;
     prefix: string;
   }) => {
-    addActivity("Created", `${bucketName}/${createdFolderPrefix}`);
-    setStatusMessage(`Folder ${name} created`);
+    addActivity(t({ en: "Created", zh: "已创建" }), `${bucketName}/${createdFolderPrefix}`);
+    setStatusMessage(t({ en: `Folder ${name} created`, zh: `文件夹 ${name} 已创建` }));
     await loadObjects({ prefixOverride: prefix });
     loadTreeChildren(prefix);
   };
@@ -2338,7 +2388,10 @@ export default function BrowserPage({
   const handleDownloadTarget = (item: BrowserItem) => {
     if (item.isDeleted) {
       setWarningMessage(
-        "This item is deleted. Open it or use versions to restore content before downloading.",
+        t({
+          en: "This item is deleted. Open it or use versions to restore content before downloading.",
+          zh: "此项目已删除。请先打开项目或使用版本恢复内容，然后再下载。",
+        }),
       );
       if (item.type === "file" && isVersioningEnabled) {
         openObjectDetails(item, "versions");
@@ -2423,7 +2476,7 @@ export default function BrowserPage({
         const pathItem: BrowserItem = {
           id: `path:${bucketName}:${normalizedPrefix}`,
           key: normalizedPrefix,
-          name: breadcrumbs.at(-1)?.label ?? "Bucket root",
+          name: breadcrumbs.at(-1)?.label ?? t({ en: "Bucket root", zh: "存储桶根目录" }),
           type: "folder",
           size: "-",
           modified: "-",
@@ -2443,7 +2496,7 @@ export default function BrowserPage({
         }),
       toggleShowFolders: toggleFolderItems,
       toggleShowDeleted: toggleDeletedObjects,
-    });
+    }, locale);
   };
 
   const runSelectionAction = (actionId: BrowserActionId) => {
@@ -2454,8 +2507,9 @@ export default function BrowserPage({
       },
       download: () => {
         if (
-          selectionActionStates.download.label === "Download folder" &&
-          selectionPrimary
+          selectionItems.length === 1 &&
+          selectionPrimary?.type === "folder" &&
+          !selectionPrimary.isDeleted
         ) {
           handleDownloadFolder(selectionPrimary);
           return;
@@ -2478,7 +2532,7 @@ export default function BrowserPage({
       },
       restoreToDate: () => openBulkRestoreModal(selectionItems),
       delete: () => handleDeleteItems(selectionItems),
-    });
+    }, locale);
   };
 
   const runItemAction = (item: BrowserItem, actionId: BrowserActionId) => {
@@ -2500,7 +2554,7 @@ export default function BrowserPage({
       restoreToDate: () => openBulkRestoreModal([item]),
       advanced: () => openAdvancedForItem(item),
       delete: () => handleDeleteItems([item]),
-    });
+    }, locale);
     if (!result.executed) {
       setWarningMessage(result.reason);
     }
@@ -2511,11 +2565,23 @@ export default function BrowserPage({
     hasPendingOperations || hasUnsavedDrawerChanges || archiveInventoryActive;
   const leaveMessage = hasUnsavedDrawerChanges
     ? hasPendingOperations
-      ? "Operations are in progress and the details drawer contains unapplied changes. Leaving now may interrupt operations and discard changes. Continue?"
-      : "The details drawer contains unapplied changes. Leaving now will discard them. Continue?"
+      ? t({
+          en: "Operations are in progress and the details drawer contains unapplied changes. Leaving now may interrupt operations and discard changes. Continue?",
+          zh: "操作正在进行，详情抽屉中还有尚未应用的更改。现在离开可能会中断操作并放弃更改。继续吗？",
+        })
+      : t({
+          en: "The details drawer contains unapplied changes. Leaving now will discard them. Continue?",
+          zh: "详情抽屉中还有尚未应用的更改。现在离开将放弃更改。继续吗？",
+        })
     : hasPendingOperations
-      ? "Operations are in progress (upload, download, copy, delete). Leaving now may interrupt them. Continue?"
-      : "Archive inventory is in progress. Leaving now will cancel it. Continue?";
+      ? t({
+          en: "Operations are in progress (upload, download, copy, delete). Leaving now may interrupt them. Continue?",
+          zh: "操作正在进行（上传、下载、复制、删除）。现在离开可能会中断操作。继续吗？",
+        })
+      : t({
+          en: "Archive inventory is in progress. Leaving now will cancel it. Continue?",
+          zh: "归档清单正在生成。现在离开将取消该操作。继续吗？",
+        });
   unstable_usePrompt({
     when: shouldConfirmLeave,
     message: leaveMessage,
@@ -2538,7 +2604,10 @@ export default function BrowserPage({
   const browserNoticeShellClasses = "shrink-0 pb-2";
   const browserContentShellClasses =
     "relative z-0 flex min-h-0 flex-1 flex-col overflow-hidden pb-3";
-  const toolbarSelectionSummary = `${selectedCount} selected`;
+  const toolbarSelectionSummary = t({
+    en: `${selectedCount} selected`,
+    zh: `已选择 ${selectedCount} 项`,
+  });
   const toolbarCanUploadFiles = pathActionStates.uploadFiles.enabled;
   const toolbarCanUploadFolder = pathActionStates.uploadFolder.enabled;
   const toolbarCanCreateFolder = pathActionStates.newFolder.enabled;
@@ -2568,7 +2637,9 @@ export default function BrowserPage({
   const hasToolbarStatusSection = Boolean(accessBadge) || hasToolbarOperationsAction;
   const hasToolbarColumnsSection =
     resolvedFunctionalProfile === "advanced";
-  const toolbarColumnsSummary = `${effectiveVisibleColumns.length}/${COLUMN_DEFINITIONS.length} visible`;
+  const toolbarColumnsSummary = t({
+    en: `${effectiveVisibleColumns.length}/${COLUMN_DEFINITIONS.length} visible`, zh: `显示 ${effectiveVisibleColumns.length}/${COLUMN_DEFINITIONS.length} 列`,
+  });
   const handleToolbarDownload = () => {
     runSelectionAction("download");
   };
@@ -2615,9 +2686,9 @@ export default function BrowserPage({
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col gap-3 overflow-hidden">
       {isEmbeddedBrowserPath ? (
-        <h2 className="sr-only">{isPortalBrowserSurface ? "Portal browser" : "Browser"}</h2>
+        <h2 className="sr-only">{isPortalBrowserSurface ? t({ en: "Portal browser", zh: "门户浏览器" }) : t({ en: "Browser", zh: "浏览器" })}</h2>
       ) : (
-        <h1 className="sr-only">{isPortalBrowserSurface ? "Portal browser" : "Browser"}</h1>
+        <h1 className="sr-only">{isPortalBrowserSurface ? t({ en: "Portal browser", zh: "门户浏览器" }) : t({ en: "Browser", zh: "浏览器" })}</h1>
       )}
       <div className="flex min-h-0 flex-1 gap-3 overflow-hidden">
         <div className={browserShellClasses}>
@@ -2747,7 +2818,7 @@ export default function BrowserPage({
               columns: hasToolbarColumnsSection
                 ? {
                     summary: toolbarColumnsSummary,
-                    columns: COLUMN_DEFINITIONS,
+                    columns: localizedColumns,
                     visibleColumnIds: visibleColumnSet,
                     onToggleColumn: handleToggleVisibleColumn,
                     onReset: handleResetVisibleColumns,
@@ -2804,8 +2875,8 @@ export default function BrowserPage({
                         type="button"
                         className="inline-flex h-4 w-4 items-center justify-center rounded-full text-sky-700 transition hover:text-sky-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-700 dark:text-sky-200 dark:hover:text-sky-100 dark:focus-visible:outline-sky-200"
                         onClick={toggleCorsActionPopover}
-                        aria-label="CORS actions"
-                        title="CORS actions"
+                        aria-label={t({ en: "CORS actions", zh: "CORS 操作" })}
+                        title={t({ en: "CORS actions", zh: "CORS 操作" })}
                         aria-haspopup="dialog"
                         aria-expanded={showCorsActionPopover}
                       >
@@ -2821,7 +2892,10 @@ export default function BrowserPage({
                       >
                         <div ref={corsActionPopoverRef}>
                           <p className="ui-caption text-slate-600 dark:text-slate-300">
-                            {`Allow direct access from ${uiOrigin} by adding CORS rules to this bucket.`}
+                            {t({
+                              en: `Allow direct access from ${uiOrigin} by adding CORS rules to this bucket.`,
+                              zh: `请为此存储桶添加 CORS 规则，以允许从 ${uiOrigin} 直接访问。`,
+                            })}
                           </p>
                           <ListActionButton
                             type="button"
@@ -2829,12 +2903,21 @@ export default function BrowserPage({
                             className="mt-2"
                             onClick={handleEnsureCors}
                             disabled={corsFixing}
-                            title={`Add ${uiOrigin} to bucket CORS rules.`}
-                            aria-label={`Add ${uiOrigin} to CORS`}
+                            title={t({
+                              en: `Add ${uiOrigin} to bucket CORS rules.`,
+                              zh: `将 ${uiOrigin} 添加到存储桶 CORS 规则。`,
+                            })}
+                            aria-label={t({
+                              en: `Add ${uiOrigin} to CORS`,
+                              zh: `将 ${uiOrigin} 添加到 CORS`,
+                            })}
                           >
                             {corsFixing
-                              ? "Adding..."
-                              : `Add ${uiOrigin} to CORS`}
+                              ? t({ en: "Adding...", zh: "正在添加…" })
+                              : t({
+                                  en: `Add ${uiOrigin} to CORS`,
+                                  zh: `将 ${uiOrigin} 添加到 CORS`,
+                                })}
                           </ListActionButton>
                         </div>
                       </AnchoredPortalMenu>
@@ -2966,11 +3049,11 @@ export default function BrowserPage({
               <div
                 role="separator"
                 aria-orientation="vertical"
-                aria-label="Resize folders panel"
+                aria-label={t({ en: "Resize folders panel", zh: "调整文件夹面板大小" })}
                 aria-valuemin={MIN_FOLDERS_PANEL_WIDTH_PX}
                 aria-valuemax={MAX_FOLDERS_PANEL_WIDTH_PX}
                 aria-valuenow={resolvedFoldersWidth}
-                title="Resize folders panel"
+                title={t({ en: "Resize folders panel", zh: "调整文件夹面板大小" })}
                 tabIndex={0}
                 className="absolute inset-y-0 z-20 -translate-x-1/2 cursor-col-resize touch-none select-none"
                 style={{
@@ -3066,7 +3149,7 @@ export default function BrowserPage({
         canConfigureColumns={canConfigureRootBrowserColumns}
         compactMode={compactMode}
         onSetCompactMode={setCompactMode}
-        columnOptions={COLUMN_DEFINITIONS.map((column) => ({
+        columnOptions={localizedColumns.map((column) => ({
           id: column.id,
           label: column.label,
         }))}
@@ -3280,37 +3363,46 @@ export default function BrowserPage({
         <ConfirmActionDialog
           title={
             archivePreparation.phase === "inventorying"
-              ? "Preparing ZIP archive"
-              : "Save large ZIP archive"
+              ? t({ en: "Preparing ZIP archive", zh: "正在准备 ZIP 压缩包" })
+              : t({ en: "Save large ZIP archive", zh: "保存大型 ZIP 压缩包" })
           }
           description={
             archivePreparation.phase === "inventorying"
               ? archivePreparation.totalFolders > 0
-                ? `Checking folders and archive paths (${archivePreparation.completedFolders}/${archivePreparation.totalFolders}). No object content is downloaded during this step.`
-                : "Checking files and archive paths. No object content is downloaded during this step."
-              : "The inventory is complete. Choose the destination file to start downloading object content."
+                ? t({
+                    en: `Checking folders and archive paths (${archivePreparation.completedFolders}/${archivePreparation.totalFolders}). No object content is downloaded during this step.`,
+                    zh: `正在检查文件夹和归档路径（${archivePreparation.completedFolders}/${archivePreparation.totalFolders}）。此步骤不会下载对象内容。`,
+                  })
+                : t({
+                    en: "Checking files and archive paths. No object content is downloaded during this step.",
+                    zh: "正在检查文件和归档路径。此步骤不会下载对象内容。",
+                  })
+              : t({
+                  en: "The inventory is complete. Choose the destination file to start downloading object content.",
+                  zh: "清单已完成。请选择目标文件以开始下载对象内容。",
+                })
           }
           details={
             archivePreparation.phase === "ready"
               ? [
-                  { label: "Files", value: archivePreparation.fileCount },
-                  { label: "Volume", value: formatBytes(archivePreparation.totalBytes) },
+                  { label: t({ en: "Files", zh: "文件数" }), value: archivePreparation.fileCount },
+                  { label: t({ en: "Volume", zh: "大小" }), value: formatBytes(archivePreparation.totalBytes) },
                   {
-                    label: "Excluded",
+                    label: t({ en: "Excluded", zh: "已排除" }),
                     value: archivePreparation.excludedCount,
                   },
                 ]
               : []
           }
-          confirmLabel="Choose file and download"
+          confirmLabel={t({ en: "Choose file and download", zh: "选择文件并下载" })}
           confirmDisabled={
             archivePreparation.phase === "inventorying" ||
             !archivePreparation.canDownload
           }
           cancelLabel={
             archivePreparation.phase === "inventorying"
-              ? "Cancel preparation"
-              : "Close"
+              ? t({ en: "Cancel preparation", zh: "取消准备" })
+              : t({ en: "Close", zh: "关闭" })
           }
           tone="primary"
           error={

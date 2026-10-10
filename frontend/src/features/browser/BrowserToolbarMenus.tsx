@@ -1,3 +1,4 @@
+import { useI18n } from "../../i18n";
 import type { RefObject } from "react";
 
 import AnchoredPortalMenu from "../../components/ui/AnchoredPortalMenu";
@@ -34,6 +35,7 @@ export function BrowserUploadQuickMenu({
   onUploadFiles,
   onUploadFolder,
 }: BrowserUploadQuickMenuProps) {
+  const { t } = useI18n();
   return (
     <AnchoredPortalMenu
       open={open}
@@ -46,7 +48,9 @@ export function BrowserUploadQuickMenu({
       <div
         ref={menuRef}
         role="menu"
-        aria-label="Upload"
+        aria-label={t({
+          en: "Upload", zh: "上传",
+        })}
         className="max-h-[min(70vh,20rem)] overflow-y-auto"
       >
         <button
@@ -57,8 +61,9 @@ export function BrowserUploadQuickMenu({
           disabled={!canUploadFiles}
         >
           <UploadIcon className="h-3.5 w-3.5" />
-          Upload files
-        </button>
+          {t({
+            en: "Upload files", zh: "上传文件",
+          })}</button>
         <button
           type="button"
           role="menuitem"
@@ -67,8 +72,9 @@ export function BrowserUploadQuickMenu({
           disabled={!canUploadFolder}
         >
           <FolderIcon className="h-3.5 w-3.5" />
-          Upload folder
-        </button>
+          {t({
+            en: "Upload folder", zh: "上传文件夹",
+          })}</button>
       </div>
     </AnchoredPortalMenu>
   );
@@ -93,6 +99,7 @@ export function BrowserColumnsMenu({
   onToggleColumn,
   onReset,
 }: BrowserColumnsMenuProps) {
+  const { t } = useI18n();
   return (
     <AnchoredPortalMenu
       open={open}
@@ -105,16 +112,20 @@ export function BrowserColumnsMenu({
       <div
         ref={menuRef}
         role="menu"
-        aria-label="Columns"
+        aria-label={t({
+          en: "Columns", zh: "列",
+        })}
         className="max-h-[min(70vh,24rem)] overflow-y-auto"
       >
         <div className="px-3 pb-2 pt-2">
           <p className="ui-caption font-semibold text-slate-700 dark:text-slate-100">
-            Object columns
-          </p>
+            {t({
+              en: "Object columns", zh: "对象列",
+            })}</p>
           <p className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">
-            Only base listing columns can be sorted.
-          </p>
+            {t({
+              en: "Only base listing columns can be sorted.", zh: "仅基础列表列支持排序。",
+            })}</p>
         </div>
         <div className={contextMenuSeparatorClasses} />
         {columns.map((column) => {
@@ -146,8 +157,9 @@ export function BrowserColumnsMenu({
           onClick={onReset}
         >
           <SlidersIcon className="h-3.5 w-3.5" />
-          Reset columns
-        </button>
+          {t({
+            en: "Reset columns", zh: "重置列",
+          })}</button>
       </div>
     </AnchoredPortalMenu>
   );

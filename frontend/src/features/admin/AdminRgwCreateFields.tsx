@@ -7,6 +7,8 @@ import { SettingsSection } from "../../components/settings/SettingsLayout";
 import type { UiTagDefinition } from "../../utils/uiTags";
 import AdminRgwEndpointField from "./AdminRgwEndpointField";
 import AdminQuotaFields from "./AdminQuotaFields";
+import { useI18n } from "../../i18n";
+import { rgwMessages } from "./adminRgwMessages";
 
 type Draft = {
   name: string; uid?: string; email: string; storage_endpoint_id: string;
@@ -20,23 +22,24 @@ export default function AdminRgwCreateFields({kind, value, onChange, errors, bus
   endpoint: Omit<ComponentProps<typeof AdminRgwEndpointField>, "value" | "onChange" | "error">;
   tags: { catalog: ComponentProps<typeof UiTagEditor>["catalog"]; loading: boolean; error: string | null };
 }) {
+  const { t } = useI18n();
   return <>
-    <SettingsSection presentation="compact" title={kind === "account" ? "Account details" : "User details"}>
+    <SettingsSection presentation="compact" title={t(kind === "account" ? rgwMessages.accountDetails : rgwMessages.userDetails)}>
       <div className="settings-fields">
         <div className="grid gap-3 md:grid-cols-2">
-          <UiInput label={kind === "account" ? "Account name *" : "Display name *"} name="name" value={value.name}
+          <UiInput label={kind === "account" ? t({ en: "Account name *", zh: "账户名称 *" }) : t({ en: "Display name *", zh: "显示名称 *" })} name="name" value={value.name}
             error={errors.name} required onChange={event => onChange({name: event.target.value})} />
-          {kind === "user" && <UiInput label="UID (optional)" name="uid" value={value.uid ?? ""} placeholder="user-123"
+          {kind === "user" && <UiInput label={t({ en: "UID (optional)", zh: "UID（可选）" })} name="uid" value={value.uid ?? ""} placeholder="user-123"
             onChange={event => onChange({uid: event.target.value})} />}
-          <UiInput label={kind === "account" ? "Email contact" : "Email"} name="email" type="email" value={value.email}
+          <UiInput label={t(kind === "account" ? rgwMessages.emailContact : rgwMessages.email)} name="email" type="email" value={value.email}
             error={errors.email} placeholder="contact@example.com" onChange={event => onChange({email: event.target.value})} />
         </div>
         <AdminRgwEndpointField {...endpoint} value={value.storage_endpoint_id} error={errors.storage_endpoint_id}
           onChange={storage_endpoint_id => onChange({storage_endpoint_id})} />
         {tags.error && <UiInlineMessage tone="warning">{tags.error}</UiInlineMessage>}
-        <UiTagEditor label="Tags" tags={value.tags} catalog={tags.catalog} disabled={busy}
-          onChange={next => onChange({tags: next})} placeholder={kind === "account" ? "Add a tag for this account" : "Add a tag for this RGW user"}
-          hint={tags.loading ? "Loading existing tag catalog..." : undefined} />
+        <UiTagEditor label={t(rgwMessages.tags)} tags={value.tags} catalog={tags.catalog} disabled={busy}
+          onChange={next => onChange({tags: next})} placeholder={t(kind === "account" ? rgwMessages.addTagAccount : rgwMessages.addTagUser)}
+          hint={tags.loading ? t(rgwMessages.loadingExistingTags) : undefined} />
       </div>
     </SettingsSection>
     <AdminQuotaFields compact errors={errors} storageValue={value.quota_max_size_gb} storageUnit={value.quota_max_size_unit}

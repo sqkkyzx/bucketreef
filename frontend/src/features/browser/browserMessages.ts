@@ -1,5 +1,6 @@
 /* Copyright (c) 2026 Laurent Barbe. Licensed under the Apache License, Version 2.0. */
 import { useCallback } from "react";
+import type { I18nMessage } from "../../i18n";
 import { useI18n } from "../../i18n";
 const messages: Record<string, readonly [string, string, string]> = {
   "Search scope": [
@@ -122,3 +123,22 @@ export function useBrowserText() {
   const { locale } = useI18n();
   return useCallback((message: string) => messages[message]?.[({ fr: 0, de: 1, zh: 2 } as Record<string, number>)[locale]] ?? message, [locale]);
 }
+
+const browserMessage = (en: string, zh: string): I18nMessage => ({ en, zh });
+
+export const browserDownloadFolder = browserMessage("Download folder", "下载文件夹");
+export const browserDownload = browserMessage("Download", "下载");
+export const browserVersions = browserMessage("Versions", "版本");
+export const browserRestoreToDate = browserMessage("Restore to date", "恢复到指定日期");
+export const browserOpen = browserMessage("Open", "打开");
+export const browserCopyURL = browserMessage("Copy URL", "复制 URL");
+export const browserCopy = browserMessage("Copy", "复制");
+export const browserCut = browserMessage("Cut", "剪切");
+export const browserBulkAttributes = browserMessage("Bulk attributes", "批量属性");
+export const browserDelete = browserMessage("Delete", "删除");
+export const browserActive = browserMessage("Active", "活动");
+export const browserType = browserMessage("Type", "类型");
+export const browserStorageClass = browserMessage("Storage class", "存储类别");
+export const browserName = browserMessage("Name", "名称");
+export const browserSearchOptions = browserMessage("Search options", "搜索选项");
+export const browserActions = browserMessage("Actions", "操作");

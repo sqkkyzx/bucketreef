@@ -71,6 +71,8 @@ import { buildAdminQuotaSizeEditorValue } from "./adminQuotaForm";
 import { AssociationPrincipalStack, type AssociationPrincipalItem } from "./AssociationSummary";
 import { useAdminS3UserStats } from "./useAdminS3UserStats";
 import { buildAccessAuditHref } from "./accessAuditLink";
+import { useI18n } from "../../i18n";
+import { rgwMessages } from "./adminRgwMessages";
 
 type SortField = "name" | "uid";
 type EditTab = "general" | "users" | "groups" | "privileged";
@@ -90,6 +92,7 @@ function getS3UserSearchCandidates(user: S3User): Array<string | number | null |
 }
 
 export default function S3UsersPage() {
+  const { t } = useI18n();
   const [users, setUsers] = useState<S3User[]>([]);
   const [portalUsers, setPortalUsers] = useState<UserSummary[]>([]);
   const [portalUsersLoaded, setPortalUsersLoaded] = useState(false);
@@ -220,7 +223,7 @@ export default function S3UsersPage() {
     Boolean(showCreateModal || editingUser)
   );
 
-  const extractError = (err: unknown) => extractApiError(err, "Unexpected error");
+  const extractError = useCallback((err: unknown) => extractApiError(err, t(rgwMessages.unexpectedError)), [t]);
 
   const fetchUsers = useCallback(async () => {
     setLoading(true);
@@ -278,7 +281,7 @@ export default function S3UsersPage() {
     } finally {
       setLoading(false);
     }
-  }, [filter, quickFilterMode, page, pageSize, sort.direction, sort.field]);
+  }, [extractError, filter, quickFilterMode, page, pageSize, sort.direction, sort.field]);
 
   useEffect(() => {
     fetchUsers();
@@ -351,7 +354,7 @@ export default function S3UsersPage() {
         setEndpointPermissionLoading((prev) => ({ ...prev, [endpointId]: false }));
       }
     },
-    [endpointPermissionLoading]
+    [endpointPermissionLoading, extractError]
   );
 
   const portalUserOptions = useMemo(() => portalUsers.map((u) => ({ id: u.id, label: u.email })), [portalUsers]);
@@ -370,7 +373,7 @@ export default function S3UsersPage() {
       return {
         id: link.user_id,
         kind: "user",
-        label: link.user_full_name || link.user_email || `User #${link.user_id}`,
+        label: link.user_full_name || link.user_email || t({ en: `User #${link.user_id}`, zh: `用户 #${link.user_id}` }),
         email: link.user_email,
         avatar: link.user_avatar,
       };
@@ -378,7 +381,7 @@ export default function S3UsersPage() {
     const groupItems: AssociationPrincipalItem[] = (user.group_links ?? []).map((link) => ({
       id: link.group_id,
       kind: "group" as const,
-      label: link.group_name || `Group #${link.group_id}`,
+      label: link.group_name || t({ en: `Group #${link.group_id}`, zh: `用户组 #${link.group_id}` }),
       avatar: link.group_avatar,
     }));
     return <AssociationPrincipalStack items={[...userItems, ...groupItems]} />;
@@ -554,7 +557,7 @@ export default function S3UsersPage() {
       await updateS3User(editingUser.id, payload);
       await fetchUsers();
       closeEditModal();
-      setActionMessage("User updated.");
+      setActionMessage(t({ en: "User updated.", zh: "用户已更新。" }));
     } catch (err) {
       setEditError(extractError(err));
     } finally {
@@ -566,7 +569,7 @@ export default function S3UsersPage() {
   const importEntries = rgwImportEntries(importText, "user");
   const importValidation = useAdminRgwFormValidation({importText, storage_endpoint_id: importEndpointId}, {
     ...(importEntries.error ? {importText: importEntries.error} : {}),
-    ...(!importEndpointId ? {storage_endpoint_id: "Select a Ceph endpoint."} : {}),
+    ...(!importEndpointId ? {storage_endpoint_id: t(rgwMessages.selectCephEndpoint)} : {}),
   });
   const createPending = useRef(false);
   const importPending = useRef(false);
@@ -575,11 +578,11 @@ export default function S3UsersPage() {
     e.preventDefault();
     if (createPending.current || !createValidation.validate(e.currentTarget)) return;
     if (createPermissionLoading) {
-      setCreateError("Checking endpoint permissions. Please wait.");
+      setCreateError(t({ en: "Checking endpoint permissions. Please wait.", zh: "正在检查端点权限，请稍候。" }));
       return;
     }
     if (!createEndpointCanWrite) {
-      setCreateError("Selected endpoint does not allow this operation (missing users=write).");
+      setCreateError(t({ en: "Selected endpoint does not allow this operation (missing users=write).", zh: "所选端点不允许此操作（缺少 users=write）。" }));
       return;
     }
     createPending.current = true;
@@ -606,7 +609,7 @@ export default function S3UsersPage() {
         quota_max_size_gb: "",
         quota_max_objects: "",
       }));
-      setActionMessage("User created.");
+      setActionMessage(t({ en: "User created.", zh: "用户已创建。" }));
       await fetchUsers();
     } catch (err) {
       setCreateError(extractError(err));
@@ -629,7 +632,7 @@ export default function S3UsersPage() {
         uid: identifier,
         storage_endpoint_id: Number(importEndpointId),
       })));
-      setImportMessage("Users imported.");
+      setImportMessage(t({ en: "Users imported.", zh: "用户已导入。" }));
       importValidation.reset();
       setImportText("");
       setImportInitialSignature(stableSignature({ importText: "", importEndpointId }));
@@ -715,7 +718,7 @@ export default function S3UsersPage() {
   const userTableColumns: Array<DataTableColumn<S3User, SortField>> = [
     {
       id: "name",
-      label: "Name",
+      label: t(rgwMessages.name),
       field: "name",
       primary: true,
       cellClassName: "min-w-[240px] max-w-[360px]",
@@ -739,14 +742,14 @@ export default function S3UsersPage() {
     },
     {
       id: "uid",
-      label: "UID",
+      label: t(rgwMessages.uid),
       field: "uid",
       cellClassName: "min-w-[176px]",
       render: (user) => user.rgw_user_uid,
     },
     {
       id: "endpoint",
-      label: "Endpoint",
+      label: t(rgwMessages.endpoint),
       cellClassName: "min-w-[160px]",
       render: (user) => (
         <span title={user.storage_endpoint_url || undefined}>
@@ -756,13 +759,13 @@ export default function S3UsersPage() {
     },
     {
       id: "associations",
-      label: "UI Users / Groups",
+      label: t({ en: "UI Users / Groups", zh: "界面用户 / 用户组" }),
       cellClassName: "min-w-[180px] max-w-[240px] align-middle",
       render: renderUserAssociations,
     },
     {
       id: "actions",
-      label: "Actions",
+      label: t(rgwMessages.actions),
       align: "right",
       mobileRole: "actions",
       cellClassName: "min-w-[272px]",
@@ -776,19 +779,19 @@ export default function S3UsersPage() {
 
               {...dataTableDefaultActionProps}
             >
-              Edit
+              {t(rgwMessages.edit)}
             </ListActionButton>
             <ListActionLink to={buildAccessAuditHref({
               scope: "rgw_user",
               targetId: user.id,
             })}>
-              Review access
+              {t({ en: "Review access", zh: "查看访问权限" })}
             </ListActionLink>
             <ListActionLink to={`/admin/s3-users/${user.id}/keys`}>
-              Keys
+              {t(rgwMessages.keys)}
             </ListActionLink>
             <ListActionButton type="button" onClick={() => startDeleteUser(user)}  variant="danger" disabled={deleteBusy}>
-              {deleteBusy ? "Deleting..." : "Delete"}
+              {deleteBusy ? t(rgwMessages.deleting) : t(rgwMessages.delete)}
             </ListActionButton>
           </ListActions>
         );
@@ -809,7 +812,7 @@ export default function S3UsersPage() {
     try {
       await deleteS3User(userToDelete.id, { deleteRgw: deleteFromRgw });
       await fetchUsers();
-      setActionMessage(`Deleted ${userToDelete.name}.`);
+      setActionMessage(t({ en: `Deleted ${userToDelete.name}.`, zh: `已删除 ${userToDelete.name}。` }));
       setUserToDelete(null);
       setDeleteFromRgw(false);
     } catch (err) {
@@ -822,12 +825,12 @@ export default function S3UsersPage() {
   return (
     <div className={workflowPageHostClass(showImportModal || Boolean(editingUser))}>
       <PageHeader actionPresentation="listing"
-        title="RGW Users"
-        description="Manage standalone RGW users for direct access to Manager."
+        title={t(rgwMessages.users)}
+        description={t({ en: "Manage standalone RGW users for direct access to Manager.", zh: "管理可直接访问管理器的独立 RGW 用户。" })}
         breadcrumbs={adminPageBreadcrumbs("rgw-users")}
         actions={[
           {
-            label: "Import",
+            label: t(rgwMessages.import),
             onClick: () => {
               importValidation.reset();
               setImportError(null);
@@ -839,7 +842,7 @@ export default function S3UsersPage() {
             variant: "ghost",
           },
           {
-            label: "Create user",
+            label: t(rgwMessages.createUser),
             onClick: () => {
               createValidation.reset();
               setCreateError(null);
@@ -857,13 +860,13 @@ export default function S3UsersPage() {
       <ListPageSection
         variant="page"
         mobileSort={<TableSortControls columns={userTableColumns} sort={{ field: sort.field, direction: sort.direction, onSort: toggleSort }} />}
-          title="RGW Users"
+          title={t(rgwMessages.users)}
           countLabel={`${totalUsers} entr${totalUsers === 1 ? "y" : "ies"}`}
           search={
             <ToolbarSearchInput
               value={filter}
               onChange={handleFilterChange}
-              placeholder="Search by name, UID, email, group, or tag"
+              placeholder={t(rgwMessages.userSearch)}
               className="w-full sm:w-64"
               active={quickFilterActive}
               matchMode={quickFilterMode}
@@ -873,7 +876,7 @@ export default function S3UsersPage() {
           secondaryContent={
             quickFilterActive ? (
               <ActiveFiltersBar
-                label="Active filters summary"
+                label={t({ en: "Active filters summary", zh: "活动筛选条件摘要" })}
                 items={[
                   {
                     id: "search",
@@ -890,9 +893,9 @@ export default function S3UsersPage() {
           rows={users}
           rowKey={(user) => user.id}
           status={tableStatus}
-          loadingMessage="Loading users..."
-          errorMessage="Unable to load users."
-          emptyMessage="No users."
+          loadingMessage={t(rgwMessages.loadingUsers)}
+          errorMessage={t({ en: "Unable to load users.", zh: "无法加载用户。" })}
+          emptyMessage={t(rgwMessages.noUsers)}
           sort={{ field: sort.field, direction: sort.direction, onSort: toggleSort }}
           primaryColumnId="name"
           responsiveCards
@@ -909,13 +912,13 @@ export default function S3UsersPage() {
       </ListPageSection>
 
       {showCreateModal && (
-        <SettingsDialog title="Create user" onClose={createCloseGuard.requestClose} closeDisabled={creating} maxWidthClass="max-w-2xl">
-          <SettingsForm label="Create RGW user" presentation="dialog" busy={creating} onSubmit={submitCreate}
+        <SettingsDialog title={t(rgwMessages.createRgwUser)} onClose={createCloseGuard.requestClose} closeDisabled={creating} maxWidthClass="max-w-2xl">
+          <SettingsForm label={t(rgwMessages.createRgwUser)} presentation="dialog" busy={creating} onSubmit={submitCreate}
             submitDisabled={createPermissionLoading || !createEndpointCanWrite}
-            onCancel={createCloseGuard.requestClose} submitLabel="Create user" busyLabel="Creating...">
+            onCancel={createCloseGuard.requestClose} submitLabel={t(rgwMessages.createUser)} busyLabel={t(rgwMessages.creating)}>
             <AdminRgwCreateFields kind="user" value={createForm} onChange={patch => setCreateForm(current => ({...current, ...patch}))}
               errors={createValidation.errors} busy={creating}
-              endpoint={{label: "Ceph endpoint *", endpoints: adminCephEndpoints, loading: loadingEndpoints,
+              endpoint={{label: t(rgwMessages.cephEndpoint), endpoints: adminCephEndpoints, loading: loadingEndpoints,
                 operation: "users", permissionLoading: createPermissionLoading, permissionError: createPermissionError, canWrite: createEndpointCanWrite}}
               tags={{catalog: adminTagCatalog, loading: adminTagCatalogLoading, error: adminTagCatalogError}} />
             {createError && <UiInlineMessage tone="error" role="alert">{createError}</UiInlineMessage>}
@@ -925,16 +928,16 @@ export default function S3UsersPage() {
       )}
 
       {showImportModal && (
-        <WorkflowPage title="Import RGW users" description="Import existing standalone RGW users from a Ceph endpoint." breadcrumbs={adminPageBreadcrumbs("rgw-users", {label: "Import"})} backLabel="Back to RGW users" backDisabled={importBusy} onBack={importCloseGuard.requestClose} contentVariant="plain" width="standard">
-          <SettingsForm label="Import RGW users" busy={importBusy} onSubmit={submitImport}
+        <WorkflowPage title={t(rgwMessages.importUsers)} description={t({ en: "Import existing standalone RGW users from a Ceph endpoint.", zh: "从 Ceph 端点导入现有独立 RGW 用户。" })} breadcrumbs={adminPageBreadcrumbs("rgw-users", {label: t(rgwMessages.import)})} backLabel={t({ en: "Back to RGW users", zh: "返回 RGW 用户" })} backDisabled={importBusy} onBack={importCloseGuard.requestClose} contentVariant="plain" width="standard">
+          <SettingsForm label={t(rgwMessages.importUsers)} busy={importBusy} onSubmit={submitImport}
             submitDisabled={importPermissionLoading || !importEndpointCanWrite}
-            onCancel={importCloseGuard.requestClose} submitLabel="Import" busyLabel="Importing...">
+            onCancel={importCloseGuard.requestClose} submitLabel={t(rgwMessages.import)} busyLabel={t(rgwMessages.importing)}>
             <div className="settings-fields settings-form">
-              <p className="settings-body text-[var(--ui-text-muted)]">Enter RGW user IDs, one per line. The platform will fetch or generate keys.</p>
-              <UiTextarea label="RGW user IDs" name="importText" rows={6} required value={importText}
+              <p className="settings-body text-[var(--ui-text-muted)]">{t({ en: "Enter RGW user IDs, one per line. The platform will fetch or generate keys.", zh: "每行输入一个 RGW 用户 ID。平台将获取或生成密钥。" })}</p>
+              <UiTextarea label={t({ en: "RGW user IDs", zh: "RGW 用户 ID" })} name="importText" rows={6} required value={importText}
                 error={importValidation.errors.importText} placeholder="user-alpha"
                 onChange={event => setImportText(event.target.value)} />
-              <AdminRgwEndpointField label="Ceph endpoint *" value={importEndpointId}
+              <AdminRgwEndpointField label={t(rgwMessages.cephEndpoint)} value={importEndpointId}
                 onChange={setImportEndpointId} endpoints={adminCephEndpoints}
                 error={importValidation.errors.storage_endpoint_id} loading={loadingEndpoints} operation="users"
                 permissionLoading={importPermissionLoading} permissionError={importPermissionError} canWrite={importEndpointCanWrite} />
@@ -948,10 +951,10 @@ export default function S3UsersPage() {
 
       {editingUser && (
         <WorkflowPage
-          title={`Edit ${editingUser.name}`}
-          description="Manage quotas, usage, UI associations, and privileged access for this RGW user."
-          breadcrumbs={adminPageBreadcrumbs("rgw-users", { label: "Edit" })}
-          backLabel="Back to RGW users"
+          title={t({ en: `Edit ${editingUser.name}`, zh: `编辑 ${editingUser.name}` })}
+          description={t({ en: "Manage quotas, usage, UI associations, and privileged access for this RGW user.", zh: "管理此 RGW 用户的配额、使用情况、界面关联和特权访问。" })}
+          breadcrumbs={adminPageBreadcrumbs("rgw-users", { label: t(rgwMessages.edit) })}
+          backLabel={t({ en: "Back to RGW users", zh: "返回 RGW 用户" })}
           onBack={editCloseGuard.requestClose}
           contentVariant="plain"
           width="wide"
@@ -960,11 +963,11 @@ export default function S3UsersPage() {
             <WorkflowMetadata
               items={[
                 {
-                  label: "UID",
+                  label: t(rgwMessages.uid),
                   value: editingUser.rgw_user_uid,
                 },
                 {
-                  label: "Endpoint",
+                  label: t(rgwMessages.endpoint),
                   value: editingUser.storage_endpoint_name,
                   title: editingUser.storage_endpoint_url,
                 },
@@ -985,39 +988,39 @@ export default function S3UsersPage() {
                 }
                 setEditTab(tab);
               }}
-              ariaLabel="RGW user configuration sections"
+              ariaLabel={t({ en: "RGW user configuration sections", zh: "RGW 用户配置分区" })}
               idPrefix="admin-rgw-user-edit"
               tabs={[
-                { id: "general", label: "General" },
-                { id: "users", label: "Linked UI users" },
-                { id: "groups", label: "Linked UI groups" },
-                { id: "privileged", label: "Privileged access", visible: canManagePrivilegedTargets },
+                { id: "general", label: t(rgwMessages.general) },
+                { id: "users", label: t(rgwMessages.linkedUiUsers) },
+                { id: "groups", label: t(rgwMessages.linkedUiGroups) },
+                { id: "privileged", label: t(rgwMessages.privilegedAccess), visible: canManagePrivilegedTargets },
               ].map((item) => ({ ...item, id: item.id as EditTab, disabled: editBusy }))}
             >
               <SettingsForm
-                label="Edit RGW user"
+                label={t({ en: "Edit RGW user", zh: "编辑 RGW 用户" })}
                 busy={editBusy}
                 onSubmit={submitEdit}
                 onCancel={editCloseGuard.requestClose}
-                submitLabel="Save changes"
-                busyLabel="Saving..."
+                submitLabel={t(rgwMessages.saveChanges)}
+                busyLabel={t(rgwMessages.saving)}
               >
                 {editError && <UiInlineMessage tone="error" role="alert">{editError}</UiInlineMessage>}
                 {showEditGeneralTab && (
                   <div className="settings-stack">
                     <SettingsSection
-                      title="User details"
-                      description="Update the display information and administrative tags for this RGW user."
+                      title={t(rgwMessages.userDetails)}
+                      description={t({ en: "Update the display information and administrative tags for this RGW user.", zh: "更新此 RGW 用户的显示信息和管理标签。" })}
                       presentation="compact"
                     >
                       <div className="settings-fields sm:grid-cols-2">
                     <UiInput
-                      label="Display name"
+                      label={t(rgwMessages.displayName)}
                       value={editForm.name}
                       onChange={(e) => setEditForm((prev) => ({ ...prev, name: e.target.value }))}
                     />
                     <UiInput
-                      label="Email"
+                      label={t(rgwMessages.email)}
                       type="email"
                       value={editForm.email}
                       onChange={(e) => setEditForm((prev) => ({ ...prev, email: e.target.value }))}
@@ -1025,52 +1028,52 @@ export default function S3UsersPage() {
                     <div className="sm:col-span-2">
                       {adminTagCatalogError && <UiInlineMessage tone="warning">{adminTagCatalogError}</UiInlineMessage>}
                       <UiTagEditor
-                        label="Tags"
+                        label={t(rgwMessages.tags)}
                         tags={editForm.tags}
                         catalog={adminTagCatalog}
                         onChange={(tags) => setEditForm((prev) => ({ ...prev, tags }))}
-                        placeholder="Add a tag for this RGW user"
-                        hint={adminTagCatalogLoading ? "Loading existing tag catalog..." : undefined}
+                        placeholder={t(rgwMessages.addTagUser)}
+                        hint={adminTagCatalogLoading ? t(rgwMessages.loadingExistingTags) : undefined}
                       />
                     </div>
                       </div>
                     </SettingsSection>
-                    <SettingsSection title="Usage" description="Observed storage use and the currently saved limits." presentation="compact">
-                      {editingUsageLoading ? <p role="status">Loading storage usage...</p>
-                        : editingUsageError ? <UiInlineMessage tone="error">{editingUsageError} <SettingsButton variant="secondary" onClick={() => void editingUsageReload()}>Retry usage</SettingsButton></UiInlineMessage>
+                    <SettingsSection title={t(rgwMessages.usage)} description={t({ en: "Observed storage use and the currently saved limits.", zh: "显示已观测的存储使用情况和当前保存的限制。" })} presentation="compact">
+                      {editingUsageLoading ? <p role="status">{t({ en: "Loading storage usage...", zh: "正在加载存储使用情况…" })}</p>
+                        : editingUsageError ? <UiInlineMessage tone="error">{editingUsageError} <SettingsButton variant="secondary" onClick={() => void editingUsageReload()}>{t({ en: "Retry usage", zh: "重试使用情况" })}</SettingsButton></UiInlineMessage>
                           : <>
                             <div className="grid gap-2 sm:grid-cols-2">
                               <UsageTile
-                                label="Storage"
+                                label={t(rgwMessages.storage)}
                                 used={editingUsageStats?.total_bytes ?? null}
                                 quota={editingUser.quota_max_size_gb != null ? editingUser.quota_max_size_gb * 1024 ** 3 : null}
                                 formatter={formatBytes}
                                 quotaFormatter={formatBytes}
-                                emptyHint="No storage quota defined."
+                                emptyHint={t({ en: "No storage quota defined.", zh: "未定义存储配额。" })}
                               />
                               <UsageTile
-                                label="Objects"
+                                label={t(rgwMessages.objects)}
                                 used={editingUsageStats?.total_objects ?? null}
                                 quota={editingUser.quota_max_objects ?? null}
                                 formatter={formatCompactNumber}
                                 quotaFormatter={value => value != null ? value.toLocaleString() : "-"}
                                 unitHint="objects"
-                                emptyHint="No object quota defined."
+                                emptyHint={t({ en: "No object quota defined.", zh: "未定义对象配额。" })}
                               />
                             </div>
                             {editingUsageStats?.bucket_overview && <InlineSummary items={[
-                              { label: "Active buckets", value: `${editingUsageStats.bucket_overview.non_empty_buckets}/${editingUsageStats.bucket_overview.bucket_count}` },
-                              { label: "Empty buckets", value: String(editingUsageStats.bucket_overview.empty_buckets) },
-                              { label: "Average size", value: editingUsageStats.bucket_overview.avg_bucket_size_bytes == null ? "—" : formatBytes(editingUsageStats.bucket_overview.avg_bucket_size_bytes) },
-                              { label: "Average objects", value: editingUsageStats.bucket_overview.avg_objects_per_bucket == null ? "—" : formatCompactNumber(editingUsageStats.bucket_overview.avg_objects_per_bucket) },
+                              { label: t(rgwMessages.activeBuckets), value: `${editingUsageStats.bucket_overview.non_empty_buckets}/${editingUsageStats.bucket_overview.bucket_count}` },
+                              { label: t(rgwMessages.emptyBuckets), value: String(editingUsageStats.bucket_overview.empty_buckets) },
+                              { label: t(rgwMessages.averageSize), value: editingUsageStats.bucket_overview.avg_bucket_size_bytes == null ? "—" : formatBytes(editingUsageStats.bucket_overview.avg_bucket_size_bytes) },
+                              { label: t(rgwMessages.averageObjects), value: editingUsageStats.bucket_overview.avg_objects_per_bucket == null ? "—" : formatCompactNumber(editingUsageStats.bucket_overview.avg_objects_per_bucket) },
                             ]} />}
                           </>}
                     </SettingsSection>
-                    {editPermissionLoading ? <p role="status">Checking endpoint permissions...</p>
+                    {editPermissionLoading ? <p role="status">{t({ en: "Checking endpoint permissions...", zh: "正在检查端点权限…" })}</p>
                       : editPermissionError ? <UiInlineMessage tone="error" role="alert">
-                        {editPermissionError} <SettingsButton variant="secondary" onClick={() => editingEndpointId && void fetchEndpointUsersWritePermission(editingEndpointId)}>Retry permissions</SettingsButton>
+                        {editPermissionError} <SettingsButton variant="secondary" onClick={() => editingEndpointId && void fetchEndpointUsersWritePermission(editingEndpointId)}>{t({ en: "Retry permissions", zh: "重试权限检查" })}</SettingsButton>
                       </UiInlineMessage>
-                        : !allowUserQuotaUpdates && <UiInlineMessage tone="info">Quota editing requires Admin Ops support and users=write on the endpoint.</UiInlineMessage>}
+                        : !allowUserQuotaUpdates && <UiInlineMessage tone="info">{t(rgwMessages.quotaEditingRequiresAdminOps)}</UiInlineMessage>}
                 <AdminQuotaFields
                   compact
                   storageValue={editForm.quota_max_size_gb}
@@ -1093,9 +1096,9 @@ export default function S3UsersPage() {
             {showEditUsersTab && (
               <div className={`${adminAssociationPanelClass} space-y-3`}>
                 <AdminAssociationSectionHeader
-                  title="Linked UI users"
-                  countLabel={`${editForm.user_links.length} linked`}
-                  actionLabel={showEditPortalUserPanel ? "Close" : "Add UI users"}
+                  title={t(rgwMessages.linkedUiUsers)}
+                  countLabel={`${editForm.user_links.length} ${t(rgwMessages.linkedCount)}`}
+                  actionLabel={showEditPortalUserPanel ? t(rgwMessages.close) : t(rgwMessages.addUiUsers)}
                   onAction={() => setShowEditPortalUserPanel((prev) => !prev)}
                 />
                 <div className={associationTableContainerClass}>
@@ -1103,10 +1106,10 @@ export default function S3UsersPage() {
                     <thead>
                       <tr>
                         <th className="text-left">
-                          User
+                          {t(rgwMessages.user)}
                         </th>
                         <th className="w-px whitespace-nowrap text-right">
-                          Actions
+                          {t(rgwMessages.actions)}
                         </th>
                       </tr>
                     </thead>
@@ -1114,18 +1117,18 @@ export default function S3UsersPage() {
                       {editForm.user_links.length === 0 ? (
                         <tr>
                           <td colSpan={2} className="ui-table-secondary">
-                            No linked users yet.
+                            {t(rgwMessages.noLinkedUsers)}
                           </td>
                         </tr>
                       ) : (
                         editForm.user_links.map((link) => (
                           <tr key={link.user_id}>
                             <td className="ui-table-primary">
-                              {portalUserLabelById.get(link.user_id) ?? `User #${link.user_id}`}
+                              {portalUserLabelById.get(link.user_id) ?? t({ en: `User #${link.user_id}`, zh: `用户 #${link.user_id}` })}
                             </td>
                             <td className="ui-table-actions-cell w-px text-right">
                               <AdminAssociationAdvancedSettings
-                                targetLabel={portalUserLabelById.get(link.user_id) ?? `User #${link.user_id}`}
+                                targetLabel={portalUserLabelById.get(link.user_id) ?? t({ en: `User #${link.user_id}`, zh: `用户 #${link.user_id}` })}
                                 associationKind="rgw_user"
                                 allowManagerBrowserDataAccess={Boolean(link.allow_manager_browser_data_access)}
                                 onApply={(allowed) =>
@@ -1149,7 +1152,7 @@ export default function S3UsersPage() {
                                 }
                                  variant="danger"
                               >
-                                Remove
+                                {t(rgwMessages.remove)}
                               </ListActionButton>
                             </td>
                           </tr>
@@ -1160,16 +1163,16 @@ export default function S3UsersPage() {
                 </div>
                 {showEditPortalUserPanel && (
                   <AdminAssociationPickerPanel
-                    title="Add UI users"
-                    hint="(filter by email)"
+                    title={t(rgwMessages.addUiUsers)}
+                    hint={t(rgwMessages.filterByEmail)}
                     search={portalUserSearch}
                     onSearchChange={setPortalUserSearch}
-                    searchAriaLabel="Search UI users"
+                    searchAriaLabel={t(rgwMessages.searchUiUsers)}
                     loading={false}
                     availableCount={availablePortalUsers.length}
                     maxVisibleOptions={MAX_LINK_OPTIONS}
                     selectedCount={editPortalUserSelections.length}
-                    loadingLabel="Loading UI users..."
+                    loadingLabel={t({ en: "Loading UI users...", zh: "正在加载界面用户…" })}
                     onCancel={() => {
                       setShowEditPortalUserPanel(false);
                       setEditPortalUserSelections([]);
@@ -1207,9 +1210,9 @@ export default function S3UsersPage() {
             {showEditGroupsTab && (
               <div className={`${adminAssociationPanelClass} space-y-3`}>
                 <AdminAssociationSectionHeader
-                  title="Linked UI groups"
-                  countLabel={`${editForm.group_links.length} linked${uiGroupsLoading ? " · loading..." : ""}`}
-                  actionLabel={showEditGroupPanel ? "Close" : "Add UI groups"}
+                  title={t(rgwMessages.linkedUiGroups)}
+                  countLabel={`${editForm.group_links.length} ${t(rgwMessages.linkedCount)}${uiGroupsLoading ? ` · ${t(rgwMessages.loadingInline)}` : ""}`}
+                  actionLabel={showEditGroupPanel ? t(rgwMessages.close) : t(rgwMessages.addUiGroups)}
                   onAction={() => {
                     if (!showEditGroupPanel) {
                       void loadGroupsIfNeeded();
@@ -1222,10 +1225,10 @@ export default function S3UsersPage() {
                     <thead>
                       <tr>
                         <th className="text-left">
-                          Group
+                          {t(rgwMessages.group)}
                         </th>
                         <th className="w-px whitespace-nowrap text-right">
-                          Actions
+                          {t(rgwMessages.actions)}
                         </th>
                       </tr>
                     </thead>
@@ -1233,18 +1236,18 @@ export default function S3UsersPage() {
                       {editForm.group_links.length === 0 ? (
                         <tr>
                           <td colSpan={2} className="ui-table-secondary">
-                            No linked groups yet.
+                            {t(rgwMessages.noLinkedGroups)}
                           </td>
                         </tr>
                       ) : (
                         editForm.group_links.map((link) => (
                           <tr key={link.group_id}>
                             <td className="ui-table-primary">
-                              {groupLabelById.get(link.group_id) ?? `Group #${link.group_id}`}
+                              {groupLabelById.get(link.group_id) ?? t({ en: `Group #${link.group_id}`, zh: `用户组 #${link.group_id}` })}
                             </td>
                             <td className="ui-table-actions-cell w-px text-right">
                               <AdminAssociationAdvancedSettings
-                                targetLabel={groupLabelById.get(link.group_id) ?? `Group #${link.group_id}`}
+                                targetLabel={groupLabelById.get(link.group_id) ?? t({ en: `Group #${link.group_id}`, zh: `用户组 #${link.group_id}` })}
                                 associationKind="rgw_user"
                                 allowManagerBrowserDataAccess={Boolean(link.allow_manager_browser_data_access)}
                                 onApply={(allowed) =>
@@ -1268,7 +1271,7 @@ export default function S3UsersPage() {
                                 }
                                  variant="danger"
                               >
-                                Remove
+                                {t(rgwMessages.remove)}
                               </ListActionButton>
                             </td>
                           </tr>
@@ -1279,16 +1282,16 @@ export default function S3UsersPage() {
                 </div>
                 {showEditGroupPanel && (
                   <AdminAssociationPickerPanel
-                    title="Add UI groups"
-                    hint="(filter by name)"
+                    title={t(rgwMessages.addUiGroups)}
+                    hint={t(rgwMessages.filterByName)}
                     search={groupSearch}
                     onSearchChange={setGroupSearch}
-                    searchAriaLabel="Search UI groups"
+                    searchAriaLabel={t(rgwMessages.searchUiGroups)}
                     loading={uiGroupsLoading}
                     availableCount={availableGroups.length}
                     maxVisibleOptions={MAX_LINK_OPTIONS}
                     selectedCount={editGroupSelections.length}
-                    loadingLabel="Loading UI groups..."
+                    loadingLabel={t({ en: "Loading UI groups...", zh: "正在加载界面用户组…" })}
                     onCancel={() => {
                       setShowEditGroupPanel(false);
                       setEditGroupSelections([]);
@@ -1325,15 +1328,15 @@ export default function S3UsersPage() {
 
             {showEditPrivilegedTab && (
               <AdminAccessToggleSection
-                title="Privileged Ceph access"
-                description="Ceph admin-API actions granted directly to this RGW user outside the Ceph Admin workspace."
+                title={t({ en: "Privileged Ceph access", zh: "特权 Ceph 访问" })}
+                description={t({ en: "Ceph admin-API actions granted directly to this RGW user outside the Ceph Admin workspace.", zh: "在 Ceph 管理工作区之外直接授予此 RGW 用户的 Ceph 管理 API 操作。" })}
                 items={[
                   {
-                    title: "Bucket quota management",
+                    title: t(rgwMessages.bucketQuotaManagement),
                     description: editingEndpointCanWriteBuckets
-                      ? "Allow Ceph bucket quota updates for this RGW User in Manager."
-                      : "Requires buckets=write on the endpoint Admin Ops identity before this grant can be enabled.",
-                    ariaLabel: "Bucket quota management",
+                      ? t(rgwMessages.allowBucketQuotaUpdates)
+                      : t(rgwMessages.requireBucketsWriteForQuota),
+                    ariaLabel: t(rgwMessages.bucketQuotaManagement),
                     checked: editForm.allow_bucket_quota_management,
                     disabled: !editForm.allow_bucket_quota_management && !editingEndpointCanWriteBuckets,
                     onChange: (checked) =>
@@ -1343,9 +1346,9 @@ export default function S3UsersPage() {
                       })),
                   },
                   {
-                    title: "Ceph S3 User keys",
-                    description: "Allow access to Manager > Ceph > Access keys.",
-                    ariaLabel: "Ceph S3 User keys",
+                    title: t(rgwMessages.cephS3UserKeys),
+                    description: t(rgwMessages.allowAccessToManagerCephKeys),
+                    ariaLabel: t(rgwMessages.cephS3UserKeys),
                     checked: editForm.allow_access_key_management,
                     onChange: (checked) =>
                       setEditForm((prev) => ({
@@ -1354,9 +1357,9 @@ export default function S3UsersPage() {
                       })),
                   },
                   {
-                    title: "Managed private connection provisioning",
-                    description: "Allow Manager to provision a dedicated private Browser connection for this RGW User.",
-                    ariaLabel: "Managed private connection provisioning",
+                    title: t(rgwMessages.managedPrivateConnection),
+                    description: t(rgwMessages.allowManagerPrivateBrowserConnection),
+                    ariaLabel: t(rgwMessages.managedPrivateConnection),
                     checked: editForm.allow_managed_private_connection_provisioning,
                     onChange: (checked) =>
                       setEditForm((prev) => ({
@@ -1375,17 +1378,17 @@ export default function S3UsersPage() {
 
       {userToDelete && (
         <ConfirmActionDialog
-          title={`Delete ${userToDelete.name}`}
-          description="This removes the standalone RGW user from the UI and deletes the access key used by this interface. You can also delete the underlying RGW user once it no longer owns buckets."
-          confirmLabel="Delete user"
-          processingLabel="Deleting..."
+          title={t({ en: `Delete ${userToDelete.name}`, zh: `删除 ${userToDelete.name}` })}
+          description={t(rgwMessages.deleteUserDescription)}
+          confirmLabel={t({ en: "Delete user", zh: "删除用户" })}
+          processingLabel={t(rgwMessages.deleting)}
           loading={deleteModalBusy}
           error={deleteModalError}
           warningTone="warning"
           warning={deleteModalHasResources && (
             <div className="space-y-2">
-              <p>This RGW user still has linked resources. Remove owned buckets before deleting it from RGW.</p>
-              <p className="settings-label">Buckets: {userToDelete.bucket_count ?? "unknown"}</p>
+              <p>{t(rgwMessages.linkedResourcesDeleteWarning)}</p>
+              <p className="settings-label">{t(rgwMessages.buckets)} {userToDelete.bucket_count ?? t(rgwMessages.unknown)}</p>
             </div>
           )}
           options={
@@ -1395,7 +1398,7 @@ export default function S3UsersPage() {
               onChange={(event) => setDeleteFromRgw(event.target.checked)}
             >
               <span className="modal-option-copy">
-                Also delete RGW user <code className="break-all font-mono">{userToDelete.rgw_user_uid}</code>
+                {t(rgwMessages.alsoDeleteRgwUser)} <code className="break-all font-mono">{userToDelete.rgw_user_uid}</code>
               </span>
             </UiCheckboxField>
           }

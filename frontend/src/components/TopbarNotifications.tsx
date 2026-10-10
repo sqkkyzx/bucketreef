@@ -15,6 +15,7 @@ import { BellIcon } from "./topbarIcons";
 import AnchoredPortalMenu from "./ui/AnchoredPortalMenu";
 import { useDismissibleLayer } from "./ui/useDismissibleLayer";
 import TopbarUtilityHint from "./TopbarUtilityHint";
+import { useI18n } from "../i18n";
 
 type TopbarNotificationsProps = {
   enabled: boolean;
@@ -56,6 +57,7 @@ function formatDateTime(value?: string | null): string | null {
 }
 
 export default function TopbarNotifications({ enabled }: TopbarNotificationsProps) {
+  const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -86,11 +88,11 @@ export default function TopbarNotifications({ enabled }: TopbarNotificationsProp
       setNotifications(response.items);
       setUnreadCount(response.unread_count);
     } catch {
-      setError("Unable to load notifications.");
+      setError(t({ en: "Unable to load notifications.", zh: "无法加载通知。" }));
     } finally {
       setLoading(false);
     }
-  }, [enabled]);
+  }, [enabled, t]);
 
   const markAllRead = useCallback(async () => {
     if (!enabled || unreadCount <= 0) return;
@@ -101,9 +103,9 @@ export default function TopbarNotifications({ enabled }: TopbarNotificationsProp
       await loadNotifications();
     } catch (markError) {
       console.warn("Unable to mark notifications as read", markError);
-      setError("Unable to mark notifications as read.");
+      setError(t({ en: "Unable to mark notifications as read.", zh: "无法将通知标记为已读。" }));
     }
-  }, [enabled, loadNotifications, unreadCount]);
+  }, [enabled, loadNotifications, unreadCount, t]);
 
   const deleteNotification = useCallback(async (notificationId: number) => {
     setError(null);
@@ -114,11 +116,11 @@ export default function TopbarNotifications({ enabled }: TopbarNotificationsProp
       await loadNotifications();
     } catch (deleteError) {
       console.warn("Unable to delete notification", deleteError);
-      setError("Unable to delete notification.");
+      setError(t({ en: "Unable to delete notification.", zh: "无法删除通知。" }));
     } finally {
       setDeleting(null);
     }
-  }, [loadNotifications]);
+  }, [loadNotifications, t]);
 
   const clearRead = useCallback(async () => {
     setError(null);
@@ -129,11 +131,11 @@ export default function TopbarNotifications({ enabled }: TopbarNotificationsProp
       await loadNotifications();
     } catch (clearError) {
       console.warn("Unable to clear read notifications", clearError);
-      setError("Unable to clear read notifications.");
+      setError(t({ en: "Unable to clear read notifications.", zh: "无法清除已读通知。" }));
     } finally {
       setDeleting(null);
     }
-  }, [loadNotifications]);
+  }, [loadNotifications, t]);
 
   useEffect(() => {
     if (!enabled) return;
@@ -174,7 +176,11 @@ export default function TopbarNotifications({ enabled }: TopbarNotificationsProp
     const checkMode = typeof payload.check_mode === "string" ? payload.check_mode : null;
     const latency = typeof payload.latency_ms === "number" ? `${Math.round(payload.latency_ms)} ms` : null;
     const expiresAt = formatDateTime(typeof payload.expires_at === "string" ? payload.expires_at : null);
-    const severityLabel = item.severity === "error" ? "Error" : item.severity === "warning" ? "Warning" : "Info";
+    const severityLabel = item.severity === "error"
+      ? t({ en: "Error", zh: "错误" })
+      : item.severity === "warning"
+        ? t({ en: "Warning", zh: "警告" })
+        : t({ en: "Info", zh: "信息" });
     const severityClass =
       item.severity === "error"
         ? "border-red-300 bg-red-50 text-red-700 dark:border-red-700/70 dark:bg-red-950/30 dark:text-red-200"
@@ -202,23 +208,23 @@ export default function TopbarNotifications({ enabled }: TopbarNotificationsProp
               type="button"
               onClick={() => void deleteNotification(item.id)}
               disabled={deleting !== null}
-              aria-label={`Delete notification: ${item.title}`}
+              aria-label={t({ en: `Delete notification: ${item.title}`, zh: `删除通知：${item.title}` })}
               className="rounded-md px-1.5 py-0.5 text-[10px] font-semibold text-[var(--shell-muted)] transition hover:bg-[var(--shell-hover)] hover:text-[var(--shell-text)] disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {deleting === item.id ? "Deleting..." : "Delete"}
+              {deleting === item.id ? t({ en: "Deleting...", zh: "正在删除…" }) : t({ en: "Delete", zh: "删除" })}
             </button>
           </div>
         </div>
         <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 ui-caption text-[var(--shell-muted)]">
           {ratio && (
             <>
-              <dt>Usage</dt>
+              <dt>{t({ en: "Usage", zh: "使用量" })}</dt>
               <dd className="text-right font-semibold text-[var(--shell-text)]">{ratio}</dd>
             </>
           )}
           {usedBytes && (
             <>
-              <dt>Storage</dt>
+              <dt>{t({ en: "Storage", zh: "存储" })}</dt>
               <dd className="text-right text-[var(--shell-text)]">
                 {usedBytes}
                 {quotaBytes ? ` / ${quotaBytes}` : ""}
@@ -227,7 +233,7 @@ export default function TopbarNotifications({ enabled }: TopbarNotificationsProp
           )}
           {usedObjects && (
             <>
-              <dt>Objects</dt>
+              <dt>{t({ en: "Objects", zh: "对象" })}</dt>
               <dd className="text-right text-[var(--shell-text)]">
                 {usedObjects}
                 {quotaObjects ? ` / ${quotaObjects}` : ""}
@@ -236,49 +242,49 @@ export default function TopbarNotifications({ enabled }: TopbarNotificationsProp
           )}
           {endpointName && (
             <>
-              <dt>Endpoint</dt>
+              <dt>{t({ en: "Endpoint", zh: "端点" })}</dt>
               <dd className="truncate text-right text-[var(--shell-text)]">{endpointName}</dd>
             </>
           )}
           {targetUserEmail && (
             <>
-              <dt>User</dt>
+              <dt>{t({ en: "User", zh: "用户" })}</dt>
               <dd className="truncate text-right text-[var(--shell-text)]">{targetUserEmail}</dd>
             </>
           )}
           {provider && (
             <>
-              <dt>Provider</dt>
+              <dt>{t({ en: "Provider", zh: "提供方" })}</dt>
               <dd className="truncate text-right text-[var(--shell-text)]">{provider}</dd>
             </>
           )}
           {currentStatus && (
             <>
-              <dt>Status</dt>
+              <dt>{t({ en: "Status", zh: "状态" })}</dt>
               <dd className="text-right font-semibold capitalize text-[var(--shell-text)]">{currentStatus}</dd>
             </>
           )}
           {checkMode && (
             <>
-              <dt>Check</dt>
+              <dt>{t({ en: "Check", zh: "检查" })}</dt>
               <dd className="text-right uppercase text-[var(--shell-text)]">{checkMode}</dd>
             </>
           )}
           {latency && (
             <>
-              <dt>Latency</dt>
+              <dt>{t({ en: "Latency", zh: "延迟" })}</dt>
               <dd className="text-right text-[var(--shell-text)]">{latency}</dd>
             </>
           )}
           {expiresAt && (
             <>
-              <dt>Expires</dt>
+              <dt>{t({ en: "Expires", zh: "过期时间" })}</dt>
               <dd className="text-right text-[var(--shell-text)]">{expiresAt}</dd>
             </>
           )}
           {occurredAt && (
             <>
-              <dt>{isOperationalCheck ? "Checked" : "Created"}</dt>
+              <dt>{isOperationalCheck ? t({ en: "Checked", zh: "检查时间" }) : t({ en: "Created", zh: "创建时间" })}</dt>
               <dd className="text-right text-[var(--shell-text)]">{occurredAt}</dd>
             </>
           )}
@@ -289,12 +295,12 @@ export default function TopbarNotifications({ enabled }: TopbarNotificationsProp
 
   return (
     <div ref={rootRef} className="relative">
-      <TopbarUtilityHint label="Notifications" disabled={open}>
+      <TopbarUtilityHint label={t({ en: "Notifications", zh: "通知" })} disabled={open}>
         <button
           ref={triggerRef}
           type="button"
           onClick={() => setOpen((current) => !current)}
-          aria-label="Notifications"
+          aria-label={t({ en: "Notifications", zh: "通知" })}
           aria-haspopup="menu"
           aria-expanded={open}
           aria-controls={open ? menuId : undefined}
@@ -321,13 +327,13 @@ export default function TopbarNotifications({ enabled }: TopbarNotificationsProp
             id={menuId}
             ref={surfaceRef}
             role="menu"
-            aria-label="Notifications"
+            aria-label={t({ en: "Notifications", zh: "通知" })}
             className="overflow-hidden"
           >
             <div className="flex items-center justify-between gap-3 border-b border-[color:var(--shell-border-soft)] px-3 py-2">
               <div>
-                <p className="ui-caption font-semibold text-[var(--shell-text)]">Notifications</p>
-                <p className="shell-muted-text ui-caption">{unreadCount} unread</p>
+                <p className="ui-caption font-semibold text-[var(--shell-text)]">{t({ en: "Notifications", zh: "通知" })}</p>
+                <p className="shell-muted-text ui-caption">{t({ en: `${unreadCount} unread`, zh: `${unreadCount} 条未读` })}</p>
               </div>
               <div className="flex items-center gap-1">
                 <button
@@ -336,7 +342,7 @@ export default function TopbarNotifications({ enabled }: TopbarNotificationsProp
                   disabled={notifications.length === 0 || deleting !== null}
                   className="rounded-md px-2 py-1 ui-caption font-semibold text-[var(--shell-muted)] transition hover:bg-[var(--shell-hover)] hover:text-[var(--shell-text)] disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  {deleting === "read" ? "Clearing..." : "Clear read"}
+                  {deleting === "read" ? t({ en: "Clearing...", zh: "正在清除…" }) : t({ en: "Clear read", zh: "清除已读" })}
                 </button>
                 <button
                   type="button"
@@ -344,7 +350,7 @@ export default function TopbarNotifications({ enabled }: TopbarNotificationsProp
                   disabled={unreadCount <= 0 || deleting !== null}
                   className="rounded-md px-2 py-1 ui-caption font-semibold text-primary-700 transition hover:bg-primary-50 disabled:cursor-not-allowed disabled:opacity-50 dark:text-primary-200 dark:hover:bg-white/[0.06]"
                 >
-                  Mark all as read
+                  {t({ en: "Mark all as read", zh: "全部标记为已读" })}
                 </button>
               </div>
             </div>
@@ -357,11 +363,11 @@ export default function TopbarNotifications({ enabled }: TopbarNotificationsProp
               )}
               {loading && notifications.length === 0 ? (
                 <div className="rounded-md border border-[color:var(--shell-border-soft)] px-3 py-6 text-center ui-caption text-[var(--shell-muted)]">
-                  Loading notifications...
+                  {t({ en: "Loading notifications...", zh: "正在加载通知…" })}
                 </div>
               ) : notifications.length === 0 ? (
                 <div className="rounded-md border border-[color:var(--shell-border-soft)] px-3 py-6 text-center ui-caption text-[var(--shell-muted)]">
-                  No notifications.
+                  {t({ en: "No notifications.", zh: "暂无通知。" })}
                 </div>
               ) : (
                 <ul className="space-y-2">{notifications.map(renderNotificationItem)}</ul>

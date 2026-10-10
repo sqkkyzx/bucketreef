@@ -14,6 +14,7 @@ import {
   useSettingsCloseGuard,
 } from "./SettingsControls";
 import { useSettingsDraft } from "./useSettingsDraft";
+import { useI18n } from "../../i18n";
 
 export default function SettingsDraftDialog<T>({
   title,
@@ -52,6 +53,7 @@ export default function SettingsDraftDialog<T>({
   disabled?: boolean;
 }) {
   const initialFocus = useRef<HTMLElement | null>(null);
+  const { locale } = useI18n();
   const { draft, setDraft, dirty } = useSettingsDraft(initialValue);
   const [errors, setErrors] = useState<Record<string, string | undefined>>({});
   const guard = useSettingsCloseGuard({
@@ -118,10 +120,10 @@ export default function SettingsDraftDialog<T>({
           </fieldset>
           <ModalActions>
             <SettingsButton variant="secondary" onClick={guard.requestClose} disabled={disabled}>
-              {labels?.cancel ?? "Cancel"}
+              {labels?.cancel ?? (locale === "zh" ? "取消" : "Cancel")}
             </SettingsButton>
             <SettingsButton type="submit" disabled={disabled}>
-              {labels?.apply ?? "Apply"}
+              {labels?.apply ?? (locale === "zh" ? "应用" : "Apply")}
             </SettingsButton>
           </ModalActions>
         </form>

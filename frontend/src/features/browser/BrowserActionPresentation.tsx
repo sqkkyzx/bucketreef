@@ -1,3 +1,4 @@
+import { useI18n } from "../../i18n";
 import { ListActionButton } from "../../components/list/ListControls";
 import type { ComponentType } from "react";
 
@@ -82,10 +83,13 @@ export function BrowserDirectItemActionButton({
   itemName,
   onSelect,
 }: BrowserDirectItemActionButtonProps) {
+  const { t } = useI18n();
   const accessibleLabel = `${action.label} ${itemName}`;
   const disabledLabel =
     !action.enabled && action.disabledReason
-      ? `${accessibleLabel}. Unavailable: ${action.disabledReason}`
+      ? t({
+        en: `${accessibleLabel}. Unavailable: ${action.disabledReason}`, zh: `${accessibleLabel}。不可用：${action.disabledReason}`,
+      })
       : accessibleLabel;
   return (
     <ListActionButton iconOnly variant={action.id === "delete" ? "danger" : "secondary"}

@@ -2,6 +2,16 @@
  * Copyright (c) 2026 Laurent Barbe
  * Licensed under the Apache License, Version 2.0
  */
+import {
+  messageTags,
+  messageExpires,
+} from "../../uiMessages";
+import {
+  browserType,
+  browserStorageClass,
+} from "./browserMessages";
+import { translate } from "../../i18n";
+import type { UiLanguage } from "../../components/language";
 import type {
   BrowserActionId,
 } from "./browserActions";
@@ -450,3 +460,31 @@ export const collectAvailableStorageClasses = (items: BrowserItem[]) =>
       ),
     ),
   );
+
+export function localizedBrowserColumns(locale: UiLanguage): ColumnDefinition[] {
+  const labels: Partial<Record<BrowserColumnId, string>> = {
+    type: translate(browserType, locale),
+    size: translate({
+      en: "Size", zh: "大小",
+    }, locale),
+    modified: translate({
+      en: "Modified", zh: "修改时间",
+    }, locale),
+    storageClass: translate(browserStorageClass, locale),
+    contentType: translate({
+      en: "Content-Type", zh: "内容类型",
+    }, locale),
+    tagsCount: translate(messageTags, locale),
+    metadataCount: translate({
+      en: "Metadata", zh: "元数据",
+    }, locale),
+    cacheControl: translate({
+      en: "Cache-Control", zh: "缓存控制",
+    }, locale),
+    expires: translate(messageExpires, locale),
+    restoreStatus: translate({
+      en: "Restore status", zh: "恢复状态",
+    }, locale),
+  };
+  return COLUMN_DEFINITIONS.map((column) => ({ ...column, label: labels[column.id] ?? column.label }));
+}

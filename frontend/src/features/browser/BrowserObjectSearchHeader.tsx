@@ -1,3 +1,4 @@
+import { useI18n } from "../../i18n";
 import { ListActionButton } from "../../components/list/ListControls";
 import type { RefObject } from "react";
 
@@ -85,6 +86,7 @@ export default function BrowserObjectSearchHeader({
   onClear,
   onClose,
 }: BrowserObjectSearchHeaderProps) {
+  const { t } = useI18n();
   return (
     <div className="flex min-w-0 items-center gap-2 pr-3">
       <button
@@ -92,7 +94,7 @@ export default function BrowserObjectSearchHeader({
         onClick={onSortName}
         className="group inline-flex h-6 shrink-0 items-center gap-1 whitespace-nowrap text-left text-slate-500 transition hover:text-primary-700 dark:text-slate-400 dark:hover:text-primary-100"
       >
-        <span>Name</span>
+        <span>{t({ en: "Name", zh: "名称" })}</span>
         <ChevronDownIcon
           className={`h-3 w-3 transition ${
             nameSortActive ? "opacity-100" : "opacity-30"
@@ -110,8 +112,8 @@ export default function BrowserObjectSearchHeader({
           type="text"
           value={filter}
           onChange={(event) => onFilterChange(event.target.value)}
-          placeholder={`Search ${objectNounPlural}`}
-          aria-label={`Search ${objectNounPlural}`}
+          placeholder={t({ en: `Search ${objectNounPlural}`, zh: objectNounPlural === "files" ? "搜索文件" : "搜索对象" })}
+          aria-label={t({ en: `Search ${objectNounPlural}`, zh: objectNounPlural === "files" ? "搜索文件" : "搜索对象" })}
           size="compact"
           fieldClassName="w-full"
           className={cx(
@@ -132,7 +134,7 @@ export default function BrowserObjectSearchHeader({
             }`}
             aria-haspopup="menu"
             aria-expanded={optionsOpen}
-            label="Search options"
+            label={t({ en: "Search options", zh: "搜索选项" })}
             icon={<SlidersIcon className="h-3 w-3" />}
           />
         )}
@@ -146,48 +148,48 @@ export default function BrowserObjectSearchHeader({
         >
           <div ref={optionsMenuRef} className="space-y-3">
             <UiSelect
-              label="Scope"
+              label={t({ en: "Scope", zh: "范围" })}
               size="compact"
               value={searchScope}
               onChange={(event) =>
                 onScopeChange(event.target.value as BrowserSearchScope)
               }
               className="ui-list-control h-9 w-full"
-              aria-label="Search scope"
+              aria-label={t({ en: "Search scope", zh: "搜索范围" })}
               disabled={!hasSearchQuery}
             >
-              <option value="prefix">Current path</option>
-              <option value="bucket">Whole bucket</option>
+              <option value="prefix">{t({ en: "Current path", zh: "当前路径" })}</option>
+              <option value="bucket">{t({ en: "Whole bucket", zh: "整个存储桶" })}</option>
             </UiSelect>
             <UiCheckboxField
               checked={recursive}
               onChange={(event) => onRecursiveChange(event.target.checked)}
               disabled={!hasSearchQuery || searchScope === "bucket"}
               className={optionCardClasses}
-              aria-label="Search recursively in subfolders"
+              aria-label={t({ en: "Search recursively in subfolders", zh: "递归搜索子文件夹" })}
             >
-              Recursive
+              {t({ en: "Recursive", zh: "递归" })}
             </UiCheckboxField>
             <UiCheckboxField
               checked={exactMatch}
               onChange={(event) => onExactMatchChange(event.target.checked)}
               disabled={!hasSearchQuery}
               className={optionCardClasses}
-              aria-label="Use exact match"
+              aria-label={t({ en: "Use exact match", zh: "使用精确匹配" })}
             >
-              Exact match
+              {t({ en: "Exact match", zh: "精确匹配" })}
             </UiCheckboxField>
             <UiCheckboxField
               checked={caseSensitive}
               onChange={(event) => onCaseSensitiveChange(event.target.checked)}
               disabled={!hasSearchQuery}
               className={optionCardClasses}
-              aria-label="Case-sensitive search"
+              aria-label={t({ en: "Case-sensitive search", zh: "区分大小写搜索" })}
             >
-              Case-sensitive
+              {t({ en: "Case-sensitive", zh: "区分大小写" })}
             </UiCheckboxField>
             <UiSelect
-              label="Type"
+              label={t({ en: "Type", zh: "类型" })}
               size="compact"
               value={typeFilter}
               onChange={(event) =>
@@ -196,23 +198,23 @@ export default function BrowserObjectSearchHeader({
                 )
               }
               className="ui-list-control h-9 w-full"
-              aria-label="Object type filter"
+              aria-label={t({ en: "Object type filter", zh: "对象类型筛选" })}
             >
-              <option value="all">All</option>
-              <option value="file">Files</option>
-              <option value="folder">Folders</option>
+              <option value="all">{t({ en: "All", zh: "全部" })}</option>
+              <option value="file">{t({ en: "Files", zh: "文件" })}</option>
+              <option value="folder">{t({ en: "Folders", zh: "文件夹" })}</option>
             </UiSelect>
             <UiSelect
-              label="Storage class"
+              label={t({ en: "Storage class", zh: "存储类别" })}
               size="compact"
               value={storageFilter}
               onChange={(event) =>
                 onStorageFilterChange(event.target.value)
               }
               className="ui-list-control h-9 w-full"
-              aria-label="Storage class filter"
+              aria-label={t({ en: "Storage class filter", zh: "存储类别筛选" })}
             >
-              <option value="all">All classes</option>
+              <option value="all">{t({ en: "All classes", zh: "全部类别" })}</option>
               {storageClasses.map((value) => (
                 <option key={value} value={value}>
                   {value}
@@ -225,14 +227,14 @@ export default function BrowserObjectSearchHeader({
                 onClick={onClear}
                 disabled={!canReset}
               >
-                Clear
+                {t({ en: "Clear", zh: "清除" })}
               </ListActionButton>
               <ListActionButton
                 type="button"
                 onClick={onClose}
 
               >
-                Close
+                {t({ en: "Close", zh: "关闭" })}
               </ListActionButton>
             </div>
           </div>

@@ -16,6 +16,7 @@ import TopbarDropdownSelect, {
 } from "./TopbarDropdownSelect";
 import UiTagBadgeList from "./UiTagBadgeList";
 import { TOPBAR_CONTEXT_SELECTOR_WIDTH_CLASS } from "./topbarControlWidths";
+import { useI18n, type I18nMessage } from "../i18n";
 
 export type ContextAccessMode =
   | "admin"
@@ -24,38 +25,43 @@ export type ContextAccessMode =
   | "connection"
   | null;
 
-export function getContextAccessModeVisual(mode: ContextAccessMode): {
+export function getContextAccessModeVisual(
+  mode: ContextAccessMode,
+  translateMessage?: (message: I18nMessage) => string,
+): {
   label: string;
   shortLabel: string;
   classes: string;
 } {
+  const text = translateMessage ?? ((message: I18nMessage) =>
+    typeof message === "string" ? message : message.en ?? message.zh ?? "");
   if (mode === "admin") {
     return {
-      label: "Admin mode",
-      shortLabel: "Admin",
+      label: text({ en: "Admin mode", zh: "管理员模式" }),
+      shortLabel: text({ en: "Admin", zh: "管理员" }),
       classes:
         "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-100",
     };
   }
   if (mode === "connection") {
     return {
-      label: "Connection mode",
-      shortLabel: "Connection",
+      label: text({ en: "Connection mode", zh: "连接模式" }),
+      shortLabel: text({ en: "Connection", zh: "连接" }),
       classes:
         "bg-violet-100 text-violet-800 dark:bg-violet-900/40 dark:text-violet-100",
     };
   }
   if (mode === "s3_user") {
     return {
-      label: "S3 user mode",
-      shortLabel: "S3 user",
+      label: text({ en: "S3 user mode", zh: "S3 用户模式" }),
+      shortLabel: text({ en: "S3 user", zh: "S3 用户" }),
       classes:
         "bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-100",
     };
   }
   return {
-    label: "Session",
-    shortLabel: "Session",
+    label: text({ en: "Session", zh: "会话" }),
+    shortLabel: text({ en: "Session", zh: "会话" }),
     classes:
       "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200",
   };
@@ -94,6 +100,7 @@ export default function TopbarContextAccountSelector({
   triggerMode = "icon_label",
   showTriggerTags = true,
 }: TopbarContextAccountSelectorProps) {
+  const { t } = useI18n();
   const showSelectorTags = useSelectorTagsPreference();
   const options = useMemo<TopbarDropdownOption[]>(
     () =>
@@ -103,11 +110,11 @@ export default function TopbarContextAccountSelector({
           const description =
             context.kind === "connection"
               ? context.connection_scope === "shared"
-                ? "Shared connection"
-                : "Private connection"
+                ? t({ en: "Shared connection", zh: "共享连接" })
+                : t({ en: "Private connection", zh: "私有连接" })
               : context.kind === "s3_user"
-                ? "S3 user identity"
-                : "RGW account";
+                ? t({ en: "S3 user identity", zh: "S3 用户身份" })
+                : t({ en: "RGW account", zh: "RGW 账户" });
           const selectorEntityTags = filterSelectorVisibleUiTags(context.tags);
           const selectorEndpointTags = filterSelectorVisibleUiTags(
             context.endpoint_tags,
@@ -181,6 +188,7 @@ export default function TopbarContextAccountSelector({
       showSelectorTags,
       showTriggerTags,
       triggerMode,
+      t,
     ],
   );
 
@@ -189,8 +197,8 @@ export default function TopbarContextAccountSelector({
       value={selectedContextId ?? ""}
       options={options}
       onChange={onContextChange}
-      ariaLabel="Select context account"
-      triggerLabel="Account"
+      ariaLabel={t({ en: "Select context account", zh: "选择账户上下文" })}
+      triggerLabel={t({ en: "Account", zh: "账户" })}
       placeholder={selectedLabel}
       triggerValue={selectedLabel}
       title={identityLabel ?? undefined}
@@ -198,18 +206,18 @@ export default function TopbarContextAccountSelector({
       menuHeader={
         <div className="shell-menu-muted rounded-md border px-2.5 py-2">
           <p className="shell-muted-text ui-caption uppercase">
-            Current IAM identity
+            {t({ en: "Current IAM identity", zh: "当前 IAM 身份" })}
           </p>
           <p className="truncate ui-caption font-semibold text-[var(--shell-text)]">
-            {identityLabel ?? "Not available for this context"}
+            {identityLabel ?? t({ en: "Not available for this context", zh: "此上下文不可用" })}
           </p>
         </div>
       }
       search={{
         threshold: searchThreshold,
-        ariaLabel: "Search accounts",
-        placeholder: "Search account...",
-        emptyMessage: "No account matches your search.",
+        ariaLabel: t({ en: "Search accounts", zh: "搜索账户" }),
+        placeholder: t({ en: "Search account...", zh: "搜索账户…" }),
+        emptyMessage: t({ en: "No account matches your search.", zh: "没有匹配的账户。" }),
       }}
       icon={icon}
       openInPortal={openInPortal}

@@ -17,6 +17,7 @@ import TopbarNotifications from "./TopbarNotifications";
 import TopbarWorkspaceSelector from "./TopbarWorkspaceSelector";
 import { HamburgerIcon } from "./topbarIcons";
 import type { TopbarControlDescriptor } from "./topbarControlsLayout";
+import { useI18n } from "../i18n";
 
 type TopbarProps = {
   projectName?: string;
@@ -55,14 +56,14 @@ type StoredTopbarUser = {
   account_links?: StoredAccountLink[] | null;
 };
 
-function resolveUiRoleLabel(user: StoredTopbarUser | null): string {
-  if (!user) return "Unknown";
-  if (user.authType === "s3_session") return "S3 Session";
-  if (user.role === "ui_superadmin") return "Superadmin";
-  if (user.role === "ui_admin") return "Admin";
-  if (user.role === "ui_user") return "User";
-  if (user.role === "ui_none") return "No access";
-  return "Unknown";
+function resolveUiRoleLabel(user: StoredTopbarUser | null, t: ReturnType<typeof useI18n>["t"]): string {
+  if (!user) return t({ en: "Unknown", zh: "未知" });
+  if (user.authType === "s3_session") return t({ en: "S3 Session", zh: "S3 会话" });
+  if (user.role === "ui_superadmin") return t({ en: "Superadmin", zh: "超级管理员" });
+  if (user.role === "ui_admin") return t({ en: "Admin", zh: "管理员" });
+  if (user.role === "ui_user") return t({ en: "User", zh: "用户" });
+  if (user.role === "ui_none") return t({ en: "No access", zh: "无访问权限" });
+  return t({ en: "Unknown", zh: "未知" });
 }
 
 export default function Topbar({
@@ -80,20 +81,21 @@ export default function Topbar({
   workspaceSwitcher,
   profilePath = "/",
 }: TopbarProps) {
+  const { t } = useI18n();
   const [storedUser, setStoredUser] = useState<StoredTopbarUser | null>(
     () => readStoredUser() as StoredTopbarUser | null,
   );
   const isS3Session = storedUser?.authType === "s3_session";
   const canAccessPrivateConnections =
     !isS3Session && canAccessPrivateConnectionsSection(storedUser);
-  const uiRoleLabel = useMemo(() => resolveUiRoleLabel(storedUser), [storedUser]);
+  const uiRoleLabel = useMemo(() => resolveUiRoleLabel(storedUser, t), [storedUser, t]);
 
   const isMobileViewport = useMediaQuery("(max-width: 767px)");
   const [controlsAvailableWidth, setControlsAvailableWidth] = useState<number>(Number.POSITIVE_INFINITY);
 
   const controlsStripRef = useRef<HTMLDivElement | null>(null);
 
-  const accountDisplay = userEmail ?? "Session";
+  const accountDisplay = userEmail ?? t({ en: "Session", zh: "会话" });
   const accountName = storedUser?.full_name?.trim() || accountDisplay;
   useEffect(() => {
     const syncStoredUser = () => {
@@ -181,7 +183,7 @@ export default function Topbar({
               <button
                 type="button"
                 onClick={onMobileMenuToggle}
-                aria-label={mobileMenuOpen ? "Close navigation" : "Open navigation"}
+                aria-label={mobileMenuOpen ? t({ en: "Close navigation", zh: "关闭导航" }) : t({ en: "Open navigation", zh: "打开导航" })}
                 aria-controls="mobile-navigation-panel"
                 aria-expanded={mobileMenuOpen}
                 className="shell-control inline-flex h-9 w-9 items-center justify-center rounded-lg border transition focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 md:hidden"

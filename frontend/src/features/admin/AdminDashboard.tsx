@@ -60,7 +60,8 @@ import {
 import { extractApiError } from "../../utils/apiError";
 import { formatLocalDateTime } from "../../utils/dateTime";
 import { formatBytes, formatCompactNumber, formatPercentage } from "../../utils/format";
-import { useI18n } from "../../i18n";
+import { translate, useI18n } from "../../i18n";
+import { infrastructureMessages } from "./infrastructureMessages";
 import { onboardingCopy } from "./onboardingCopy";
 import { useOnboardingStatus } from "./useOnboardingStatus";
 
@@ -78,17 +79,17 @@ function parseBackendIsoDate(value?: string | null): Date | null {
   return parsed;
 }
 
-function formatRelativeTime(value?: string | null, now = Date.now()): string {
+function formatRelativeTime(value?: string | null, now = Date.now(), locale: Parameters<typeof translate>[1] = "en"): string {
   const parsed = parseBackendIsoDate(value);
-  if (!parsed) return "Date unavailable";
+  if (!parsed) return translate(infrastructureMessages.dateUnavailable, locale);
   const diffMs = Math.max(0, now - parsed.getTime());
   const minutes = Math.floor(diffMs / 60000);
-  if (minutes < 1) return "just now";
-  if (minutes < 60) return `${minutes}m ago`;
+  if (minutes < 1) return translate(infrastructureMessages.justNow, locale);
+  if (minutes < 60) return translate({ en: `${minutes}m ago`, zh: `${minutes} 分钟前` }, locale);
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
+  if (hours < 24) return translate({ en: `${hours}h ago`, zh: `${hours} 小时前` }, locale);
   const days = Math.floor(hours / 24);
-  return `${days}d ago`;
+  return translate({ en: `${days}d ago`, zh: `${days} 天前` }, locale);
 }
 
 function isEndpointCheckStale(value?: string | null, now = Date.now()): boolean {
@@ -96,15 +97,15 @@ function isEndpointCheckStale(value?: string | null, now = Date.now()): boolean 
   return !parsed || now - parsed.getTime() > ENDPOINT_STATUS_MAX_AGE_MS;
 }
 
-function formatEndpointFreshnessWarning(noChecksCount: number, staleCount: number, totalCount: number): string {
+function formatEndpointFreshnessWarning(noChecksCount: number, staleCount: number, totalCount: number, locale: Parameters<typeof translate>[1] = "en"): string {
   const issueCount = noChecksCount + staleCount;
   const details = [
     noChecksCount > 0 ? `${noChecksCount} without checks` : null,
     staleCount > 0 ? `${staleCount} older than ${ENDPOINT_STATUS_MAX_AGE_HOURS}h` : null,
   ].filter(Boolean);
-  return `Endpoint Status uses stored healthcheck samples; ${issueCount}/${totalCount} endpoint(s) need fresh checks (${details.join(
-    ", "
-  )}). Dashboard statuses may not reflect current availability.`;
+  return translate({
+    en: `Endpoint Status uses stored healthcheck samples; ${issueCount}/${totalCount} endpoint(s) need fresh checks (${details.join(", ")}). Dashboard statuses may not reflect current availability.`, zh: `端点状态使用已保存的健康检查采样；${issueCount}/${totalCount} 个端点需要重新检查（${noChecksCount} 个尚无检查，${staleCount} 个检查早于 ${ENDPOINT_STATUS_MAX_AGE_HOURS} 小时前）。仪表板状态可能不代表当前可用性。`,
+  }, locale);
 }
 
 function formatLatency(value?: number | null): string {
@@ -128,12 +129,30 @@ function computeMeanAvailability(data: EndpointHealthOverviewResponse | null, sc
   return Math.round(totalAvailability / availabilityValues.length);
 }
 
-function formatAuditAction(log: AuditLogEntry): string {
-  const action = log.action.replace(/[._-]+/g, " ").trim();
-  if (log.action.includes("login")) return `User ${log.user_email} logged in`;
-  if (log.entity_type === "bucket" && log.entity_id) return `Bucket "${log.entity_id}" ${action}`;
-  if (log.entity_type === "endpoint" && log.entity_id) return `Endpoint ${log.entity_id} ${action}`;
-  if (log.entity_id) return `${log.entity_type ?? "Entity"} ${log.entity_id} ${action}`;
+function formatAuditAction(log: AuditLogEntry, locale: Parameters<typeof translate>[1] = "en"): string {
+  const rawAction = log.action.replace(/[._-]+/g, " ").trim();
+  const translatedActions: Record<string, string> = {
+    storage_endpoint_create: "创建存储端点",
+    storage_endpoint_update: "更新存储端点",
+    storage_endpoint_delete: "删除存储端点",
+    account_create: "创建账户",
+    account_update: "更新账户",
+    account_delete: "删除账户",
+    account_link_user: "关联用户",
+    bucket_list_objects: "列出对象",
+    user_create: "创建用户",
+    user_update: "更新用户",
+    user_delete: "删除用户",
+  };
+  const action = locale === "zh" ? translatedActions[log.action] ?? rawAction : rawAction;
+  const entityLabels: Record<string, string> = { account: "账户", user: "用户", bucket: "存储桶", endpoint: "端点", connection: "连接" };
+  if (log.action.includes("login")) return translate({ en: `User ${log.user_email} logged in`, zh: `用户 ${log.user_email} 已登录` }, locale);
+  if (log.entity_type === "bucket" && log.entity_id) return translate({ en: `Bucket "${log.entity_id}" ${action}`, zh: `存储桶“${log.entity_id}”${action}` }, locale);
+  if (log.entity_type === "endpoint" && log.entity_id) return translate({ en: `Endpoint ${log.entity_id} ${action}`, zh: `端点 ${log.entity_id} ${action}` }, locale);
+  if (log.entity_id) {
+    const entity = locale === "zh" ? entityLabels[log.entity_type ?? ""] ?? log.entity_type : log.entity_type;
+    return `${entity ?? translate(infrastructureMessages.entity, locale)} ${log.entity_id} ${action}`;
+  }
   return action.charAt(0).toUpperCase() + action.slice(1);
 }
 
@@ -182,28 +201,29 @@ function EndpointHealthSection({ data, loading, unavailableReason, freshnessWarn
   unavailableReason?: string | null;
   freshnessWarning: string | null;
 }) {
+  const { locale } = useI18n();
   const endpoints = unavailableReason ? [] : data?.endpoints.slice(0, MAX_ENDPOINT_ROWS) ?? [];
   return (
     <div className="ui-dashboard-operational-grid">
       <WorkspaceDashboardCard
-        title="Endpoint Health"
+        title={translate(infrastructureMessages.endpointHealth, locale)}
         presentation="compact"
-        action={<WorkspaceDashboardActionLink to="/admin/endpoint-status">Open Endpoint Status</WorkspaceDashboardActionLink>}
+        action={<WorkspaceDashboardActionLink to="/admin/endpoint-status">{translate(infrastructureMessages.openEndpointStatus, locale)}</WorkspaceDashboardActionLink>}
       >
-        <p className="ui-dashboard-note">Stored healthcheck samples and latency.{data && <> Data refreshed {formatLocalDateTime(data.generated_at)}.</>}</p>
+        <p className="ui-dashboard-note">{translate(infrastructureMessages.storedHealthcheckSamplesAndLatency, locale)}{data && <> {translate(infrastructureMessages.dataRefreshed, locale)} {formatLocalDateTime(data.generated_at)}.</>}</p>
         {freshnessWarning && !unavailableReason && <div className="mt-2"><PageBanner tone="warning">{freshnessWarning}</PageBanner></div>}
-        {loading ? <p role="status" className="ui-dashboard-note mt-2">Loading endpoint health…</p> : unavailableReason ? <p role="status" className="ui-dashboard-note mt-2">{unavailableReason}</p> : (
+        {loading ? <p role="status" className="ui-dashboard-note mt-2">{translate(infrastructureMessages.loadingEndpointHealth, locale)}</p> : unavailableReason ? <p role="status" className="ui-dashboard-note mt-2">{unavailableReason}</p> : (
           <>
             <div className="ui-dashboard-badges mt-2">
-              <WorkspaceStatusCounter presentation="compact" label="Up" value={data?.up_count} status="up" />
-              <WorkspaceStatusCounter presentation="compact" label="Degraded" value={data?.degraded_count} status="degraded" />
-              <WorkspaceStatusCounter presentation="compact" label="Down" value={data?.down_count} status="down" />
-              <WorkspaceStatusCounter presentation="compact" label="Unknown" value={data?.unknown_count} status="unknown" />
+              <WorkspaceStatusCounter presentation="compact" label={translate(infrastructureMessages.up, locale)} value={data?.up_count} status="up" />
+              <WorkspaceStatusCounter presentation="compact" label={translate(infrastructureMessages.degraded, locale)} value={data?.degraded_count} status="degraded" />
+              <WorkspaceStatusCounter presentation="compact" label={translate(infrastructureMessages.down, locale)} value={data?.down_count} status="down" />
+              <WorkspaceStatusCounter presentation="compact" label={translate(infrastructureMessages.unknown, locale)} value={data?.unknown_count} status="unknown" />
             </div>
-            <ul className="ui-dashboard-endpoint-list" aria-label="Endpoint health samples">
+            <ul className="ui-dashboard-endpoint-list" aria-label={translate(infrastructureMessages.endpointHealthSamples, locale)}>
               {endpoints.map((endpoint) => <EndpointRow key={endpoint.endpoint_id} endpoint={endpoint} />)}
             </ul>
-            {(data?.endpoints.length ?? 0) > MAX_ENDPOINT_ROWS && <p className="ui-dashboard-note">+ {(data?.endpoints.length ?? 0) - MAX_ENDPOINT_ROWS} more endpoint(s)</p>}
+            {(data?.endpoints.length ?? 0) > MAX_ENDPOINT_ROWS && <p className="ui-dashboard-note">+ {(data?.endpoints.length ?? 0) - MAX_ENDPOINT_ROWS} {translate(infrastructureMessages.moreEndpoints, locale)}</p>}
           </>
         )}
       </WorkspaceDashboardCard>
@@ -213,7 +233,7 @@ function EndpointHealthSection({ data, loading, unavailableReason, freshnessWarn
         loading={loading}
         unavailableReason={unavailableReason}
         incidentHighlightMinutes={data?.incident_highlight_minutes}
-        action={{ to: "/admin/endpoint-status", label: "View all incidents" }}
+        action={{ to: "/admin/endpoint-status", label: translate(infrastructureMessages.viewAllIncidents, locale) }}
         showEmptyState
       />
     </div>
@@ -221,8 +241,11 @@ function EndpointHealthSection({ data, loading, unavailableReason, freshnessWarn
 }
 
 function EndpointRow({ endpoint }: { endpoint: WorkspaceEndpointHealthEntry }) {
+  const { locale } = useI18n();
   const stale = isEndpointCheckStale(endpoint.checked_at);
-  const checkedAtLabel = endpoint.checked_at ? `Checked ${formatRelativeTime(endpoint.checked_at)}` : "No healthcheck yet";
+  const checkedAtLabel = endpoint.checked_at
+    ? translate({ en: `Checked ${formatRelativeTime(endpoint.checked_at, undefined, locale)}`, zh: `检查于 ${formatRelativeTime(endpoint.checked_at, undefined, locale)}` }, locale)
+    : translate(infrastructureMessages.noHealthcheckYet, locale);
   return (
     <li className="ui-dashboard-endpoint-row">
       <span className="ui-dashboard-endpoint-name">
@@ -235,7 +258,7 @@ function EndpointRow({ endpoint }: { endpoint: WorkspaceEndpointHealthEntry }) {
       </span>
       <span className="ui-dashboard-endpoint-check" data-stale={stale} title={formatLocalDateTime(endpoint.checked_at)}>{checkedAtLabel}</span>
       <UiBadge tone={endpoint.status === "up" ? "success" : endpoint.status === "degraded" ? "warning" : endpoint.status === "down" ? "danger" : "neutral"} className="ui-dashboard-badge ui-dashboard-endpoint-state">
-        {endpoint.status === "up" ? "Up" : endpoint.status === "degraded" ? "Degraded" : endpoint.status === "down" ? "Down" : "Unknown"}
+        {endpoint.status === "up" ? translate(infrastructureMessages.up, locale) : endpoint.status === "degraded" ? translate(infrastructureMessages.degraded, locale) : endpoint.status === "down" ? translate(infrastructureMessages.down, locale) : translate(infrastructureMessages.unknown, locale)}
       </UiBadge>
     </li>
   );
@@ -245,12 +268,12 @@ function coverageLabel(coverage?: AdminDashboardCoverage): string {
   return coverage ? `${coverage.complete_count}/${coverage.eligible_count}` : "—";
 }
 
-function coverageNote(coverage?: AdminDashboardCoverage): string | null {
+function coverageNote(coverage?: AdminDashboardCoverage, locale: Parameters<typeof translate>[1] = "en"): string | null {
   if (!coverage || coverage.eligible_count === 0) return null;
   if (coverage.complete_count === coverage.eligible_count) return null;
   const details = coverage.issues.map((issue) => `${issue.name}: ${issue.reason}`).join("; ");
-  const prefix = coverage.contributing_count > 0 ? "Partial data" : "Data unavailable";
-  return `${prefix} — ${coverage.complete_count}/${coverage.eligible_count} endpoints fully measured.${details ? ` ${details}` : ""}`;
+  const prefix = coverage.contributing_count > 0 ? translate({ en: "Partial data", zh: "部分数据" }, locale) : translate({ en: "Data unavailable", zh: "数据不可用" }, locale);
+  return `${prefix} — ${coverage.complete_count}/${coverage.eligible_count} ${translate({ en: "endpoints fully measured.", zh: "个端点已完成测量。" }, locale)}${details ? ` ${details}` : ""}`;
 }
 
 function StorageTrafficSummary({
@@ -278,77 +301,82 @@ function StorageTrafficSummary({
   availabilityCoverage: string;
   availabilityNote: string | null;
 }) {
+  const { locale } = useI18n();
   const storageTotals = storage?.storage_totals;
   const requestsSeries = trafficOpsSeries(traffic);
-  const storageReason = storageError || (!storageLoading && !storage ? "Storage metrics are not available." : storage?.coverage?.eligible_count === 0 ? "No managed Ceph endpoint has ready Supervision credentials and Metrics enabled." : undefined);
-  const trafficReason = trafficError || (!trafficLoading && !traffic ? "Usage logs are not available." : traffic?.coverage?.eligible_count === 0 ? "No managed Ceph endpoint has ready Supervision credentials and Usage enabled." : undefined);
-  const status = (label: string, loading: boolean, reason?: string | null, coverage?: AdminDashboardCoverage) => {
+  const storageReason = storageError || (!storageLoading && !storage ? translate(infrastructureMessages.storageMetricsAreNotAvailable, locale) : storage?.coverage?.eligible_count === 0 ? translate({ en: "No managed Ceph endpoint has ready Supervision credentials and Metrics enabled.", zh: "没有具备就绪监控凭据且启用指标的托管 Ceph 端点。" }, locale) : undefined);
+  const trafficReason = trafficError || (!trafficLoading && !traffic ? translate(infrastructureMessages.usageLogsAreNotAvailable, locale) : traffic?.coverage?.eligible_count === 0 ? translate({ en: "No managed Ceph endpoint has ready Supervision credentials and Usage enabled.", zh: "没有具备就绪监控凭据且启用用量功能的托管 Ceph 端点。" }, locale) : undefined);
+  const status = (label: string, zhLabel: string, loading: boolean, reason?: string | null, coverage?: AdminDashboardCoverage) => {
     if (loading) return null;
-    if (reason || (coverage && coverage.contributing_count === 0)) return `${label} unavailable`;
-    if (coverage && coverage.complete_count < coverage.eligible_count) return `${label} partial`;
+    if (reason || (coverage && coverage.contributing_count === 0)) {
+      return translate({ en: `${label} unavailable`, zh: `${zhLabel}不可用` }, locale);
+    }
+    if (coverage && coverage.complete_count < coverage.eligible_count) {
+      return translate({ en: `${label} partial`, zh: `${zhLabel}部分可用` }, locale);
+    }
     return null;
   };
   const statuses = [
-    status("Storage", storageLoading, storageReason, storage?.coverage),
-    status("Traffic", trafficLoading, trafficReason, traffic?.coverage),
-    healthScoreLoading ? null : healthScoreUnavailableReason ? "Availability unavailable" : availabilityNote ? "Availability partial" : null,
+    status("Storage", "存储", storageLoading, storageReason, storage?.coverage),
+    status("Traffic", "流量", trafficLoading, trafficReason, traffic?.coverage),
+    healthScoreLoading ? null : healthScoreUnavailableReason ? translate({ en: "Availability unavailable", zh: "可用率不可用" }, locale) : availabilityNote ? translate({ en: "Availability partial", zh: "可用率部分可用" }, locale) : null,
   ].filter((value): value is string => value !== null);
   const metrics: WorkspacePlatformMetric[] = [
     {
-      label: "Buckets",
+      label: translate(infrastructureMessages.buckets, locale),
       value: storageLoading ? "..." : formatOptionalCompactNumber(storageReason ? null : storageTotals?.bucket_count ?? null),
       tone: "blue",
     },
     {
-      label: "Objects",
+      label: translate(infrastructureMessages.objects, locale),
       value: storageLoading ? "..." : formatOptionalCompactNumber(storageReason ? null : storageTotals?.object_count ?? null),
       tone: "violet",
     },
     {
-      label: "Stored data",
+      label: translate(infrastructureMessages.storedData, locale),
       value: storageLoading ? "..." : formatOptionalBytes(storageReason ? null : storageTotals?.used_bytes ?? null),
       tone: "emerald",
     },
     {
-      label: "Requests (24h)",
+      label: translate(infrastructureMessages.requests24h, locale),
       value: trafficLoading ? "..." : formatOptionalCompactNumber(trafficReason ? null : traffic?.totals.ops ?? null),
-      delta: trafficReason ? undefined : traffic?.totals.success_rate != null ? `${formatPercentage(traffic.totals.success_rate * 100)} success` : undefined,
+      delta: trafficReason ? undefined : traffic?.totals.success_rate != null ? `${formatPercentage(traffic.totals.success_rate * 100)} ${translate({ en: "success", zh: "成功" }, locale)}` : undefined,
       series: !trafficReason && requestsSeries.length > 0 ? requestsSeries : undefined,
       tone: "blue",
     },
     {
-      label: "Availability (7 days)",
+      label: translate({ en: "Availability (7 days)", zh: "可用率（7 天）" }, locale),
       value: healthScoreLoading ? "…" : healthScore == null || healthScoreUnavailableReason ? "—" : `${healthScore}%`,
       tone: "emerald",
     },
   ];
 
   return (
-    <WorkspaceDashboardCard aria-label="Storage & traffic" wrapHeading presentation="compact"
-      title="Storage & traffic"
-      titleAccessory={<WorkspaceDashboardInfo label="About storage and traffic metrics">
-          <p className="ui-dashboard-note">Aggregated across managed and supervised Ceph endpoints. Includes Accounts and S3 Users registered in BucketReef.</p>
-          <table className="ui-dashboard-info-table ui-data-table" aria-label="Metric coverage and dates">
-            <thead><tr><th scope="col">Measure</th><th scope="col">Endpoints</th><th scope="col">Data date</th></tr></thead>
+    <WorkspaceDashboardCard aria-label={translate(infrastructureMessages.storageTraffic, locale)} wrapHeading presentation="compact"
+      title={translate(infrastructureMessages.storageTraffic, locale)}
+      titleAccessory={<WorkspaceDashboardInfo label={translate({ en: "About storage and traffic metrics", zh: "关于存储与流量指标" }, locale)}>
+          <p className="ui-dashboard-note">{translate({ en: "Aggregated across managed and supervised Ceph endpoints. Includes Accounts and S3 Users registered in BucketReef.", zh: "汇总托管和受监控的 Ceph 端点，包括 BucketReef 中注册的账户和 S3 用户。" }, locale)}</p>
+          <table className="ui-dashboard-info-table ui-data-table" aria-label={translate({ en: "Metric coverage and dates", zh: "指标覆盖范围和日期" }, locale)}>
+            <thead><tr><th scope="col">{translate({ en: "Measure", zh: "指标" }, locale)}</th><th scope="col">{translate(infrastructureMessages.endpoints, locale)}</th><th scope="col">{translate({ en: "Data date", zh: "数据日期" }, locale)}</th></tr></thead>
             <tbody>
-              <tr><td>Storage</td><td>{storageLoading ? "Loading…" : coverageLabel(storage?.coverage)}</td><td>{storage?.generated_at ? <time dateTime={storage.generated_at}>{formatLocalDateTime(storage.generated_at)}</time> : "—"}</td></tr>
-              <tr><td>Traffic</td><td>{trafficLoading ? "Loading…" : coverageLabel(traffic?.coverage)}</td><td>{traffic?.end ? <time dateTime={traffic.end}>{formatLocalDateTime(traffic.end)}</time> : "—"}</td></tr>
-              <tr><td>Availability</td><td>{availabilityCoverage}</td><td>7-day mean</td></tr>
+              <tr><td>{translate(infrastructureMessages.storage, locale)}</td><td>{storageLoading ? translate({ en: "Loading…", zh: "正在加载…" }, locale) : coverageLabel(storage?.coverage)}</td><td>{storage?.generated_at ? <time dateTime={storage.generated_at}>{formatLocalDateTime(storage.generated_at)}</time> : "—"}</td></tr>
+              <tr><td>{translate(infrastructureMessages.traffic, locale)}</td><td>{trafficLoading ? translate({ en: "Loading…", zh: "正在加载…" }, locale) : coverageLabel(traffic?.coverage)}</td><td>{traffic?.end ? <time dateTime={traffic.end}>{formatLocalDateTime(traffic.end)}</time> : "—"}</td></tr>
+              <tr><td>{translate({ en: "Availability", zh: "可用率" }, locale)}</td><td>{availabilityCoverage}</td><td>{translate({ en: "7-day mean", zh: "7 天平均" }, locale)}</td></tr>
             </tbody>
           </table>
-          {storageReason && <p className="ui-dashboard-note mt-2">Storage: {storageReason}</p>}
-          {trafficReason && <p className="ui-dashboard-note mt-2">Traffic: {trafficReason}</p>}
-          {!storageReason && coverageNote(storage?.coverage) && <p className="ui-dashboard-note mt-2">Storage: {coverageNote(storage?.coverage)}</p>}
-          {!trafficReason && coverageNote(traffic?.coverage) && <p className="ui-dashboard-note mt-2">Traffic: {coverageNote(traffic?.coverage)}</p>}
-          {healthScoreUnavailableReason && <p className="ui-dashboard-note mt-2">Availability: {healthScoreUnavailableReason}</p>}
-          {availabilityNote && <p className="ui-dashboard-note mt-2">Availability: {availabilityNote}</p>}
-          <p className="ui-dashboard-note mt-2">Coverage counts fully measured endpoints. Partial totals remain visible.</p>
-          <p className="ui-dashboard-note mt-2">Mean availability across endpoints with measurements.</p>
-          <p className="ui-dashboard-note mt-2">Storage and traffic are cached for up to 30 minutes. Refresh respects this expiry.</p>
+          {storageReason && <p className="ui-dashboard-note mt-2">{translate(infrastructureMessages.storageLabel, locale)} {storageReason}</p>}
+          {trafficReason && <p className="ui-dashboard-note mt-2">{translate(infrastructureMessages.trafficLabel, locale)} {trafficReason}</p>}
+          {!storageReason && coverageNote(storage?.coverage, locale) && <p className="ui-dashboard-note mt-2">{translate(infrastructureMessages.storageLabel, locale)} {coverageNote(storage?.coverage, locale)}</p>}
+          {!trafficReason && coverageNote(traffic?.coverage, locale) && <p className="ui-dashboard-note mt-2">{translate(infrastructureMessages.trafficLabel, locale)} {coverageNote(traffic?.coverage, locale)}</p>}
+          {healthScoreUnavailableReason && <p className="ui-dashboard-note mt-2">{translate({ en: "Availability:", zh: "可用率：" }, locale)} {healthScoreUnavailableReason}</p>}
+          {availabilityNote && <p className="ui-dashboard-note mt-2">{translate({ en: "Availability:", zh: "可用率：" }, locale)} {availabilityNote}</p>}
+          <p className="ui-dashboard-note mt-2">{translate({ en: "Coverage counts fully measured endpoints. Partial totals remain visible.", zh: "覆盖范围统计已完整测量的端点，部分汇总仍会显示。" }, locale)}</p>
+          <p className="ui-dashboard-note mt-2">{translate({ en: "Mean availability across endpoints with measurements.", zh: "计算有测量数据端点的平均可用率。" }, locale)}</p>
+          <p className="ui-dashboard-note mt-2">{translate({ en: "Storage and traffic are cached for up to 30 minutes. Refresh respects this expiry.", zh: "存储和流量数据最多缓存 30 分钟，刷新会遵循此过期时间。" }, locale)}</p>
         </WorkspaceDashboardInfo>}
       action={statuses.length > 0 ? <span role="status" className="ui-dashboard-badges">{statuses.map(label => <UiBadge key={label} tone="warning" className="ui-dashboard-badge">{label}</UiBadge>)}</span> : undefined}
     >
-      <p className="ui-dashboard-note">Managed &amp; supervised Ceph</p>
+      <p className="ui-dashboard-note">{translate({ en: "Managed & supervised Ceph", zh: "托管和受监控的 Ceph" }, locale)}</p>
       <div className="ui-dashboard-metrics mt-2">
         {metrics.map((metric) => <WorkspacePlatformMetricCard key={metric.label} metric={metric} />)}
       </div>
@@ -361,26 +389,28 @@ function RecentActivityCard({ logs, loading, unavailableReason }: {
   loading: boolean;
   unavailableReason?: string | null;
 }) {
+  const { locale } = useI18n();
   return (
-    <WorkspaceDashboardCard title="Recent activity" presentation="compact">
-      {loading ? <p role="status" className="ui-dashboard-note">Loading activity…</p> : unavailableReason ? <p role="status" className="ui-dashboard-note">{unavailableReason}</p> : logs.length === 0 ? <p className="ui-dashboard-note">No recent audit activity.</p> : (
+    <WorkspaceDashboardCard title={translate(infrastructureMessages.recentActivity, locale)} presentation="compact">
+      {loading ? <p role="status" className="ui-dashboard-note">{translate(infrastructureMessages.loadingActivity, locale)}</p> : unavailableReason ? <p role="status" className="ui-dashboard-note">{unavailableReason}</p> : logs.length === 0 ? <p className="ui-dashboard-note">{translate(infrastructureMessages.noRecentAuditActivity, locale)}</p> : (
         <ul className="ui-dashboard-activity">
           {logs.slice(0, 3).map((log) => (
             <li key={log.id}>
-              <span className="ui-dashboard-note ui-dashboard-activity-text">{formatAuditAction(log)}</span>
-              <span className="ui-dashboard-note" title={formatLocalDateTime(log.created_at)}>{formatRelativeTime(log.created_at)}</span>
+              <span className="ui-dashboard-note ui-dashboard-activity-text">{formatAuditAction(log, locale)}</span>
+              <span className="ui-dashboard-note" title={formatLocalDateTime(log.created_at)}>{formatRelativeTime(log.created_at, undefined, locale)}</span>
             </li>
           ))}
         </ul>
       )}
       <div className="ui-dashboard-panel-footer">
-        <WorkspaceDashboardActionLink to="/admin/audit">View audit logs<OpenIcon className="h-3.5 w-3.5" /></WorkspaceDashboardActionLink>
+        <WorkspaceDashboardActionLink to="/admin/audit">{translate(infrastructureMessages.viewAuditLogs, locale)}<OpenIcon className="h-3.5 w-3.5" /></WorkspaceDashboardActionLink>
       </div>
     </WorkspaceDashboardCard>
   );
 }
 
 export default function AdminDashboard() {
+  const { locale } = useI18n();
   const [summary, setSummary] = useState<AdminSummary | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(true);
   const [summaryError, setSummaryError] = useState<string | null>(null);
@@ -430,7 +460,7 @@ export default function AdminDashboard() {
       .catch((err) => {
         if (cancelled) return;
         setSummary(null);
-        setSummaryError(extractApiError(err, "Unable to load admin overview."));
+        setSummaryError(extractApiError(err, translate(infrastructureMessages.unableToLoadAdminOverview, locale)));
       })
       .finally(() => {
         if (!cancelled) setSummaryLoading(false);
@@ -438,7 +468,7 @@ export default function AdminDashboard() {
     return () => {
       cancelled = true;
     };
-  }, [refreshNonce]);
+  }, [locale, refreshNonce]);
 
   useEffect(() => {
     let cancelled = false;
@@ -447,10 +477,10 @@ export default function AdminDashboard() {
     setDashboardScope(null);
     fetchAdminDashboardScope()
       .then((data) => { if (!cancelled) setDashboardScope(data); })
-      .catch((err) => { if (!cancelled) setScopeError(extractApiError(err, "Unable to load supervised endpoint scope.")); })
+      .catch((err) => { if (!cancelled) setScopeError(extractApiError(err, translate({ en: "Unable to load supervised endpoint scope.", zh: "无法加载受监控端点范围。" }, locale))); })
       .finally(() => { if (!cancelled) setScopeLoading(false); });
     return () => { cancelled = true; };
-  }, [refreshNonce]);
+  }, [locale, refreshNonce]);
 
   useEffect(() => {
     let cancelled = false;
@@ -465,7 +495,7 @@ export default function AdminDashboard() {
       .catch((err) => {
         if (cancelled) return;
         setStorage(null);
-        setStorageError(extractApiError(err, "Storage metrics are not available."));
+        setStorageError(extractApiError(err, translate(infrastructureMessages.storageMetricsAreNotAvailable, locale)));
       })
       .finally(() => {
         if (!cancelled) setStorageLoading(false);
@@ -473,7 +503,7 @@ export default function AdminDashboard() {
     return () => {
       cancelled = true;
     };
-  }, [refreshNonce]);
+  }, [locale, refreshNonce]);
 
   useEffect(() => {
     let cancelled = false;
@@ -488,7 +518,7 @@ export default function AdminDashboard() {
       .catch((err) => {
         if (cancelled) return;
         setTraffic(null);
-        setTrafficError(extractApiError(err, "Usage logs are not available."));
+        setTrafficError(extractApiError(err, translate(infrastructureMessages.usageLogsAreNotAvailable, locale)));
       })
       .finally(() => {
         if (!cancelled) setTrafficLoading(false);
@@ -496,7 +526,7 @@ export default function AdminDashboard() {
     return () => {
       cancelled = true;
     };
-  }, [refreshNonce]);
+  }, [locale, refreshNonce]);
 
   useEffect(() => {
     let cancelled = false;
@@ -511,7 +541,7 @@ export default function AdminDashboard() {
       .catch((err) => {
         if (cancelled) return;
         setAuditLogs([]);
-        setAuditError(extractApiError(err, "Audit activity is not available."));
+        setAuditError(extractApiError(err, translate(infrastructureMessages.auditActivityIsNotAvailable, locale)));
       })
       .finally(() => {
         if (!cancelled) setAuditLoading(false);
@@ -519,7 +549,7 @@ export default function AdminDashboard() {
     return () => {
       cancelled = true;
     };
-  }, [refreshNonce]);
+  }, [locale, refreshNonce]);
 
   useEffect(() => {
     if (!generalSettings.endpoint_status_enabled) {
@@ -539,7 +569,7 @@ export default function AdminDashboard() {
         if (cancelled) return;
         const endpoints = data.endpoints ?? [];
         if (endpoints.length === 0) {
-          setEndpointFreshnessWarning("Endpoint Status is enabled, but no endpoint healthcheck data is available.");
+          setEndpointFreshnessWarning(translate(infrastructureMessages.endpointStatusIsEnabledButNoEndpointHealthcheckDataIs, locale));
           return;
         }
         const now = Date.now();
@@ -556,13 +586,13 @@ export default function AdminDashboard() {
           }
         }
         if (noChecksCount > 0 || staleCount > 0) {
-          setEndpointFreshnessWarning(formatEndpointFreshnessWarning(noChecksCount, staleCount, endpoints.length));
+          setEndpointFreshnessWarning(formatEndpointFreshnessWarning(noChecksCount, staleCount, endpoints.length, locale));
           return;
         }
         setEndpointFreshnessWarning(null);
       } catch {
         if (!cancelled) {
-          setEndpointFreshnessWarning("Endpoint Status is enabled, but freshness could not be verified.");
+          setEndpointFreshnessWarning(translate(infrastructureMessages.endpointStatusIsEnabledButFreshnessCouldNotBeVerified, locale));
         }
       }
     };
@@ -570,7 +600,7 @@ export default function AdminDashboard() {
     return () => {
       cancelled = true;
     };
-  }, [generalSettings.endpoint_status_enabled, refreshNonce]);
+  }, [generalSettings.endpoint_status_enabled, locale, refreshNonce]);
 
   useEffect(() => {
     if (!generalSettings.endpoint_status_enabled) return;
@@ -586,7 +616,7 @@ export default function AdminDashboard() {
       .catch((err) => {
         if (cancelled) return;
         setWorkspaceHealth(null);
-        setWorkspaceHealthError(extractApiError(err, "Unable to load workspace endpoint health."));
+        setWorkspaceHealthError(extractApiError(err, translate(infrastructureMessages.unableToLoadWorkspaceEndpointHealth, locale)));
       })
       .finally(() => {
         if (!cancelled) {
@@ -596,7 +626,7 @@ export default function AdminDashboard() {
     return () => {
       cancelled = true;
     };
-  }, [generalSettings.endpoint_status_enabled, refreshNonce]);
+  }, [generalSettings.endpoint_status_enabled, locale, refreshNonce]);
 
   useEffect(() => {
     if (!generalSettings.endpoint_status_enabled) {
@@ -616,7 +646,7 @@ export default function AdminDashboard() {
       .catch((err) => {
         if (cancelled) return;
         setMapEndpoints([]);
-        setMapEndpointsError(extractApiError(err, "Unable to load endpoint map coordinates."));
+        setMapEndpointsError(extractApiError(err, translate(infrastructureMessages.unableToLoadEndpointMapCoordinates, locale)));
       })
       .finally(() => {
         if (!cancelled) {
@@ -626,7 +656,7 @@ export default function AdminDashboard() {
     return () => {
       cancelled = true;
     };
-  }, [generalSettings.endpoint_status_enabled, refreshNonce]);
+  }, [generalSettings.endpoint_status_enabled, locale, refreshNonce]);
 
   useEffect(() => {
     if (!generalSettings.endpoint_status_enabled) return;
@@ -642,7 +672,7 @@ export default function AdminDashboard() {
       .catch((err) => {
         if (cancelled) return;
         setHealthOverview(null);
-        setHealthOverviewError(extractApiError(err, "7-day endpoint health history is not available."));
+        setHealthOverviewError(extractApiError(err, translate({ en: "7-day endpoint health history is not available.", zh: "没有可用的 7 天端点健康历史。" }, locale)));
       })
       .finally(() => {
         if (!cancelled) {
@@ -652,7 +682,7 @@ export default function AdminDashboard() {
     return () => {
       cancelled = true;
     };
-  }, [generalSettings.endpoint_status_enabled, refreshNonce]);
+  }, [generalSettings.endpoint_status_enabled, locale, refreshNonce]);
 
   const handleDismissOnboarding = async () => {
     if (!onboarding) return;
@@ -662,7 +692,7 @@ export default function AdminDashboard() {
       const data = await dismissOnboarding();
       setOnboarding(data);
     } catch (err) {
-      setOnboardingActionError(extractApiError(err, "Unable to hide setup yet."));
+      setOnboardingActionError(extractApiError(err, translate(infrastructureMessages.unableToDismissOnboardingYet, locale)));
     } finally {
       setDismissBusy(false);
     }
@@ -670,11 +700,11 @@ export default function AdminDashboard() {
 
   const coreFeatures = useMemo<WorkspaceDashboardFeature[]>(
     () => [
-      { id: "manager", label: "Manager", enabled: generalSettings.manager_enabled },
-      { id: "browser", label: "Browser", enabled: generalSettings.browser_enabled },
-      { id: "portal", label: "Portal", enabled: generalSettings.portal_enabled },
-      { id: "ceph_admin", label: "Ceph Admin", enabled: generalSettings.ceph_admin_enabled, massManagement: true },
-      { id: "storage_ops", label: "Storage Ops", enabled: generalSettings.storage_ops_enabled, massManagement: true },
+      { id: "manager", label: translate(infrastructureMessages.manager, locale), enabled: generalSettings.manager_enabled },
+      { id: "browser", label: translate(infrastructureMessages.browser, locale), enabled: generalSettings.browser_enabled },
+      { id: "portal", label: translate(infrastructureMessages.portal, locale), enabled: generalSettings.portal_enabled },
+      { id: "ceph_admin", label: translate(infrastructureMessages.cephAdmin, locale), enabled: generalSettings.ceph_admin_enabled, massManagement: true },
+      { id: "storage_ops", label: translate(infrastructureMessages.storageOps, locale), enabled: generalSettings.storage_ops_enabled, massManagement: true },
     ],
     [
       generalSettings.browser_enabled,
@@ -682,30 +712,32 @@ export default function AdminDashboard() {
       generalSettings.manager_enabled,
       generalSettings.portal_enabled,
       generalSettings.storage_ops_enabled,
+      locale,
     ]
   );
 
   const extraFeatures = useMemo<WorkspaceDashboardFeature[]>(
     () => [
-      { id: "billing", label: "Billing", enabled: generalSettings.billing_enabled },
-      { id: "endpoint_status", label: "Endpoint Status", enabled: generalSettings.endpoint_status_enabled },
-      { id: "quota_alerts", label: "Quota alerts", enabled: generalSettings.quota_alerts_enabled },
-      { id: "usage_history", label: "Usage history", enabled: generalSettings.usage_history_enabled },
+      { id: "billing", label: translate(infrastructureMessages.billing, locale), enabled: generalSettings.billing_enabled },
+      { id: "endpoint_status", label: translate(infrastructureMessages.endpointStatus, locale), enabled: generalSettings.endpoint_status_enabled },
+      { id: "quota_alerts", label: translate(infrastructureMessages.quotaAlerts, locale), enabled: generalSettings.quota_alerts_enabled },
+      { id: "usage_history", label: translate(infrastructureMessages.usageHistory, locale), enabled: generalSettings.usage_history_enabled },
     ],
     [
       generalSettings.billing_enabled,
       generalSettings.endpoint_status_enabled,
       generalSettings.quota_alerts_enabled,
       generalSettings.usage_history_enabled,
+      locale,
     ]
   );
 
   const featureGroups = useMemo<WorkspaceDashboardFeatureGroup[]>(
     () => [
-      { title: "Core features", features: coreFeatures },
-      { title: "Extra features", features: extraFeatures },
+      { title: translate(infrastructureMessages.coreFeatures, locale), features: coreFeatures },
+      { title: translate(infrastructureMessages.extraFeatures, locale), features: extraFeatures },
     ],
-    [coreFeatures, extraFeatures]
+    [coreFeatures, extraFeatures, locale]
   );
 
   const administrationItems = useMemo<WorkspaceDashboardSummaryItem[]>(() => {
@@ -713,48 +745,48 @@ export default function AdminDashboard() {
     return [
       {
         id: "ui-users",
-        label: "UI Users",
+        label: translate(infrastructureMessages.uiUsers, locale),
         value: totalUiUsers,
-        hint: `Admins: ${summary?.total_admins ?? 0}  Users: ${summary?.total_users ?? 0}`,
+        hint: translate({ en: `Admins: ${summary?.total_admins ?? 0}  Users: ${summary?.total_users ?? 0}`, zh: `管理员：${summary?.total_admins ?? 0}  用户：${summary?.total_users ?? 0}` }, locale),
         to: "/admin/users",
       },
       {
         id: "active-sessions",
-        label: "Active Sessions",
+        label: translate(infrastructureMessages.activeSessions, locale),
         value: summary?.total_active_sessions ?? 0,
-        hint: `UI: ${summary?.active_sessions_by_type?.ui ?? 0} · S3: ${summary?.active_sessions_by_type?.s3 ?? 0}`,
+        hint: translate({ en: `UI: ${summary?.active_sessions_by_type?.ui ?? 0} · S3: ${summary?.active_sessions_by_type?.s3 ?? 0}`, zh: `界面：${summary?.active_sessions_by_type?.ui ?? 0} · S3：${summary?.active_sessions_by_type?.s3 ?? 0}` }, locale),
         to: "/admin/identity-security",
       },
       {
         id: "accounts-primary",
-        label: "Accounts",
+        label: translate(infrastructureMessages.accounts, locale),
         value: summary?.total_accounts ?? 0,
-        hint: `Assigned: ${summary?.assigned_accounts ?? 0}`,
+        hint: translate({ en: `Assigned: ${summary?.assigned_accounts ?? 0}`, zh: `已分配：${summary?.assigned_accounts ?? 0}` }, locale),
         to: "/admin/s3-accounts",
       },
       {
         id: "s3-users",
-        label: "S3 Users",
+        label: translate(infrastructureMessages.s3Users, locale),
         value: summary?.total_s3_users ?? 0,
-        hint: `Assigned: ${summary?.assigned_s3_users ?? 0}`,
+        hint: translate({ en: `Assigned: ${summary?.assigned_s3_users ?? 0}`, zh: `已分配：${summary?.assigned_s3_users ?? 0}` }, locale),
         to: "/admin/s3-users",
       },
       {
         id: "shared-s3-connections",
-        label: "Shared S3 Connections",
+        label: translate(infrastructureMessages.sharedS3Connections, locale),
         value: summary?.total_shared_connections ?? 0,
-        hint: "Admin-managed",
+        hint: translate(infrastructureMessages.adminManaged, locale),
         to: "/admin/s3-connections",
       },
       {
         id: "endpoints",
-        label: "Endpoints",
+        label: translate(infrastructureMessages.endpoints, locale),
         value: summary?.total_endpoints ?? 0,
-        hint: `Ceph: ${summary?.total_ceph_endpoints ?? 0}  Other: ${summary?.total_other_endpoints ?? 0}`,
+        hint: translate({ en: `Ceph: ${summary?.total_ceph_endpoints ?? 0}  Other: ${summary?.total_other_endpoints ?? 0}`, zh: `Ceph：${summary?.total_ceph_endpoints ?? 0}  其他：${summary?.total_other_endpoints ?? 0}` }, locale),
         to: "/admin/storage-endpoints",
       },
     ];
-  }, [summary]);
+  }, [locale, summary]);
 
   const mapMarkers = useMemo<AdminDashboardMapMarker[]>(() => {
     const statusByEndpointId = new Map<number, HealthCheckStatus>();
@@ -771,26 +803,26 @@ export default function AdminDashboard() {
   }, [mapEndpoints, workspaceHealth]);
 
   const endpointUnavailableReason = !generalSettings.endpoint_status_enabled
-    ? "Endpoint Status feature is disabled."
+    ? translate(infrastructureMessages.endpointStatusFeatureIsDisabled, locale)
     : workspaceHealthError
       ? workspaceHealthError
       : !workspaceHealthLoading && workspaceHealth && workspaceHealth.endpoint_count === 0
-        ? "Endpoint Status has no endpoint data yet."
+        ? translate(infrastructureMessages.endpointStatusHasNoEndpointDataYet, locale)
         : null;
   const healthScore = computeMeanAvailability(healthOverview, dashboardScope);
   const measuredIds = new Set(healthOverview?.endpoints.filter((endpoint) => endpoint.availability_pct != null && Number.isFinite(endpoint.availability_pct)).map((endpoint) => endpoint.endpoint_id));
   const missingHealth = dashboardScope?.endpoints.filter((endpoint) => !measuredIds.has(endpoint.endpoint_id)) ?? [];
   const availabilityLoading = scopeLoading || healthOverviewLoading;
-  const availabilityCoverage = availabilityLoading ? "Loading…" : dashboardScope && generalSettings.endpoint_status_enabled && !healthOverviewError
+  const availabilityCoverage = availabilityLoading ? translate({ en: "Loading…", zh: "正在加载…" }, locale) : dashboardScope && generalSettings.endpoint_status_enabled && !healthOverviewError
     ? `${dashboardScope.endpoints.length - missingHealth.length}/${dashboardScope.endpoints.length}` : "—";
   const availabilityNote = !availabilityLoading && generalSettings.endpoint_status_enabled && !healthOverviewError && missingHealth.length > 0
-    ? `7-day measurements unavailable: ${missingHealth.map((endpoint) => endpoint.name).join(", ")}.` : null;
+    ? translate({ en: `7-day measurements unavailable: ${missingHealth.map((endpoint) => endpoint.name).join(", ")}.`, zh: `以下端点没有 7 天测量数据：${missingHealth.map((endpoint) => endpoint.name).join("、")}。` }, locale) : null;
   const healthScoreUnavailableReason =
-    (!generalSettings.endpoint_status_enabled ? "Endpoint Status feature is disabled." : null) ||
+    (!generalSettings.endpoint_status_enabled ? translate(infrastructureMessages.endpointStatusFeatureIsDisabled, locale) : null) ||
     scopeError ||
     healthOverviewError ||
-    (dashboardScope?.endpoints.length === 0 ? "No managed and supervised Ceph endpoint has Metrics or Usage enabled." : null) ||
-    (healthScore == null && !healthOverviewLoading ? "7-day endpoint health history is not available." : null);
+    (dashboardScope?.endpoints.length === 0 ? translate({ en: "No managed and supervised Ceph endpoint has Metrics or Usage enabled.", zh: "没有启用指标或用量功能的托管和受监控 Ceph 端点。" }, locale) : null) ||
+    (healthScore == null && !healthOverviewLoading ? translate({ en: "7-day endpoint health history is not available.", zh: "没有可用的 7 天端点健康历史。" }, locale) : null);
   const refreshing =
     summaryLoading ||
     scopeLoading ||
@@ -804,19 +836,19 @@ export default function AdminDashboard() {
   return (
     <div className="ui-dashboard-compact" data-testid="admin-dashboard">
       <PageHeader
-        title="Admin overview"
-        description="Monitor the health and status of your S3 infrastructure."
+        title={translate(infrastructureMessages.adminOverview, locale)}
+        description={translate(infrastructureMessages.monitorTheHealthAndStatusOfYourS3Infrastructure, locale)}
         breadcrumbs={adminPageBreadcrumbs("dashboard")}
         rightContent={
           <div className="flex items-center gap-3">
-            <span title="Last dashboard retrieval; metrics and healthcheck samples retain their own timestamps." className={cx("hidden ui-caption sm:inline", uiMutedTextClass)}>
-              Updated {lastUpdated ? formatLocalDateTime(lastUpdated) : "-"}
+            <span title={translate(infrastructureMessages.lastDataUpdateHealthcheckSamplesRetainTheirOwnTimestamps, locale)} className={cx("hidden ui-caption sm:inline", uiMutedTextClass)}>
+              {translate(infrastructureMessages.updated, locale)} {lastUpdated ? formatLocalDateTime(lastUpdated) : "-"}
             </span>
             <WorkspaceDashboardAction
               type="button"
               onClick={() => setRefreshNonce((current) => current + 1)}
-              aria-label="Refresh admin dashboard"
-              title="Refresh dashboard; storage and traffic respect the cache for up to 30 minutes."
+              aria-label={translate(infrastructureMessages.refreshAdminDashboard, locale)}
+              title={translate(infrastructureMessages.refreshDashboardWithCacheNote, locale)}
               variant="secondary"
               className="ui-dashboard-action-icon"
               disabled={refreshing}
@@ -860,7 +892,7 @@ export default function AdminDashboard() {
         <RecentActivityCard logs={auditLogs} loading={auditLoading} unavailableReason={auditError} />
         {generalSettings.endpoint_status_enabled && <AdminDashboardMap markers={mapMarkers} loading={mapEndpointsLoading} error={mapEndpointsError} />}
       </div>
-      <WorkspaceDashboardCard title="Enabled features" presentation="compact">
+      <WorkspaceDashboardCard title={translate(infrastructureMessages.enabledFeatures, locale)} presentation="compact">
         <div className="ui-dashboard-features">
           {featureGroups.map((group) => <WorkspaceFeatureSummary key={group.title} group={group} />)}
         </div>

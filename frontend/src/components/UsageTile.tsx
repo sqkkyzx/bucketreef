@@ -5,6 +5,7 @@
 import { formatPercentage } from "../utils/format";
 import UiMeterBar from "./ui/UiMeterBar";
 import { cx, uiCardMutedClass, uiMutedTextClass, uiTitleTextClass } from "./ui/styles";
+import { useI18n, type I18nMessage } from "../i18n";
 
 type UsageTileProps = {
   label: string;
@@ -27,9 +28,10 @@ export default function UsageTile({
   unitHint,
   emptyHint,
 }: UsageTileProps) {
+  const { t } = useI18n();
   const hasUsage = typeof used === "number" && !Number.isNaN(used);
   const ratio = quota && quota > 0 && hasUsage ? Math.min(100, (used / quota) * 100) : null;
-  const usedDisplay = hasUsage ? formatter(used) : loading ? "Loading..." : "—";
+  const usedDisplay = hasUsage ? formatter(used) : loading ? t({ en: "Loading...", zh: "正在加载…" }) : "—";
   const quotaDisplay = quota && quota > 0 ? (quotaFormatter ? quotaFormatter(quota) : formatter(quota)) : null;
   const ratioLabel = ratio !== null ? formatPercentage(ratio) : "—";
 
@@ -39,10 +41,10 @@ export default function UsageTile({
         <div className="shrink-0">
           {ratio === null ? (
             <div className={cx("flex h-16 w-16 items-center justify-center rounded-full border border-dashed border-[color:var(--ui-border)] ui-caption font-semibold", uiMutedTextClass)}>
-              N/A
+              {t({ en: "N/A", zh: "无数据" })}
             </div>
           ) : (
-            <UsageGauge ratio={ratio} />
+            <UsageGauge ratio={ratio} translateMessage={t} />
           )}
         </div>
         <div className="flex-1 space-y-1">
@@ -56,13 +58,13 @@ export default function UsageTile({
               {usedDisplay} / {quotaDisplay} · {ratioLabel}
             </p>
           ) : (
-            <p className={cx("ui-caption", uiMutedTextClass)}>{emptyHint ?? "No quota defined."}</p>
+            <p className={cx("ui-caption", uiMutedTextClass)}>{emptyHint ?? t({ en: "No quota defined.", zh: "未定义配额。" })}</p>
           )}
         </div>
       </div>
       <UiMeterBar
         value={ratio ?? 0}
-        label={`${label} quota usage`}
+        label={t({ en: `${label} quota usage`, zh: `${label} 配额使用量` })}
         className="h-1 bg-[var(--ui-hover)]"
         barClassName={getBarColor(ratio ?? 0)}
       />
@@ -70,7 +72,7 @@ export default function UsageTile({
   );
 }
 
-function UsageGauge({ ratio }: { ratio: number }) {
+function UsageGauge({ ratio, translateMessage }: { ratio: number; translateMessage: (message: I18nMessage) => string }) {
   const clamped = Math.min(100, Math.max(0, ratio));
   const angle = (clamped / 100) * 360;
   const color = getAccentColor(clamped);
@@ -80,7 +82,7 @@ function UsageGauge({ ratio }: { ratio: number }) {
     <div
       className="relative h-16 w-16 rounded-full"
       role="img"
-      aria-label={`Usage at ${formatPercentage(clamped)}`}
+      aria-label={translateMessage({ en: `Usage at ${formatPercentage(clamped)}`, zh: `使用量：${formatPercentage(clamped)}` })}
       style={{
         background: `conic-gradient(${color} ${angle}deg, ${track} ${angle}deg 360deg)`,
       }}

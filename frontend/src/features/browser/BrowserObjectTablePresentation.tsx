@@ -1,3 +1,4 @@
+import { useI18n, type I18nMessage } from "../../i18n";
 import type { PointerEventHandler, ReactNode } from "react";
 
 import { ChevronDownIcon } from "./browserIcons";
@@ -13,15 +14,18 @@ import {
 import type { BrowserItem } from "./browserTypes";
 import { formatDateTime } from "./browserUtils";
 
+type BrowserTranslate = (message: I18nMessage) => string;
+
 function renderLazyCellValue(
   status: LazyFieldStatus,
   value: string | number | null,
+  t: BrowserTranslate,
 ): ReactNode {
   if (status === "idle") {
     return "—";
   }
   if (status === "error") {
-    return "Unavailable";
+    return t({ en: "Unavailable", zh: "不可用" });
   }
   if (status === "ready") {
     if (typeof value === "number") {
@@ -32,7 +36,7 @@ function renderLazyCellValue(
   return (
     <span className="inline-flex items-center gap-1 text-slate-400 dark:text-slate-500">
       <span className="h-2 w-2 animate-pulse rounded-full bg-slate-300 dark:bg-slate-600" />
-      Loading...
+      {t({ en: "Loading...", zh: "正在加载…" })}
     </span>
   );
 }
@@ -41,15 +45,22 @@ function formatExpiresCellValue(value: string | null): string | null {
   return value ? formatDateTime(value) : null;
 }
 
-function formatRestoreStatusCellValue(value: string | null): string | null {
+function formatRestoreStatusCellValue(
+  value: string | null,
+  t: BrowserTranslate,
+): string | null {
   if (!value) return null;
   const prefixLabel = "Restored until ";
   if (!value.startsWith(prefixLabel)) {
     return value;
   }
   const rawDate = value.slice(prefixLabel.length).trim();
-  if (!rawDate) return "Restored";
-  return `${prefixLabel}${formatDateTime(rawDate)}`;
+  if (!rawDate) return t({ en: "Restored", zh: "已恢复" });
+  const formattedDate = formatDateTime(rawDate);
+  return t({
+    en: `${prefixLabel}${formattedDate}`,
+    zh: `恢复截止 ${formattedDate}`,
+  });
 }
 
 type BrowserObjectColumnValueProps = {
@@ -63,15 +74,18 @@ export function BrowserObjectColumnValue({
   columnId,
   lazyEntry,
 }: BrowserObjectColumnValueProps): ReactNode {
+  const { t } = useI18n();
   if (columnId === "type") {
     if (item.type === "folder") {
       return item.isHistorical
-        ? "Historical folder"
+        ? t({ en: "Historical folder", zh: "历史文件夹" })
         : item.isDeleted
-          ? "Deleted folder"
-          : "Folder";
+          ? t({ en: "Deleted folder", zh: "已删除文件夹" })
+          : t({ en: "Folder", zh: "文件夹" });
     }
-    return item.isDeleted ? "Deleted object" : "Object";
+    return item.isDeleted
+      ? t({ en: "Deleted object", zh: "已删除对象" })
+      : t({ en: "Object", zh: "对象" });
   }
   if (columnId === "size") {
     return item.size;
@@ -94,36 +108,42 @@ export function BrowserObjectColumnValue({
     return renderLazyCellValue(
       resolvedLazyEntry.metadataStatus,
       resolvedLazyEntry.contentType,
+      t,
     );
   }
   if (columnId === "tagsCount") {
     return renderLazyCellValue(
       resolvedLazyEntry.tagsStatus,
       resolvedLazyEntry.tagsCount,
+      t,
     );
   }
   if (columnId === "metadataCount") {
     return renderLazyCellValue(
       resolvedLazyEntry.metadataStatus,
       resolvedLazyEntry.metadataCount,
+      t,
     );
   }
   if (columnId === "cacheControl") {
     return renderLazyCellValue(
       resolvedLazyEntry.metadataStatus,
       resolvedLazyEntry.cacheControl,
+      t,
     );
   }
   if (columnId === "expires") {
     return renderLazyCellValue(
       resolvedLazyEntry.metadataStatus,
       formatExpiresCellValue(resolvedLazyEntry.expires),
+      t,
     );
   }
   if (columnId === "restoreStatus") {
     return renderLazyCellValue(
       resolvedLazyEntry.metadataStatus,
-      formatRestoreStatusCellValue(resolvedLazyEntry.restoreStatus),
+      formatRestoreStatusCellValue(resolvedLazyEntry.restoreStatus, t),
+      t,
     );
   }
   return "—";
@@ -176,12 +196,17 @@ export function BrowserColumnResizeHandle({
   onPointerDown,
   onReset,
 }: BrowserColumnResizeHandleProps) {
+  const { t } = useI18n();
   return (
     <div
       role="separator"
       aria-orientation="vertical"
-      aria-label={`Resize ${label} column`}
-      title={`Resize ${label} column`}
+      aria-label={t({
+        en: `Resize ${label} column`, zh: `调整${label}列宽`,
+      })}
+      title={t({
+        en: `Resize ${label} column`, zh: `调整${label}列宽`,
+      })}
       className="absolute inset-y-0 right-0 z-10 translate-x-1/2 cursor-col-resize touch-none select-none"
       style={{ width: `${COLUMN_RESIZER_HITBOX_WIDTH_PX}px` }}
       onPointerDown={onPointerDown}

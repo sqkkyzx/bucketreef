@@ -10,6 +10,7 @@ import {
   normalizeManagerToolAccess,
 } from "./adminAccessConfig";
 import type { UiTone } from "../../components/ui/styles";
+import { useAdminControlText } from "./adminControlMessages";
 
 type WorkspaceAccessToggle = {
   checked: boolean;
@@ -69,10 +70,11 @@ export function WorkspaceAccessSection({
   cephAdmin: WorkspaceAccessToggle;
   storageOps: WorkspaceAccessToggle;
 }) {
+  const { t } = useAdminControlText();
   return (
     <AdminAccessToggleSection
-      title="Mass management workspaces"
-      description={description}
+      title={t("Mass management workspaces")}
+      description={t(description)}
       items={[cephAdmin, storageOps]}
     />
   );
@@ -87,16 +89,17 @@ export function BrowserAccessSection({
   onChange: (value: boolean) => void;
   description?: string;
 }) {
+  const { t } = useAdminControlText();
   return (
     <AdminAccessToggleSection
-      title="Browser"
-      description={description}
+      title={t("Browser")}
+      description={t(description)}
       items={[{
-        title: "Technical S3 tools",
-        description: "Adds versions, metadata, batch operations, and bucket maintenance tools to /browser. Display density (rows and action toolbar) and optional panels remain personal choices for every Browser user.",
+        title: t("Technical S3 tools"),
+        description: t("Adds versions, metadata, batch operations, and bucket maintenance tools to /browser. Display density (rows and action toolbar) and optional panels remain personal choices for every Browser user."),
         checked,
         onChange,
-        ariaLabel: "Enable technical S3 tools",
+        ariaLabel: t("Enable technical S3 tools"),
       }]}
     />
   );
@@ -119,19 +122,20 @@ export function ManagerToolAccessSection({
   isToolDisabled?: (tool: ManagerToolDefinition) => boolean;
   additionalItems?: WorkspaceAccessToggle[];
 }) {
+  const { t } = useAdminControlText();
   const normalizedAccess = normalizeManagerToolAccess(access);
   return (
     <AdminAccessToggleSection
-      title={title}
-      description={description}
+      title={t(title)}
+      description={t(description)}
       items={[...additionalItems, ...tools.map<WorkspaceAccessToggle>((tool) => ({
-        title: tool.title,
-        description: tool.description,
+        title: t(tool.title),
+        description: t(tool.description),
         checked: Boolean(normalizedAccess[tool.key]),
         disabled: isToolDisabled ? isToolDisabled(tool) : !tool.enabled,
         onChange: (value) => onChange(tool.key, value),
         ariaLabel: tool.title,
-        badge: { visible: !tool.enabled, label: "Disabled globally", tone: "neutral" },
+        badge: { visible: !tool.enabled, label: t("Disabled globally"), tone: "neutral" },
       }))]}
     />
   );
