@@ -139,6 +139,3 @@ export const browserDelete = browserMessage("Delete", "删除");
 export const browserActive = browserMessage("Active", "活动");
 export const browserType = browserMessage("Type", "类型");
 export const browserStorageClass = browserMessage("Storage class", "存储类别");
-export const browserName = browserMessage("Name", "名称");
-export const browserSearchOptions = browserMessage("Search options", "搜索选项");
-export const browserActions = browserMessage("Actions", "操作");

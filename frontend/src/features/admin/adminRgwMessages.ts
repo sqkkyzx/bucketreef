@@ -8,7 +8,7 @@
  */
 import type { I18nMessage } from "../../i18n";
 
-export const rgwText = (en: string, zh: string): I18nMessage => ({ en, zh });
+const rgwText = (en: string, zh: string): I18nMessage => ({ en, zh });
 
 export const rgwMessages = {
   admin: rgwText("Admin", "管理后台"),
