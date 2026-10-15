@@ -28,6 +28,7 @@ from app.services.rgw_admin import RGWAdminError
 from app.services.bucket_ui_tags_service import BucketUiTagsService, PhysicalBucketTarget
 from app.utils.rgw_identifiers import is_rgw_account_id
 from app.utils.normalize import normalize_optional_string
+from app.utils.rgw_payloads import extract_rgw_account_ids
 
 router = APIRouter()
 
@@ -52,12 +53,7 @@ def _verified_account_target(payload: Any, expected_id: str) -> bool:
     if not isinstance(payload, dict) or payload.get("not_found") or payload.get("conflict"):
         return False
     nested = payload.get("account")
-    values = {
-        str(value).strip() for item in (payload, nested) if isinstance(item, dict)
-        for key in ("id", "account_id")
-        if (value := item.get(key)) is not None and str(value).strip()
-    }
-    return values == {expected_id}
+    return extract_rgw_account_ids(payload, nested) == {expected_id}
 
 
 def _verified_user_target(payload: Any, expected_uid: str, expected_tenant: Optional[str]) -> bool:
@@ -119,7 +115,7 @@ def _load_bucket_info(
             action=action,
             entity_type="rgw_bucket",
             entity_id=target,
-            status="failed",
+            status="failure",
             message="RGW bucket was not found.",
             metadata={"validation": "bucket_not_found"},
         )
@@ -213,7 +209,7 @@ def unlink_bucket(
             action=action,
             entity_type="rgw_bucket",
             entity_id=target,
-            status="failed",
+            status="failure",
             message="RGW did not return a current bucket owner.",
             metadata={"validation": "owner_missing"},
         )
@@ -287,7 +283,7 @@ def _validate_link_target(
             action=action,
             entity_type="rgw_bucket",
             entity_id=bucket_target,
-            status="failed",
+            status="failure",
             message="The selected RGW link target could not be verified.",
             metadata={
                 "validation": "target_not_found" if missing else "target_unverified",

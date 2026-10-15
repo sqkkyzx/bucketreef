@@ -14,7 +14,6 @@ from app.services.audit_service import AuditService
 from app.services.feature_policy_service import manager_activity_resource, manager_activity_state
 
 router = APIRouter(prefix="/manager/activity", tags=["manager-activity"])
-FAILURE_STATUSES = ("failure", "failed", "error")
 
 
 @router.get("", response_model=list[ManagerActivityEntry])
@@ -35,7 +34,6 @@ def list_manager_activity(
     if not state.enabled:
         raise HTTPException(status_code=403, detail="Activity history is disabled for this Manager context")
 
-    failure_filter = status == "failure"
     logs = audit_service.list_logs(
         limit=limit,
         scope="manager",
@@ -43,8 +41,7 @@ def list_manager_activity(
         context_id=account.context_id,
         cursor=cursor,
         search=search,
-        status=None if failure_filter else status,
-        statuses=FAILURE_STATUSES if failure_filter else None,
+        status=status,
         search_mode="manager_activity",
     )
     return [
@@ -57,8 +54,6 @@ def list_manager_activity(
             context_kind=log.context_kind,
             context_id=log.context_id,
             context_name=log.context_name,
-            account_id=log.account_id,
-            account_name=log.account_name,
             status=log.status,
             user_email=log.user_email,
         )

@@ -11,6 +11,7 @@ from app.models.feature_policy import (
     FeaturePolicy,
     FeatureState,
     ManagerFeaturePolicies,
+    ProjectCollectionPolicies,
     ProjectFeaturePolicies,
     resolve_feature_policy,
 )
@@ -36,17 +37,62 @@ PROJECT_RESOURCE_FIELDS = {
     "allow_bucket_usage_stats": "bucket_usage_stats",
 }
 
+PROJECT_COLLECTION_RESOURCE_FIELDS = {
+    "allow_bucket_usage_stats_collection": "bucket_usage_stats",
+}
+
 MANAGER_OVERRIDE_FEATURES = {
     **MANAGER_RESOURCE_FIELDS,
     **MANAGER_ACTIVITY_RESOURCE_FIELDS,
     **MANAGER_ACCOUNT_POLICY_FIELDS,
 }
 
+RESOURCE_FEATURE_OVERRIDE_FIELDS = {
+    **MANAGER_OVERRIDE_FEATURES,
+    **PROJECT_RESOURCE_FIELDS,
+    **PROJECT_COLLECTION_RESOURCE_FIELDS,
+}
+
 ManagerActivityResource = S3Account | S3User | S3Connection
 
 
-def manager_override_values(payload: ApiModel) -> dict[str, bool | None]:
-    return {field: getattr(payload, field) for field in MANAGER_OVERRIDE_FEATURES if field in payload.model_fields_set}
+def _override_values(
+    payload: ApiModel,
+    fields: dict[str, str],
+) -> dict[str, bool | None]:
+    return {
+        field: getattr(payload, field)
+        for field in fields
+        if field in payload.model_fields_set
+    }
+
+
+def _validate_overrides(
+    payload: ApiModel,
+    policies: ManagerFeaturePolicies | ProjectFeaturePolicies | ProjectCollectionPolicies,
+    fields: dict[str, str],
+    current: S3Account | S3User | S3Connection | None,
+    *,
+    error_message: str,
+) -> None:
+    for field, value in _override_values(payload, fields).items():
+        feature = fields[field]
+        if (
+            value is True
+            and getattr(policies, feature) == FeaturePolicy.DISABLED
+            and (current is None or getattr(current, field) is not True)
+        ):
+            raise ValueError(error_message)
+
+
+def apply_resource_feature_overrides(
+    payload: ApiModel,
+    resource: S3Account | S3User | S3Connection,
+) -> None:
+    """Persist only feature overrides explicitly present in an update payload."""
+    for field in RESOURCE_FEATURE_OVERRIDE_FIELDS:
+        if field in payload.model_fields_set:
+            setattr(resource, field, getattr(payload, field))
 
 
 def validate_manager_overrides(
@@ -54,10 +100,13 @@ def validate_manager_overrides(
     policies: ManagerFeaturePolicies,
     current: S3Account | S3User | S3Connection | None = None,
 ) -> None:
-    for field, value in manager_override_values(payload).items():
-        if (value is True and getattr(policies, MANAGER_OVERRIDE_FEATURES[field]) == FeaturePolicy.DISABLED
-                and (current is None or getattr(current, field) is not True)):
-            raise ValueError("This feature is disabled by the platform")
+    _validate_overrides(
+        payload,
+        policies,
+        MANAGER_OVERRIDE_FEATURES,
+        current,
+        error_message="This feature is disabled by the platform",
+    )
 
 
 def validate_project_overrides(
@@ -65,16 +114,27 @@ def validate_project_overrides(
     policies: ProjectFeaturePolicies,
     current: S3Account | None = None,
 ) -> None:
-    for field, feature in PROJECT_RESOURCE_FIELDS.items():
-        if field not in payload.model_fields_set:
-            continue
-        value = getattr(payload, field)
-        if (
-            value is True
-            and getattr(policies, feature) == FeaturePolicy.DISABLED
-            and (current is None or getattr(current, field) is not True)
-        ):
-            raise ValueError("This feature is disabled by the platform")
+    _validate_overrides(
+        payload,
+        policies,
+        PROJECT_RESOURCE_FIELDS,
+        current,
+        error_message="This feature is disabled by the platform",
+    )
+
+
+def validate_project_collection_overrides(
+    payload: ApiModel,
+    policies: ProjectCollectionPolicies,
+    current: S3Account | None = None,
+) -> None:
+    _validate_overrides(
+        payload,
+        policies,
+        PROJECT_COLLECTION_RESOURCE_FIELDS,
+        current,
+        error_message="This collection is disabled by the platform",
+    )
 
 
 def project_account_resource(db: Session, context: S3ExecutionContext) -> S3Account | None:
@@ -105,6 +165,16 @@ def bucket_usage_stats_state(
     return resolve_feature_policy(
         policies.bucket_usage_stats,
         resource.allow_bucket_usage_stats if resource is not None else None,
+    )
+
+
+def bucket_usage_stats_collection_state(
+    policies: ProjectCollectionPolicies,
+    resource: S3Account | None,
+) -> FeatureState:
+    return resolve_feature_policy(
+        policies.bucket_usage_stats,
+        resource.allow_bucket_usage_stats_collection if resource is not None else None,
     )
 
 

@@ -1,20 +1,61 @@
 # Operations: Upgrade and Compatibility Notes
 
+## 2026-10 canonical audit execution context
+
+Migration `0155_canonical_audit_context` completes the audit execution-context
+cutover introduced by migration `0150`. It backfills account-scoped audit rows
+created while the compatibility columns still existed, converts historical
+Portal account rows to `context_kind=portal_account`, and then removes
+`audit_logs.account_id`, `audit_logs.account_name`, their foreign key, and their
+account lookup index.
+
+The Admin Audit and Manager Activity APIs now expose only `context_kind`,
+`context_id`, and `context_name`; deploy the backend and frontend together. The
+webhook event payload keeps its existing optional `account` object so external
+webhook consumers are unaffected by the database/API cleanup.
+
+## 2026-10 canonical Portal collaborator requests
+
+Migration `0156_canonical_portal_user_access_requests` completes the Portal
+collaborator request cutover. Historical `portal_user_access` additions that
+predate explicit collaborator intents and roles are rewritten with
+`intent=add` and `portal_role=portal_user`. Current role-change requests and
+explicit `portal_manager` additions are preserved.
+
+After this migration, the runtime no longer supplies missing intent or role
+defaults when executing a persisted collaborator request. A malformed row is
+failed instead of being interpreted as a Portal User addition. Apply the
+database migration before starting the matching backend version.
+
+## 2026-10 canonical audit statuses
+
+Migration `0157_canonical_audit_status` reduces persisted audit outcomes to the
+canonical values `success`, `failure`, and `partial`. Historical `failed` and
+`error` rows are rewritten to `failure`, including differences in case or
+surrounding whitespace. The migration stops if another unknown status exists so
+operators can repair it explicitly instead of silently changing its meaning.
+
+After the migration, the database enforces the canonical status set. Manager
+Activity therefore filters and renders `failure` directly and no longer carries
+aliases for historical values. Apply the database migration before starting the
+matching backend version.
+
 ## RGW tenant identity
 
-Migration `0152_rgw_principal_tenants` adds nullable `rgw_tenant` fields to
-`s3_accounts` and `s3_users`. An empty string identifies the default tenant;
-`NULL` means the legacy identity has not been verified. Existing values are left
-unknown rather than deriving a tenant from an Account ID or a bare UID.
+Migration `0152_rgw_principal_tenants` adds non-null `rgw_tenant` fields to
+`s3_accounts` and `s3_users`, with the empty string as the canonical
+representation of the default RGW tenant. Existing pre-tenant BucketReef
+identities are migrated directly to that default tenant instead of retaining an
+unknown runtime state.
 
-Legacy account tenants are discovered by Account ID through Runtime Read Ops.
-Legacy user tenants are discovered by their stored access key. Ordinary reads
-do not persist this discovery; administrative user mutations and key rotations
-retain the verified tenant. A failed lookup leaves the measurement unavailable
-and does not retry another tenant.
+Migration `0153_rgw_tenant_default_compat` repairs development databases that
+may already have executed an earlier, nullable draft of `0152`. It converts
+remaining `NULL` tenant values to `''`, restores the non-null/default schema,
+and removes the obsolete expression index used by that draft. Current
+installations still run the revision in sequence, but normal runtime code does
+not keep a nullable-tenant compatibility path.
 
-S3 user uniqueness now covers endpoint, effective tenant and UID. Legacy `NULL`
-and known default `''` collide until reconciled. Downgrade is refused if UIDs
+S3 user uniqueness covers endpoint, tenant and UID. Downgrade is refused if UIDs
 would violate the former global uniqueness constraint. Back up the database
 before upgrading, as for other schema changes.
 
@@ -22,7 +63,7 @@ before upgrading, as for other schema changes.
 
 Migration `0135_bucket_migration_workflow` adds persisted preparation, revision-bound
 reports, recovery journals, destination provenance and independent cleanup state.
-Deploy backend, worker, frontend and API clients together.
+Deploy backend, worker, and frontend together.
 
 Before upgrading, stop admitting new migration commands. Finish or explicitly stop
 all queued, running, paused and awaiting-cutover operations using the old version.
@@ -44,8 +85,10 @@ API compatibility changes:
   acknowledges active tests after the UI has displayed their effects.
 - `GET /manager/migrations/{id}` and its existing SSE stream publish progress,
   preparation state, typed diagnostics and backend-authorized actions.
-- `PATCH` draft updates require `configuration_revision`. They increment it and
-  invalidate the report. `POST /start` requires the checked revision and, for
+- `POST /manager/migrations` accepts only draft configuration fields. The update-only
+  `configuration_revision` field is rejected on creation. `PATCH` draft updates require
+  `configuration_revision`; they increment it and invalidate the report. `POST /start`
+  requires the checked revision and, for
   immediate mode, `confirm_write_interruption: true`. Reports expire after 15 minutes.
 - `POST /continue` requires `{ "confirmed": true }` for cutover.
 - `POST /restore-access`, `/cleanup-target` and `/cleanup-source` require explicit
@@ -224,8 +267,8 @@ The migration maps `account_administrator` and former root links to Manager
 administrator only; `portal_user` and `portal_manager` map to the matching
 Portal role only. It adds database constraints requiring at least one role and
 allowing Manager Browser data access only with a Manager administrator role.
-Backend, frontend, automation clients, and migration must be deployed together
-because the old `role` contract is rejected.
+Backend, frontend, and migration must be deployed together because the old
+`role` contract is rejected.
 
 Alembic does not contact RGW, delete `AccountIAMUser` rows, reconcile Portal IAM,
 or install a post-migration cleanup hook. Historical IAM identities are left

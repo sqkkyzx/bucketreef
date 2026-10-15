@@ -16,6 +16,7 @@ from app.services.managed_resource_naming import (
     PORTAL_USER_GROUP_NAME,
 )
 from app.services.rgw_admin import RGWAdminError
+from app.services.rgw_account_root_service import RgwAccountRootService
 from app.services.rgw_account_topics_resolver import normalize_account_key
 from app.services.s3_accounts_service import S3AccountsService
 
@@ -129,15 +130,15 @@ def test_resolve_storage_endpoint_errors_and_success(db_session):
 
 
 def test_account_identity_helpers(db_session):
-    service, _ = _service(db_session)
+    root_service = RgwAccountRootService()
 
     assert normalize_account_key("RGW1") == "rgw1"
-    assert service._root_uid("RGW99") == "rgw99-admin"
-    assert service._root_display_name("My account", "RGW99") == "My-account"
-    assert service._root_display_name("  My\t account  ", "RGW99") == "My-account"
-    assert service._root_display_name("account ****with``symbols", "RGW99") == "account-with-symbols"
-    assert service._root_display_name("Équipe données", "RGW99") == "quipe-donn-es"
-    assert service._root_display_name("😀", "RGW99") == "bucketreef-admin-user"
+    assert root_service.root_uid("RGW99") == "rgw99-admin"
+    assert root_service.root_display_name("My account", "RGW99") == "My-account"
+    assert root_service.root_display_name("  My\t account  ", "RGW99") == "My-account"
+    assert root_service.root_display_name("account ****with``symbols", "RGW99") == "account-with-symbols"
+    assert root_service.root_display_name("Équipe données", "RGW99") == "quipe-donn-es"
+    assert root_service.root_display_name("😀", "RGW99") == "bucketreef-admin-user"
 
 
 def test_account_topics_resolver_parses_caches_and_falls_back(db_session):
@@ -351,14 +352,17 @@ def test_update_account_persists_project_usage_feature_overrides(db_session, mon
         S3AccountUpdate(
             allow_rgw_usage_metrics=False,
             allow_bucket_usage_stats=True,
+            allow_bucket_usage_stats_collection=True,
         ),
     )
 
     assert updated.allow_rgw_usage_metrics is False
     assert updated.allow_bucket_usage_stats is True
+    assert updated.allow_bucket_usage_stats_collection is True
     db_session.refresh(account)
     assert account.allow_rgw_usage_metrics is False
     assert account.allow_bucket_usage_stats is True
+    assert account.allow_bucket_usage_stats_collection is True
 
 
 def test_delete_account_guardrails_and_success(db_session, monkeypatch):

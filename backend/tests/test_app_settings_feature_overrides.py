@@ -10,10 +10,9 @@ from types import SimpleNamespace
 import pytest
 from pydantic import ValidationError
 
-from app.models.feature_policy import MANAGER_LEGACY_FIELDS
 from app.db import AppSetting
 from app.models import app_settings as app_settings_models
-from app.models.app_settings import AppSettings, BrandingSettings, PortalSettingsOverride
+from app.models.app_settings import AppSettings, BrandingSettings, GeneralSettingsView, PortalSettingsOverride
 from app.services import app_settings_service
 
 
@@ -192,6 +191,56 @@ def test_app_settings_db_payload_is_parsed_strictly():
         )
 
 
+@pytest.mark.parametrize(
+    "payload",
+    [
+        '{"general":{"bucket_usage_stats_enabled":false}}',
+        '{"manager":{"manager_rgw_usage_metrics_enabled":false}}',
+    ],
+)
+def test_app_settings_db_payload_rejects_legacy_usage_flags(payload):
+    with pytest.raises(ValidationError):
+        app_settings_service._parse_settings_payload(payload)
+
+
+def test_general_settings_view_exposes_only_canonical_feature_policies():
+    payload = GeneralSettingsView.from_settings(AppSettings()).model_dump(mode="json")
+
+    assert payload["project_feature_policies"]["bucket_usage_stats"] == "default_on"
+    assert payload["manager_feature_policies"]["bucket_compare"] == "targeted"
+    for removed_field in (
+        "bucket_usage_stats_enabled",
+        "bucket_compare_enabled",
+        "bucket_integrity_check_enabled",
+        "bucket_migration_enabled",
+        "bucket_purge_enabled",
+        "bucket_quota_management_enabled",
+        "manager_ceph_s3_user_keys_enabled",
+        "manager_access_key_metadata_enabled",
+        "manager_access_key_expiration_enabled",
+        "managed_private_connection_provisioning_enabled",
+    ):
+        assert removed_field not in payload
+
+
+def test_app_settings_disk_import_converts_legacy_usage_flags(tmp_path):
+    settings_path = tmp_path / "app_settings.json"
+    settings_path.write_text(
+        json.dumps(
+            {
+                "general": {"bucket_usage_stats_enabled": False},
+                "manager": {"manager_rgw_usage_metrics_enabled": False},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    settings = app_settings_service._load_persisted_settings_from_disk(settings_path)
+
+    assert settings.general.project_feature_policies.bucket_usage_stats == "disabled"
+    assert settings.manager.feature_policies.rgw_usage_metrics == "disabled"
+
+
 def test_general_feature_locks_only_use_dedicated_feature_sources(monkeypatch):
     monkeypatch.setattr(
         app_settings_service,
@@ -252,17 +301,17 @@ def test_fresh_settings_enable_access_key_extensions_and_preserve_disabled_choic
     _use_settings_db(monkeypatch, db_session)
 
     settings = app_settings_service.load_app_settings()
-    fields = ("manager_access_key_metadata_enabled", "manager_access_key_expiration_enabled")
-    for field in fields:
-        assert getattr(settings.manager.feature_policies, MANAGER_LEGACY_FIELDS[field]) == "targeted"
-        assert _raw_db_settings(db_session)["manager"]["feature_policies"][MANAGER_LEGACY_FIELDS[field]] == "targeted"
-        setattr(settings.manager.feature_policies, MANAGER_LEGACY_FIELDS[field], "disabled")
+    features = ("access_key_metadata", "access_key_expiration")
+    for feature in features:
+        assert getattr(settings.manager.feature_policies, feature) == "targeted"
+        assert _raw_db_settings(db_session)["manager"]["feature_policies"][feature] == "targeted"
+        setattr(settings.manager.feature_policies, feature, "disabled")
 
     app_settings_service.save_app_settings(settings)
     reloaded = app_settings_service.load_app_settings()
-    for field in fields:
-        assert getattr(reloaded.manager.feature_policies, MANAGER_LEGACY_FIELDS[field]) == "disabled"
-        assert _raw_db_settings(db_session)["manager"]["feature_policies"][MANAGER_LEGACY_FIELDS[field]] == "disabled"
+    for feature in features:
+        assert getattr(reloaded.manager.feature_policies, feature) == "disabled"
+        assert _raw_db_settings(db_session)["manager"]["feature_policies"][feature] == "disabled"
 
 
 def test_managed_private_connection_provisioning_flag_default_disabled():

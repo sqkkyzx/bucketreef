@@ -1,5 +1,4 @@
 import type { BrowserFavorite } from "../../api/browserFavorites";
-import BrowserFavoritesControl from "./BrowserFavoritesControl";
 /*
  * Copyright (c) 2025 Laurent Barbe
  * Licensed under the Apache License, Version 2.0
@@ -13,46 +12,34 @@ import {
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
-  type ReactNode,
 } from "react";
 import {
-  unstable_usePrompt,
   useLocation,
   useNavigate,
   useSearchParams,
 } from "react-router-dom";
-import { ListActionButton } from "../../components/list/ListControls";
-import ConfirmActionDialog from "../../components/ConfirmActionDialog";
-import AnchoredPortalMenu from "../../components/ui/AnchoredPortalMenu";
 import { useDismissibleLayer } from "../../components/ui/useDismissibleLayer";
-import {
-  cx,
-  uiCardMutedClass,
-  uiMenuClass,
-} from "../../components/ui/styles";
 import {
   CLIENT_STORAGE_KEYS,
   writeClientStorage,
 } from "../../utils/clientStorage";
 import { readStoredUser } from "../../utils/workspaces";
-import { formatBytes } from "../../utils/format";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import type { BrowserRequestOptions } from "../../api/browserWorkspace";
 import { useBrowserContext } from "./BrowserContext";
-import {
-  useBrowserSidebarSlot,
-  type BrowserSidebarBodyRenderer,
-} from "./BrowserLayout";
+import { useBrowserSidebarSlot } from "./BrowserLayout";
 import BrowserBulkAttributesModal from "./BrowserBulkAttributesModal";
 import { hasOpenModal } from "../../components/ui/modalStack";
 import BrowserObjectExplorer from "./BrowserObjectExplorer";
 import BrowserObjectSearchHeader from "./BrowserObjectSearchHeader";
 import BrowserFoldersPanel from "./BrowserFoldersPanel";
-import BrowserWorkspaceSidebar from "./BrowserWorkspaceSidebar";
 import BrowserToolbar from "./BrowserToolbar";
+import BrowserNoticesPanel from "./BrowserNoticesPanel";
+import BrowserObjectsIssueDescription from "./BrowserObjectsIssueDescription";
 import { useBrowserBucketCors } from "./useBrowserBucketCors";
 import { useBrowserBulkAttributes } from "./useBrowserBulkAttributes";
 import { useBrowserBulkRestore } from "./useBrowserBulkRestore";
+import { useBrowserBucketPanelViewport } from "./useBrowserBucketPanelViewport";
 import { useBrowserBucketCatalog } from "./useBrowserBucketCatalog";
 import { useBrowserClipboard } from "./useBrowserClipboard";
 import { useBrowserConfirmDialog } from "./useBrowserConfirmDialog";
@@ -69,6 +56,7 @@ import { useBrowserLazyColumns } from "./useBrowserLazyColumns";
 import { useBrowserKeyboardShortcuts } from "./useBrowserKeyboardShortcuts";
 import { useBrowserListingRefresh } from "./useBrowserListingRefresh";
 import { useBrowserListingVisibility } from "./useBrowserListingVisibility";
+import { useBrowserLeaveGuard } from "./useBrowserLeaveGuard";
 import { useBrowserMultipartUploads } from "./useBrowserMultipartUploads";
 import {
   buildBrowserLocationPath,
@@ -97,7 +85,9 @@ import { useBrowserStsSession } from "./useBrowserStsSession";
 import { useBrowserUploadQueue } from "./useBrowserUploadQueue";
 import { useBrowserVersionCleanup } from "./useBrowserVersionCleanup";
 import { useBrowserVersionActions } from "./useBrowserVersionActions";
+import { useBrowserWorkspaceSidebarBody } from "./useBrowserWorkspaceSidebarBody";
 import BrowserBulkRestoreModal from "./BrowserBulkRestoreModal";
+import BrowserArchivePreparationDialog from "./BrowserArchivePreparationDialog";
 import BrowserCleanupModal from "./BrowserCleanupModal";
 import {
   FULL_BROWSER_CAPABILITY_FACTS,
@@ -144,7 +134,6 @@ import {
   readStoredBrowserRootUiState,
 } from "./browserRootUiState";
 import { shouldUseStsPresigner } from "./sseBrowserLogic";
-import { InfoIcon } from "./browserIcons";
 import { VERSIONS_LIST_HARD_LIMIT, storageClassOptions } from "./browserConstants";
 import type { BrowserPageProps } from "./browserPageContract";
 import {
@@ -195,14 +184,9 @@ import { useBrowserI18n } from "./browserI18n";
 const MOBILE_OBJECT_LIST_MEDIA_QUERY = "(max-width: 767px)";
 
 const DEFAULT_STREAMING_ZIP_THRESHOLD_MB = 200;
-const BUCKET_ACCESS_ROOT_MARGIN = "120px";
 
 const browserShellClasses =
   "flex min-h-0 flex-1 flex-col overflow-hidden";
-const browserSubtleSurfaceClasses =
-  cx(uiCardMutedClass, "shadow-none");
-const browserFloatingMenuClasses =
-  cx(uiMenuClass, "overflow-hidden p-1.5");
 export default function BrowserPage({
   accountIdForApi: accountIdOverride,
   executionContextKind: executionContextKindOverride,
@@ -656,8 +640,6 @@ export default function BrowserPage({
   const searchOptionsButtonRef = useRef<HTMLButtonElement | null>(null);
   const objectsListViewportRef = useRef<HTMLDivElement | null>(null);
   const bucketMenuFilterRef = useRef<HTMLInputElement | null>(null);
-  const bucketPanelViewportRef = useRef<HTMLDivElement | null>(null);
-  const bucketPanelLoadMoreSentinelRef = useRef<HTMLDivElement | null>(null);
   const accountIdForApiRef = useRef(accountIdForApi);
   const operationIdsRef = useRef(new Set<string>());
   const storageEndpointCaps = useMemo(() => {
@@ -915,37 +897,6 @@ export default function BrowserPage({
     prefix,
     requestOptions: browserRequestOptions,
   });
-  const objectsIssueDescription = useMemo<ReactNode>(() => {
-    if (!objectsIssue) {
-      return null;
-    }
-    return (
-      <div className="space-y-2">
-        <p>{text(objectsIssue.description)}</p>
-        <details
-          open={showObjectsIssueTechnicalDetails}
-          onToggle={(event) =>
-            setShowObjectsIssueTechnicalDetails(event.currentTarget.open)
-          }
-          className="mx-auto max-w-xl rounded-md border border-rose-200/70 bg-rose-50/70 px-2 py-1.5 text-left dark:border-rose-500/30 dark:bg-rose-900/20"
-        >
-          <summary className="list-none cursor-pointer ui-caption font-semibold text-rose-700 dark:text-rose-100 [&::-webkit-details-marker]:hidden">
-            {text("Show technical details")}</summary>
-          {showObjectsIssueTechnicalDetails && (
-            <p className="mt-2 break-words ui-caption text-rose-700 dark:text-rose-100">
-              {objectsIssue.technicalDetail}
-            </p>
-          )}
-        </details>
-      </div>
-    );
-  }, [
-    objectsIssue,
-    setShowObjectsIssueTechnicalDetails,
-    showObjectsIssueTechnicalDetails,
-    text,
-  ]);
-
   const displayPrefixForItems = useMemo(() => {
     if (searchScope !== "bucket") {
       return normalizedPrefix;
@@ -1129,6 +1080,17 @@ export default function BrowserPage({
       })),
     [bucketAccessByName, bucketMenuItems],
   );
+  const {
+    loadMoreSentinelRef: bucketPanelLoadMoreSentinelRef,
+    panelViewportRef: bucketPanelViewportRef,
+  } = useBrowserBucketPanelViewport({
+    activeBucketName: bucketName,
+    canLoadMore: canLoadMoreBucketResults,
+    enabled: useBucketsPanel,
+    onLoadMore: handleBucketMenuLoadMore,
+    rows: workspaceSidebarRows,
+    scheduleAccessProbe: scheduleBucketAccessProbe,
+  });
   const handleBucketChange = useCallback(
     (value: string) => {
       setShowBucketMenu(false);
@@ -1182,119 +1144,6 @@ export default function BrowserPage({
     }
     return undefined;
   }, [handleOpenWorkspaceAccount, workspaceAccountActionTarget, text]);
-
-  useLayoutEffect(() => {
-    if (!useBucketsPanel) {
-      return;
-    }
-    const scroller = bucketPanelViewportRef.current;
-    if (!scroller) {
-      return;
-    }
-    if (typeof scroller.scrollTo === "function") {
-      scroller.scrollTo({ top: 0, behavior: "auto" });
-      return;
-    }
-    scroller.scrollTop = 0;
-  }, [bucketName, useBucketsPanel]);
-
-  useEffect(() => {
-    if (!useBucketsPanel) {
-      return;
-    }
-    const root = bucketPanelViewportRef.current;
-    if (!root) {
-      return;
-    }
-    const rowNodes = Array.from(
-      root.querySelectorAll<HTMLElement>("[data-bucket-panel-name]"),
-    );
-    if (rowNodes.length === 0) {
-      return;
-    }
-
-    const rootRect = root.getBoundingClientRect();
-    const rootMarginPx = Number.parseInt(BUCKET_ACCESS_ROOT_MARGIN, 10) || 0;
-    const viewportTop = rootRect.top - rootMarginPx;
-    const viewportBottom = rootRect.bottom + rootMarginPx;
-    rowNodes.forEach((node) => {
-      const targetBucketName = node.dataset.bucketPanelName;
-      if (!targetBucketName) {
-        return;
-      }
-      if (rootRect.height <= 0 || rootRect.width <= 0) {
-        scheduleBucketAccessProbe(targetBucketName);
-        return;
-      }
-      const rowRect = node.getBoundingClientRect();
-      const intersectsViewport =
-        rowRect.bottom >= viewportTop && rowRect.top <= viewportBottom;
-      if (intersectsViewport) {
-        scheduleBucketAccessProbe(targetBucketName);
-      }
-    });
-
-    if (typeof window === "undefined" || !("IntersectionObserver" in window)) {
-      rowNodes.forEach((node) => {
-        const targetBucketName = node.dataset.bucketPanelName;
-        if (targetBucketName) {
-          scheduleBucketAccessProbe(targetBucketName);
-        }
-      });
-      return;
-    }
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (!entry.isIntersecting) {
-            return;
-          }
-          const targetBucketName = (entry.target as HTMLElement).dataset
-            .bucketPanelName;
-          if (targetBucketName) {
-            scheduleBucketAccessProbe(targetBucketName);
-          }
-          observer.unobserve(entry.target);
-        });
-      },
-      { root, rootMargin: BUCKET_ACCESS_ROOT_MARGIN },
-    );
-    rowNodes.forEach((node) => observer.observe(node));
-    return () => {
-      observer.disconnect();
-    };
-  }, [scheduleBucketAccessProbe, useBucketsPanel, workspaceSidebarRows]);
-
-  useEffect(() => {
-    if (!useBucketsPanel || !canLoadMoreBucketResults) {
-      return;
-    }
-    const root = bucketPanelViewportRef.current;
-    const sentinel = bucketPanelLoadMoreSentinelRef.current;
-    if (
-      !root ||
-      !sentinel ||
-      typeof window === "undefined" ||
-      !("IntersectionObserver" in window)
-    ) {
-      return;
-    }
-    const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting) {
-            handleBucketMenuLoadMore();
-          }
-        });
-      },
-      { root, rootMargin: "160px" },
-    );
-    observer.observe(sentinel);
-    return () => {
-      observer.disconnect();
-    };
-  }, [canLoadMoreBucketResults, handleBucketMenuLoadMore, useBucketsPanel]);
 
   const breadcrumbs = useMemo(() => buildPrefixBreadcrumbs(prefix), [prefix]);
   const parentPrefix = breadcrumbs.at(-2)?.prefix ?? "";
@@ -1931,99 +1780,45 @@ export default function BrowserPage({
     onWarning: setWarningMessage,
   });
 
-  const renderWorkspaceSidebarBody = useCallback<BrowserSidebarBodyRenderer>(
-    ({ compact, variant, closeMobile }) => (
-      <BrowserWorkspaceSidebar
-        favorites={
-          <BrowserFavoritesControl
-            accountUser={accountUser}
-            bucketDetailsByName={isStorageSpaceContext ? bucketDetailsByName : undefined}
-            bucketLabels={isStorageSpaceContext ? bucketDisplayNameByName : undefined}
-            busy={browserFavoritesBusy}
-            compact={compact}
-            contextLabels={favoriteContextLabels}
-            current={currentFavorite}
-            error={browserFavoritesError}
-            favorites={browserFavoriteItems}
-            onApply={(favorite) => {
-              void applyBrowserFavorite(favorite).then((applied) => {
-                if (applied && variant === "mobile") closeMobile();
-              });
-            }}
-            onRemove={(favorite) => {
-              void removeBrowserFavoriteLocation(favorite);
-            }}
-            unavailable={unavailableBrowserFavorites}
-          />
-        }
-        compact={compact}
-        variant={variant}
-        closeMobile={closeMobile}
-        isPortalContext={isPortalBrowserSurface}
-        rows={workspaceSidebarRows}
-        activeBucketName={bucketName}
-        bucketFilter={bucketFilter}
-        loadingBuckets={loadingBuckets}
-        bucketError={bucketError}
-        bucketManagementEnabled={bucketManagementEnabled}
-        canLoadMore={canLoadMoreBucketResults}
-        bucketMenuLoadingMore={bucketMenuLoadingMore}
-        bucketMenuTotal={bucketMenuTotal}
-        bucketTotalCount={bucketTotalCount}
-        usageSummary={usageSummary}
-        usageLoading={usageSummaryLoading}
-        usageError={usageSummaryError}
-        panelViewportRef={
-          variant === "desktop" ? bucketPanelViewportRef : undefined
-        }
-        loadMoreSentinelRef={
-          variant === "desktop" ? bucketPanelLoadMoreSentinelRef : undefined
-        }
-        onBucketFilterChange={setBucketFilter}
-        onRetryBuckets={() => void refreshBucketList()}
-        onCreateBucket={openCreateBucketDialog}
-        onSelectBucket={handleBucketChange}
-        onLoadMore={handleBucketMenuLoadMore}
-        workspaceAccountAction={workspaceAccountAction}
-      />
-    ),
-    [
+  const renderWorkspaceSidebarBody = useBrowserWorkspaceSidebarBody({
+    favorites: {
       accountUser,
-      applyBrowserFavorite,
-      browserFavoriteItems,
-      browserFavoritesBusy,
-      browserFavoritesError,
-      bucketDetailsByName,
-      bucketDisplayNameByName,
-      currentFavorite,
-      favoriteContextLabels,
-      bucketError,
+      bucketDetailsByName: isStorageSpaceContext ? bucketDetailsByName : undefined,
+      bucketLabels: isStorageSpaceContext ? bucketDisplayNameByName : undefined,
+      busy: browserFavoritesBusy,
+      contextLabels: favoriteContextLabels,
+      current: currentFavorite,
+      error: browserFavoritesError,
+      favorites: browserFavoriteItems,
+      onApply: applyBrowserFavorite,
+      onRemove: removeBrowserFavoriteLocation,
+      unavailable: unavailableBrowserFavorites,
+    },
+    sidebar: {
+      isPortalContext: isPortalBrowserSurface,
+      rows: workspaceSidebarRows,
+      activeBucketName: bucketName,
       bucketFilter,
+      loadingBuckets,
+      bucketError,
       bucketManagementEnabled,
+      canLoadMore: canLoadMoreBucketResults,
       bucketMenuLoadingMore,
       bucketMenuTotal,
-      bucketName,
-      bucketPanelLoadMoreSentinelRef,
-      bucketPanelViewportRef,
       bucketTotalCount,
-      canLoadMoreBucketResults,
-      handleBucketChange,
-      handleBucketMenuLoadMore,
-      isPortalBrowserSurface,
-      isStorageSpaceContext,
-      loadingBuckets,
-      openCreateBucketDialog,
-      removeBrowserFavoriteLocation,
-      refreshBucketList,
-      setBucketFilter,
       usageSummary,
-      usageSummaryError,
-      usageSummaryLoading,
-      unavailableBrowserFavorites,
+      usageLoading: usageSummaryLoading,
+      usageError: usageSummaryError,
+      onBucketFilterChange: setBucketFilter,
+      onRetryBuckets: refreshBucketList,
+      onCreateBucket: openCreateBucketDialog,
+      onSelectBucket: handleBucketChange,
+      onLoadMore: handleBucketMenuLoadMore,
       workspaceAccountAction,
-      workspaceSidebarRows,
-    ],
-  );
+    },
+    panelViewportRef: bucketPanelViewportRef,
+    loadMoreSentinelRef: bucketPanelLoadMoreSentinelRef,
+  });
 
   useLayoutEffect(() => {
     if (!showWorkspaceSidebar) {
@@ -2512,36 +2307,16 @@ export default function BrowserPage({
     }
   };
 
-  const archiveInventoryActive = archivePreparation?.phase === "inventorying";
-  const shouldConfirmLeave =
-    hasPendingOperations || hasUnsavedDrawerChanges || archiveInventoryActive;
-  const leaveMessage = hasUnsavedDrawerChanges
-    ? hasPendingOperations
-      ? "Operations are in progress and the details drawer contains unapplied changes. Leaving now may interrupt operations and discard changes. Continue?"
-      : "The details drawer contains unapplied changes. Leaving now will discard them. Continue?"
-    : hasPendingOperations
-      ? "Operations are in progress (upload, download, copy, delete). Leaving now may interrupt them. Continue?"
-      : "Archive inventory is in progress. Leaving now will cancel it. Continue?";
-  unstable_usePrompt({
-    when: shouldConfirmLeave,
-    message: leaveMessage,
+  useBrowserLeaveGuard({
+    hasPendingOperations,
+    hasUnsavedChanges: hasUnsavedDrawerChanges,
+    archiveInventoryActive: archivePreparation?.phase === "inventorying",
   });
-  useEffect(() => {
-    if (!shouldConfirmLeave || typeof window === "undefined") return;
-    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
-      event.preventDefault();
-      event.returnValue = leaveMessage;
-      return leaveMessage;
-    };
-    window.addEventListener("beforeunload", handleBeforeUnload);
-    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
-  }, [leaveMessage, shouldConfirmLeave]);
   const showFolderToggle = showPanelToggles && canUseFoldersPanel;
   const isActionBarVisible = selectedCount > 0;
   const showContextToolbarActions = !isActionBarVisible;
   const browserChromeShellClasses =
     "relative z-20 shrink-0 pb-2";
-  const browserNoticeShellClasses = "shrink-0 pb-2";
   const browserContentShellClasses =
     "relative z-0 flex min-h-0 flex-1 flex-col overflow-hidden pb-3";
   const toolbarSelectionSummary = text("{count} selected", { count: selectedCount.toLocaleString(intlLocale) });
@@ -2785,82 +2560,20 @@ export default function BrowserPage({
           />
         </div>
 
-        {(bucketError || statusMessage || corsInformation || warnings.length > 0) && (
-          <div className={browserNoticeShellClasses}>
-            <div
-              className={`${browserSubtleSurfaceClasses} px-3 py-2.5 ui-caption text-slate-600 dark:text-slate-300`}
-            >
-              {bucketError && (
-                <p className="font-semibold text-rose-600 dark:text-rose-200">
-                  {text(bucketError)}
-                </p>
-              )}
-              {statusMessage && (
-                <p className="text-slate-500 dark:text-slate-400">
-                  {statusMessage}
-                </p>
-              )}
-              {corsInformation && (
-                <p className="font-medium text-sky-700 dark:text-sky-200">
-                  {hasCorsAction ? (
-                    <span className="inline-flex items-center gap-1">
-                      <span>{corsInformation}</span>
-                      <button
-                        ref={corsActionTriggerRef}
-                        type="button"
-                        className="inline-flex h-4 w-4 items-center justify-center rounded-full text-sky-700 transition hover:text-sky-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-700 dark:text-sky-200 dark:hover:text-sky-100 dark:focus-visible:outline-sky-200"
-                        onClick={toggleCorsActionPopover}
-                        aria-label={text("CORS actions")}
-                        title={text("CORS actions")}
-                        aria-haspopup="dialog"
-                        aria-expanded={showCorsActionPopover}
-                      >
-                        <InfoIcon className="h-3.5 w-3.5" />
-                      </button>
-                      <AnchoredPortalMenu
-                        open={showCorsActionPopover}
-                        anchorRef={corsActionTriggerRef}
-                        placement="bottom-start"
-                        offset={6}
-                        minWidth={288}
-                        className={`w-80 ${browserFloatingMenuClasses}`}
-                      >
-                        <div ref={corsActionPopoverRef}>
-                          <p className="ui-caption text-slate-600 dark:text-slate-300">
-                            {text("Allow direct access from {origin} by adding CORS rules to this bucket.", { origin: uiOrigin ?? "" })}
-                          </p>
-                          <ListActionButton
-                            type="button"
-                            variant="success"
-                            className="mt-2"
-                            onClick={handleEnsureCors}
-                            disabled={corsFixing}
-                            title={text("Add {origin} to bucket CORS rules.", { origin: uiOrigin ?? "" })}
-                            aria-label={text("Add {origin} to CORS", { origin: uiOrigin ?? "" })}
-                          >
-                            {corsFixing
-                              ? text("Adding...")
-                              : text("Add {origin} to CORS", { origin: uiOrigin ?? "" })}
-                          </ListActionButton>
-                        </div>
-                      </AnchoredPortalMenu>
-                    </span>
-                  ) : (
-                    corsInformation
-                  )}
-                </p>
-              )}
-              {warnings.map((warning, index) => (
-                <p
-                  key={`${warning}-${index}`}
-                  className="font-semibold text-amber-600 dark:text-amber-200"
-                >
-                  {warning}
-                </p>
-              ))}
-            </div>
-          </div>
-        )}
+        <BrowserNoticesPanel
+          bucketError={bucketError}
+          statusMessage={statusMessage}
+          corsInformation={corsInformation}
+          warnings={warnings}
+          hasCorsAction={hasCorsAction}
+          corsActionTriggerRef={corsActionTriggerRef}
+          corsActionPopoverRef={corsActionPopoverRef}
+          showCorsActionPopover={showCorsActionPopover}
+          toggleCorsActionPopover={toggleCorsActionPopover}
+          uiOrigin={uiOrigin}
+          corsFixing={corsFixing}
+          onEnsureCors={handleEnsureCors}
+        />
 
         <div className={browserContentShellClasses}>
           <div
@@ -2911,7 +2624,14 @@ export default function BrowserPage({
                   objectsIssue
                     ? {
                         title: objectsIssue.title,
-                        description: objectsIssueDescription,
+                        description: (
+                          <BrowserObjectsIssueDescription
+                            description={objectsIssue.description}
+                            technicalDetail={objectsIssue.technicalDetail}
+                            expanded={showObjectsIssueTechnicalDetails}
+                            onExpandedChange={setShowObjectsIssueTechnicalDetails}
+                          />
+                        ),
                       }
                     : null
                 }
@@ -3283,55 +3003,12 @@ export default function BrowserPage({
         />
       )}
       {archivePreparation && (
-        <ConfirmActionDialog
-          title={
-            archivePreparation.phase === "inventorying"
-              ? text("Preparing ZIP archive")
-              : text("Save large ZIP archive")
-          }
-          description={
-            archivePreparation.phase === "inventorying"
-              ? archivePreparation.totalFolders > 0
-                ? text(
-                    "Checking folders and archive paths ({completed}/{total}). No object content is downloaded during this step.",
-                    {
-                      completed: archivePreparation.completedFolders,
-                      total: archivePreparation.totalFolders,
-                    },
-                  )
-                : text("Checking files and archive paths. No object content is downloaded during this step.")
-              : text("The inventory is complete. Choose the destination file to start downloading object content.")
-          }
-          details={
-            archivePreparation.phase === "ready"
-              ? [
-                  { label: text("Files"), value: archivePreparation.fileCount },
-                  { label: text("Volume"), value: formatBytes(archivePreparation.totalBytes, intlLocale) },
-                  {
-                    label: text("Excluded"),
-                    value: archivePreparation.excludedCount,
-                  },
-                ]
-              : []
-          }
-          confirmLabel={text("Choose file and download")}
-          confirmDisabled={
-            archivePreparation.phase === "inventorying" ||
-            !archivePreparation.canDownload
-          }
-          cancelLabel={
-            archivePreparation.phase === "inventorying"
-              ? text("Cancel preparation")
-              : text("Close")
-          }
-          tone="primary"
-          error={
-            archivePreparation.phase === "ready"
-              ? archivePreparation.error
-              : undefined
-          }
+        <BrowserArchivePreparationDialog
+          preparation={archivePreparation}
           onCancel={cancelArchivePreparation}
-          onConfirm={() => void savePreparedArchive()}
+          onConfirm={() => {
+            void savePreparedArchive();
+          }}
         />
       )}
       {confirmDialog && (

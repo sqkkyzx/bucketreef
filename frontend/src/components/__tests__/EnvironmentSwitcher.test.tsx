@@ -1,4 +1,4 @@
-import { DEFAULT_MANAGER_FEATURE_POLICIES, DEFAULT_PROJECT_FEATURE_POLICIES } from "../../api/featurePolicies";
+import { DEFAULT_MANAGER_FEATURE_POLICIES, DEFAULT_PROJECT_COLLECTION_POLICIES, DEFAULT_PROJECT_FEATURE_POLICIES } from "../../api/featurePolicies";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -38,6 +38,7 @@ vi.mock("../../api/users", () => ({
 
 const baseSettings: GeneralSettings = {
   project_feature_policies: DEFAULT_PROJECT_FEATURE_POLICIES,
+  project_collection_policies: DEFAULT_PROJECT_COLLECTION_POLICIES,
   manager_feature_policies: DEFAULT_MANAGER_FEATURE_POLICIES,
   rgw_account_id_prefix: "80",
   documentation_base_url: "https://docs.bucketreef.ksperis.com",
@@ -54,16 +55,6 @@ const baseSettings: GeneralSettings = {
   endpoint_status_enabled: false,
   quota_alerts_enabled: false,
   usage_history_enabled: false,
-  bucket_migration_enabled: true,
-  bucket_purge_enabled: false,
-  bucket_compare_enabled: true,
-  bucket_integrity_check_enabled: true,
-  bucket_usage_stats_enabled: true,
-  bucket_quota_management_enabled: true,
-  manager_ceph_s3_user_keys_enabled: true,
-  manager_access_key_metadata_enabled: false,
-  manager_access_key_expiration_enabled: false,
-  managed_private_connection_provisioning_enabled: false,
   allow_login_access_keys: false,
   allow_login_endpoint_list: false,
   allow_login_custom_endpoint: false,

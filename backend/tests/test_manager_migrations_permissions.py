@@ -32,8 +32,8 @@ def _user(db_session, role: str, *, bucket_migration: bool = False) -> User:
 
 def _settings(*, enabled: bool):
     return manager_settings_fixture(
-            bucket_migration_enabled=enabled,
-        )
+        bucket_migration=enabled,
+    )
 
 
 def test_bucket_migration_allowed_for_admin_with_user_tool_access(db_session, monkeypatch):
@@ -162,11 +162,27 @@ def test_manager_migration_create_rejects_context_out_of_scope(client):
             json={
                 "source_context_id": "99",
                 "target_context_id": "20",
-                "configuration_revision": 1,
-        "buckets": [{"source_bucket": "bucket-a"}],
+                "buckets": [{"source_bucket": "bucket-a"}],
             },
         )
         assert response.status_code == 403
+    finally:
+        app.dependency_overrides.pop(dependencies.get_current_bucket_migration_scope, None)
+
+
+def test_manager_migration_create_rejects_update_revision_field(client):
+    _override_migration_scope(allowed_context_ids={"10", "20"})
+    try:
+        response = client.post(
+            "/api/manager/migrations",
+            json={
+                "source_context_id": "10",
+                "target_context_id": "20",
+                "configuration_revision": 1,
+                "buckets": [{"source_bucket": "bucket-a"}],
+            },
+        )
+        assert response.status_code == 422
     finally:
         app.dependency_overrides.pop(dependencies.get_current_bucket_migration_scope, None)
 
@@ -181,10 +197,32 @@ def test_manager_migration_update_rejects_context_out_of_scope(client, db_sessio
                 "source_context_id": "10",
                 "target_context_id": "999",
                 "configuration_revision": 1,
-        "buckets": [{"source_bucket": "bucket-a"}],
+                "buckets": [{"source_bucket": "bucket-a"}],
             },
         )
         assert response.status_code == 403
+    finally:
+        app.dependency_overrides.pop(dependencies.get_current_bucket_migration_scope, None)
+
+
+def test_manager_migration_update_requires_configuration_revision(client, db_session):
+    migration_id = _seed_migration(
+        db_session,
+        source_context_id="10",
+        target_context_id="20",
+        status="draft",
+    )
+    _override_migration_scope(allowed_context_ids={"10", "20"})
+    try:
+        response = client.patch(
+            f"/api/manager/migrations/{migration_id}",
+            json={
+                "source_context_id": "10",
+                "target_context_id": "20",
+                "buckets": [{"source_bucket": "bucket-a"}],
+            },
+        )
+        assert response.status_code == 422
     finally:
         app.dependency_overrides.pop(dependencies.get_current_bucket_migration_scope, None)
 
@@ -197,8 +235,7 @@ def test_manager_migration_create_rejects_cross_account_when_one_account_not_adm
             json={
                 "source_context_id": "10",
                 "target_context_id": "20",
-                "configuration_revision": 1,
-        "buckets": [{"source_bucket": "bucket-a"}],
+                "buckets": [{"source_bucket": "bucket-a"}],
             },
         )
         assert response.status_code == 403

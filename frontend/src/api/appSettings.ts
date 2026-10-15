@@ -3,7 +3,7 @@
  * Licensed under the Apache License, Version 2.0
  */
 import client, { timeoutForRequestProfile } from "./client";
-import type { ManagerFeaturePolicies, PortalFeaturePolicies, ProjectFeaturePolicies } from "./featurePolicies";
+import type { ManagerFeaturePolicies, PortalFeaturePolicies, ProjectCollectionPolicies, ProjectFeaturePolicies } from "./featurePolicies";
 export type { FeaturePolicy, FeatureState, ManagerFeaturePolicies, PortalFeaturePolicies } from "./featurePolicies";
 
 
@@ -62,6 +62,7 @@ export type PortalSettingsAdminUpdate = PortalSettingsOverride & {
 
 export type GeneralConfiguration = {
   project_feature_policies: ProjectFeaturePolicies;
+  project_collection_policies: ProjectCollectionPolicies;
   rgw_account_id_prefix: string;
   documentation_base_url: string;
   manager_enabled: boolean;
@@ -88,16 +89,6 @@ export type GeneralConfiguration = {
 
 export type GeneralSettings = GeneralConfiguration & {
   manager_feature_policies: ManagerFeaturePolicies;
-  bucket_usage_stats_enabled: boolean;
-  bucket_compare_enabled: boolean;
-  bucket_integrity_check_enabled: boolean;
-  bucket_migration_enabled: boolean;
-  bucket_purge_enabled: boolean;
-  bucket_quota_management_enabled: boolean;
-  manager_ceph_s3_user_keys_enabled: boolean;
-  manager_access_key_metadata_enabled: boolean;
-  manager_access_key_expiration_enabled: boolean;
-  managed_private_connection_provisioning_enabled: boolean;
 };
 
 export type RuntimeSurfaces = {
