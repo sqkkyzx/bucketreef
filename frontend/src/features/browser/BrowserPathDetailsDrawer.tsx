@@ -5,7 +5,7 @@
 import UiCard from "../../components/ui/UiCard";
 import UiButton from "../../components/ui/UiButton";
 import { cx, uiMutedTextClass } from "../../components/ui/styles";
-import type { S3AccountSelector } from "../../api/accountParams";
+import type { S3ExecutionContextSelector } from "../../api/accountParams";
 import type { BrowserRequestOptions } from "../../api/browserWorkspace";
 import ObjectDetailsDrawer from "../shared/ObjectDetailsDrawer";
 import DetailsList from "../shared/DetailsList";
@@ -15,7 +15,7 @@ import { buildPrefixBreadcrumbs, normalizePrefix } from "./browserUtils";
 import { useBrowserI18n } from "./browserI18n";
 
 type BrowserPathDetailsDrawerProps = {
-  accountId: S3AccountSelector;
+  contextId: S3ExecutionContextSelector;
   bucketName: string;
   listAllObjectsForPrefix: ListAllBrowserObjectsForPrefix;
   prefix: string;
@@ -26,7 +26,7 @@ type BrowserPathDetailsDrawerProps = {
 };
 
 export default function BrowserPathDetailsDrawer({
-  accountId,
+  contextId,
   bucketName,
   listAllObjectsForPrefix,
   prefix,
@@ -40,7 +40,7 @@ export default function BrowserPathDetailsDrawer({
   const name = buildPrefixBreadcrumbs(recursivePrefix).at(-1)?.label ?? "Bucket root";
   const path = recursivePrefix ? `${bucketName}/${recursivePrefix.slice(0, -1)}` : bucketName;
   const { count, counts, error, loading } = useBrowserContextCounts({
-    accountId,
+    contextId,
     bucketName,
     enabled: true,
     listAllObjectsForPrefix,

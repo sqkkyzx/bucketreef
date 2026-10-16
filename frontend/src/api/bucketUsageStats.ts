@@ -2,9 +2,9 @@
  * Copyright (c) 2026 Laurent Barbe
  * Licensed under the Apache License, Version 2.0
  */
-import type { S3AccountSelector } from "./accountParams";
+import type { S3ExecutionContextSelector } from "./accountParams";
 import type { BucketOperationTarget } from "./bucketOperation";
-import { withS3AccountParam } from "./accountParams";
+import { withS3ContextParam } from "./accountParams";
 import client from "./client";
 import {
   buildJsonPostRequestInit,
@@ -134,11 +134,11 @@ type BucketUsageStatsStreamOptions = {
 };
 
 export async function getManagerUsageStatsAggregate(
-  contextId: S3AccountSelector
+  contextId: S3ExecutionContextSelector
 ): Promise<BucketUsageStatsAggregateResponse> {
   const { data } = await client.get<BucketUsageStatsAggregateResponse>(
     "/manager/usage-stats/latest",
-    { params: withS3AccountParam(null, contextId) }
+    { params: withS3ContextParam(null, contextId) }
   );
   return data;
 }
@@ -163,12 +163,12 @@ export async function getAdminUsageStatsAggregate(
 }
 
 export async function getManagerBucketUsageStats(
-  contextId: S3AccountSelector,
+  contextId: S3ExecutionContextSelector,
   bucketName: string
 ): Promise<BucketUsageStatsLatestResponse> {
   const { data } = await client.get<BucketUsageStatsLatestResponse>(
     `/manager/buckets/${encodeURIComponent(bucketName)}/usage-stats`,
-    { params: withS3AccountParam(null, contextId) }
+    { params: withS3ContextParam(null, contextId) }
   );
   return data;
 }
@@ -184,12 +184,12 @@ export async function getCephAdminBucketUsageStats(
 }
 
 export function streamManagerUsageStatsAggregate(
-  contextId: S3AccountSelector,
+  contextId: S3ExecutionContextSelector,
   payload: BucketUsageStatsScopePayload = {},
   options?: BucketUsageStatsStreamOptions
 ): Promise<BucketUsageStatsResult> {
   const baseUrl = resolveApiBaseUrl();
-  const query = new URLSearchParams({ account_id: String(contextId) });
+  const query = new URLSearchParams({ context_id: String(contextId) });
   return streamBucketsWithSse<BucketUsageStatsProgress, BucketUsageStatsResult>({
     url: `${baseUrl}/manager/usage-stats/stream?${query.toString()}`,
     options,
@@ -200,12 +200,12 @@ export function streamManagerUsageStatsAggregate(
 }
 
 export function streamManagerBucketUsageStatsForBucket(
-  contextId: S3AccountSelector,
+  contextId: S3ExecutionContextSelector,
   bucketName: string,
   options?: BucketUsageStatsStreamOptions
 ): Promise<BucketUsageStatsResult> {
   const baseUrl = resolveApiBaseUrl();
-  const query = new URLSearchParams({ account_id: String(contextId) });
+  const query = new URLSearchParams({ context_id: String(contextId) });
   return streamBucketsWithSse<BucketUsageStatsProgress, BucketUsageStatsResult>({
     url: `${baseUrl}/manager/buckets/${encodeURIComponent(bucketName)}/usage-stats/stream?${query.toString()}`,
     options,

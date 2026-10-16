@@ -3,8 +3,8 @@
  * Licensed under the Apache License, Version 2.0
  */
 import client, { timeoutForRequestProfile } from "./client";
-import type { S3AccountSelector } from "./accountParams";
-import { withS3AccountParam } from "./accountParams";
+import type { S3ExecutionContextSelector } from "./accountParams";
+import { withS3ContextParam } from "./accountParams";
 import type { Bucket } from "./bucketContracts";
 
 const MANAGER_BUCKETS_PATH = "/manager/buckets";
@@ -30,16 +30,16 @@ export type FeatureRuleInventoryBucket = {
 };
 
 export async function listBuckets(
-  accountId: S3AccountSelector,
+  contextId: S3ExecutionContextSelector,
   options?: { include?: string[]; with_stats?: boolean; signal?: AbortSignal }
 ): Promise<Bucket[]> {
   const { data } = await client.get<Bucket[]>(MANAGER_BUCKETS_PATH, {
-    params: withS3AccountParam(
+    params: withS3ContextParam(
       {
         include: options?.include?.join(","),
         with_stats: options?.with_stats,
       },
-      accountId
+      contextId
     ),
     signal: options?.signal,
   });
@@ -47,11 +47,11 @@ export async function listBuckets(
 }
 
 export async function listFeatureRuleInventory(
-  accountId: S3AccountSelector,
+  contextId: S3ExecutionContextSelector,
   feature: FeatureRuleFeature
 ): Promise<FeatureRuleInventoryBucket[]> {
   const { data } = await client.get<FeatureRuleInventoryBucket[]>("/manager/feature-rules", {
-    params: withS3AccountParam({ feature }, accountId),
+    params: withS3ContextParam({ feature }, contextId),
     timeout: timeoutForRequestProfile("long_running"),
   });
   return data;
@@ -62,7 +62,7 @@ type CreateBucketOptions = {
   locationConstraint?: string;
 };
 
-export async function createBucket(name: string, accountId: S3AccountSelector, options?: CreateBucketOptions): Promise<void> {
+export async function createBucket(name: string, contextId: S3ExecutionContextSelector, options?: CreateBucketOptions): Promise<void> {
   const locationConstraint = options?.locationConstraint?.trim();
   await client.post(
     MANAGER_BUCKETS_PATH,
@@ -71,13 +71,13 @@ export async function createBucket(name: string, accountId: S3AccountSelector, o
       versioning: options?.versioning ?? false,
       location_constraint: locationConstraint || undefined,
     },
-    { params: withS3AccountParam(undefined, accountId) }
+    { params: withS3ContextParam(undefined, contextId) }
   );
 }
 
-export async function deleteBucket(name: string, accountId: S3AccountSelector): Promise<void> {
+export async function deleteBucket(name: string, contextId: S3ExecutionContextSelector): Promise<void> {
   await client.delete(`${MANAGER_BUCKETS_PATH}/${encodeURIComponent(name)}`, {
-    params: withS3AccountParam(undefined, accountId),
+    params: withS3ContextParam(undefined, contextId),
   });
 }
 
@@ -189,7 +189,7 @@ export type ManagerBucketCompareActionResult = {
 };
 
 export async function compareManagerBucketPair(
-  sourceContextId: S3AccountSelector,
+  sourceContextId: S3ExecutionContextSelector,
   payload: ManagerBucketCompareRequest,
   options?: { signal?: AbortSignal }
 ): Promise<ManagerBucketCompareResult> {
@@ -197,7 +197,7 @@ export async function compareManagerBucketPair(
     `${MANAGER_BUCKETS_PATH}/compare`,
     payload,
     {
-      params: withS3AccountParam(undefined, sourceContextId),
+      params: withS3ContextParam(undefined, sourceContextId),
       signal: options?.signal,
       timeout: timeoutForRequestProfile("long_running"),
     }
@@ -206,7 +206,7 @@ export async function compareManagerBucketPair(
 }
 
 export async function runManagerBucketCompareAction(
-  sourceContextId: S3AccountSelector,
+  sourceContextId: S3ExecutionContextSelector,
   payload: ManagerBucketCompareActionRequest,
   options?: { signal?: AbortSignal }
 ): Promise<ManagerBucketCompareActionResult> {
@@ -214,7 +214,7 @@ export async function runManagerBucketCompareAction(
     `${MANAGER_BUCKETS_PATH}/compare/action`,
     payload,
     {
-      params: withS3AccountParam(undefined, sourceContextId),
+      params: withS3ContextParam(undefined, sourceContextId),
       signal: options?.signal,
       timeout: timeoutForRequestProfile("long_running"),
     }

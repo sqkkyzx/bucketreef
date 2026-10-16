@@ -39,17 +39,17 @@ afterEach(() => {
 
 type Kind = "bucket" | "folder" | "sse";
 function Editor({ kind }: { kind: Kind }) {
-  const bucket = useBrowserCreateBucket({ accountIdForApi: "conn-one", currentBucketName: "bucket-a", enabled: true, hasContext: true,
+  const bucket = useBrowserCreateBucket({ contextIdForApi: "conn-one", currentBucketName: "bucket-a", enabled: true, hasContext: true,
     uiOrigin: "https://ui.example.test", onCreated: created, setCorsError: vi.fn(), setCorsStatus: vi.fn(), setStatusMessage: status });
-  const folder = useBrowserCreateFolder({ accountIdForApi: "conn-one", bucketName: "bucket-a", hasContext: true,
+  const folder = useBrowserCreateFolder({ contextIdForApi: "conn-one", bucketName: "bucket-a", hasContext: true,
     parentPrefix: "/ spaced//", onCreated: created });
-  const sse = useBrowserSseCustomerKeys({ accountIdForApi: "conn-one", bucketName: "bucket-a", enabled: true,
+  const sse = useBrowserSseCustomerKeys({ contextIdForApi: "conn-one", bucketName: "bucket-a", enabled: true,
     onManualCopyRequired: manualCopy, setStatusMessage: status });
   const open = { bucket: bucket.open, folder: folder.open, sse: sse.open }[kind];
   return <><button onClick={open}>Open editor</button>
-    {bucket.showModal && <BrowserCreateBucketModal {...bucket} hasS3AccountContext onNameChange={bucket.updateName}
+    {bucket.showModal && <BrowserCreateBucketModal {...bucket} hasExecutionContext onNameChange={bucket.updateName}
       onVersioningChange={bucket.setVersioning} onSubmit={bucket.submit} onClose={bucket.close} />}
-    {folder.showModal && <BrowserCreateFolderModal {...folder} hasS3AccountContext bucketName="bucket-a" currentPath="bucket-a/ spaced//"
+    {folder.showModal && <BrowserCreateFolderModal {...folder} hasExecutionContext bucketName="bucket-a" currentPath="bucket-a/ spaced//"
       onNameChange={folder.setName} onSubmit={folder.submit} onClose={folder.close} />}
     {sse.showModal && <BrowserSseCustomerKeyModal {...sse} value={sse.input} onValueChange={sse.updateInput}
       onToggleVisibility={sse.toggleVisibility} onGenerate={sse.generate} onClear={sse.clear} onActivate={sse.activate} onClose={sse.close} />}

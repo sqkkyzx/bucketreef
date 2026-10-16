@@ -2,65 +2,42 @@
 # Licensed under the Apache License, Version 2.0
 from __future__ import annotations
 
-from typing import Iterable, Optional
+from typing import Literal, Optional
 from urllib.parse import urlparse
 
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.config import LDAPProviderSettings, Settings, get_settings
 from app.db import LdapProvider
 from app.models.ldap import (
-    LDAP_PROVIDER_ID_PATTERN,
+    LDAP_PROVIDER_CONFIG_FIELDS,
     LDAPProviderAdminItem,
     LDAPProviderAdminPayload,
     LDAPProviderFieldLock,
 )
-from app.utils.time import utcnow
+from app.services.identity_provider_repository import IdentityProviderRepository
+from app.services.identity_provider_resolution import (
+    list_effective_identity_providers,
+    resolve_identity_provider_map,
+)
+from app.utils.identity_provider_ids import (
+    identity_provider_environment_source,
+    normalize_identity_provider_id,
+)
 
 
 LDAP_PROVIDER_FIELDS = (
     "provider_id",
-    "display_name",
-    "url",
-    "bind_dn",
+    *LDAP_PROVIDER_CONFIG_FIELDS,
     "bind_password",
-    "user_base_dn",
-    "user_filter",
-    "email_attribute",
-    "name_attribute",
-    "subject_attribute",
-    "start_tls",
-    "tls_verify",
-    "tls_ca_file",
-    "allow_legacy_tls",
-    "timeout_seconds",
-    "enabled",
-    "allow_insecure",
 )
 
 
-class LDAPProviderSettingsError(Exception):
-    """Base class for admin LDAP provider settings errors."""
-
-
-class LDAPProviderAlreadyExistsError(LDAPProviderSettingsError):
-    """Raised when a UI-managed provider id is already used."""
-
-
-class LDAPProviderManagedByEnvironmentError(LDAPProviderSettingsError):
-    """Raised when trying to mutate an environment-managed provider."""
-
-
-class LDAPProviderNotFoundError(LDAPProviderSettingsError):
-    """Raised when a UI-managed provider cannot be found."""
-
-
 def normalize_ldap_provider_id(provider_id: str) -> str:
-    normalized = provider_id.strip().lower()
-    if not normalized or not LDAP_PROVIDER_ID_PATTERN.fullmatch(normalized):
-        raise ValueError("Invalid LDAP provider id")
-    return normalized
+    try:
+        return normalize_identity_provider_id(provider_id)
+    except ValueError as exc:
+        raise ValueError("Invalid LDAP provider id") from exc
 
 
 def _validate_production_payload(payload: LDAPProviderAdminPayload, settings: Optional[Settings] = None) -> None:
@@ -79,16 +56,12 @@ def list_effective_ldap_providers(
 ) -> list[LDAPProviderAdminItem]:
     settings = settings or get_settings()
     env_providers = _environment_provider_map(settings)
-    items: list[LDAPProviderAdminItem] = [
-        _environment_provider_item(provider_id, provider)
-        for provider_id, provider in env_providers.items()
-    ]
-    for provider in _ui_provider_query(db):
-        provider_id = provider.provider_id.lower()
-        if provider_id in env_providers:
-            continue
-        items.append(_ui_provider_item(provider))
-    return items
+    return list_effective_identity_providers(
+        env_providers,
+        _provider_repository(db, env_providers).list(),
+        environment_item=_environment_provider_item,
+        persisted_item=_ui_provider_item,
+    )
 
 
 def resolve_ldap_provider_map(
@@ -97,31 +70,20 @@ def resolve_ldap_provider_map(
 ) -> dict[str, LDAPProviderSettings]:
     settings = settings or get_settings()
     env_providers = _environment_provider_map(settings)
-    resolved: dict[str, LDAPProviderSettings] = dict(env_providers)
-    for provider in _ui_provider_query(db):
-        provider_id = provider.provider_id.lower()
-        if provider_id in resolved:
-            continue
-        resolved[provider_id] = _ui_provider_to_settings(provider)
-    return resolved
+    return resolve_identity_provider_map(
+        env_providers,
+        _provider_repository(db, env_providers).list(),
+        persisted_to_settings=_ui_provider_to_settings,
+    )
 
 
 def create_ldap_provider(db: Session, payload: LDAPProviderAdminPayload) -> LDAPProviderAdminItem:
     _validate_production_payload(payload)
     provider_id = normalize_ldap_provider_id(payload.provider_id)
-    if provider_id in _environment_provider_map():
-        raise LDAPProviderManagedByEnvironmentError("LDAP provider is managed by environment settings")
-    if _get_ui_provider(db, provider_id):
-        raise LDAPProviderAlreadyExistsError("LDAP provider already exists")
-    provider = LdapProvider(provider_id=provider_id)
-    _apply_payload(provider, payload, replace_secret=True)
-    db.add(provider)
-    try:
-        db.commit()
-    except IntegrityError as exc:
-        db.rollback()
-        raise LDAPProviderAlreadyExistsError("LDAP provider already exists") from exc
-    db.refresh(provider)
+    provider = _provider_repository(db).create(
+        provider_id,
+        lambda current: _apply_payload(current, payload, replace_secret=True),
+    )
     return _ui_provider_item(provider)
 
 
@@ -135,46 +97,29 @@ def update_ldap_provider(
     payload_id = normalize_ldap_provider_id(payload.provider_id)
     if payload_id != normalized_id:
         raise ValueError("provider_id cannot be changed")
-    if normalized_id in _environment_provider_map():
-        raise LDAPProviderManagedByEnvironmentError("LDAP provider is managed by environment settings")
-    provider = _get_ui_provider(db, normalized_id)
-    if not provider:
-        raise LDAPProviderNotFoundError("LDAP provider not found")
-
-    _apply_payload(provider, payload, replace_secret=False)
-    provider.updated_at = utcnow()
-    db.commit()
-    db.refresh(provider)
+    provider = _provider_repository(db).update(
+        normalized_id,
+        lambda current: _apply_payload(current, payload, replace_secret=False),
+    )
     return _ui_provider_item(provider)
 
 
 def delete_ldap_provider(db: Session, provider_id: str) -> None:
     normalized_id = normalize_ldap_provider_id(provider_id)
-    if normalized_id in _environment_provider_map():
-        raise LDAPProviderManagedByEnvironmentError("LDAP provider is managed by environment settings")
-    provider = _get_ui_provider(db, normalized_id)
-    if not provider:
-        raise LDAPProviderNotFoundError("LDAP provider not found")
-    db.delete(provider)
-    db.commit()
+    _provider_repository(db).delete(normalized_id)
 
 
 def _environment_provider_map(settings: Optional[Settings] = None) -> dict[str, LDAPProviderSettings]:
     settings = settings or get_settings()
-    resolved: dict[str, LDAPProviderSettings] = {}
-    for raw_id, provider in settings.ldap_providers.items():
-        provider_id = str(raw_id or "").strip().lower()
-        if provider_id:
-            resolved[provider_id] = provider
-    return resolved
+    return dict(settings.ldap_providers)
 
 
-def _ui_provider_query(db: Session) -> Iterable[LdapProvider]:
-    return db.query(LdapProvider).order_by(LdapProvider.provider_id.asc()).all()
-
-
-def _get_ui_provider(db: Session, provider_id: str) -> Optional[LdapProvider]:
-    return db.query(LdapProvider).filter(LdapProvider.provider_id == provider_id).first()
+def _provider_repository(
+    db: Session,
+    environment_providers: Optional[dict[str, LDAPProviderSettings]] = None,
+) -> IdentityProviderRepository[LdapProvider]:
+    providers = _environment_provider_map() if environment_providers is None else environment_providers
+    return IdentityProviderRepository(db, LdapProvider, providers, "LDAP")
 
 
 def _apply_payload(provider: LdapProvider, payload: LDAPProviderAdminPayload, *, replace_secret: bool) -> None:
@@ -247,30 +192,20 @@ def _ui_provider_to_settings(provider: LdapProvider) -> LDAPProviderSettings:
 
 
 def _ui_provider_item(provider: LdapProvider) -> LDAPProviderAdminItem:
-    return LDAPProviderAdminItem(
-        provider_id=provider.provider_id,
-        display_name=provider.display_name,
-        url=provider.url,
-        bind_dn=provider.bind_dn,
-        user_base_dn=provider.user_base_dn,
-        user_filter=provider.user_filter,
-        email_attribute=provider.email_attribute,
-        name_attribute=provider.name_attribute,
-        subject_attribute=provider.subject_attribute,
-        start_tls=bool(provider.start_tls),
-        tls_verify=bool(provider.tls_verify),
-        tls_ca_file=provider.tls_ca_file,
-        allow_legacy_tls=bool(provider.allow_legacy_tls),
-        timeout_seconds=provider.timeout_seconds,
-        enabled=bool(provider.enabled),
-        allow_insecure=bool(provider.allow_insecure),
+    return _provider_item(
+        provider.provider_id,
+        _ui_provider_to_settings(provider),
         source="ui",
-        editable=True,
-        has_bind_password=bool(provider.bind_password),
     )
 
 
-def _environment_provider_item(provider_id: str, provider: LDAPProviderSettings) -> LDAPProviderAdminItem:
+def _provider_item(
+    provider_id: str,
+    provider: LDAPProviderSettings,
+    *,
+    source: Literal["environment", "ui"],
+    field_locks: Optional[dict[str, LDAPProviderFieldLock]] = None,
+) -> LDAPProviderAdminItem:
     return LDAPProviderAdminItem(
         provider_id=provider_id,
         display_name=provider.display_name,
@@ -288,17 +223,23 @@ def _environment_provider_item(provider_id: str, provider: LDAPProviderSettings)
         timeout_seconds=provider.timeout_seconds,
         enabled=bool(provider.enabled),
         allow_insecure=bool(provider.allow_insecure),
-        source="environment",
-        editable=False,
-        field_locks={
-            field: LDAPProviderFieldLock(forced=True, source=_environment_source(provider_id, field))
-            for field in LDAP_PROVIDER_FIELDS
-        },
+        source=source,
+        editable=source == "ui",
+        field_locks=field_locks or {},
         has_bind_password=bool(provider.bind_password),
     )
 
 
-def _environment_source(provider_id: str, field: str) -> str:
-    if field == "provider_id":
-        return f"LDAP_PROVIDERS__{provider_id.upper()}"
-    return f"LDAP_PROVIDERS__{provider_id.upper()}__{field.upper()}"
+def _environment_provider_item(provider_id: str, provider: LDAPProviderSettings) -> LDAPProviderAdminItem:
+    return _provider_item(
+        provider_id,
+        provider,
+        source="environment",
+        field_locks={
+            field: LDAPProviderFieldLock(
+                forced=True,
+                source=identity_provider_environment_source("LDAP_PROVIDERS", provider_id, field),
+            )
+            for field in LDAP_PROVIDER_FIELDS
+        },
+    )

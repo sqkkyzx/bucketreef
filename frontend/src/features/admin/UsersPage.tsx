@@ -2,8 +2,6 @@
  * Copyright (c) 2025 Laurent Barbe
  * Licensed under the Apache License, Version 2.0
  */
-import TableSortControls from "../../components/list/TableSortControls";
-import { ListActions, ListBadge, ListActionButton, ListActionLink } from "../../components/list/ListControls";
 import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   CreateUserPayload,
@@ -27,12 +25,7 @@ import {
   hasAccountAccessRole,
   type AccountAccessGrant,
 } from "../../api/accountAccess";
-import { UiGroupSummary, listMinimalGroups } from "../../api/groups";
-import { S3AccountSummary, listMinimalS3Accounts } from "../../api/accounts";
-import { S3UserSummary, listMinimalS3Users } from "../../api/s3Users";
-import { S3ConnectionSummary, listMinimalS3Connections } from "../../api/s3ConnectionsAdmin";
 import ConfirmActionDialog from "../../components/ConfirmActionDialog";
-import ListPageSection from "../../components/list/ListPageSection";
 import WorkflowPage, {
   WorkflowMetadata,
   workflowPageHostClass,
@@ -40,37 +33,22 @@ import WorkflowPage, {
 import WorkflowTabs from "../../components/WorkflowTabs";
 import PageHeader from "../../components/PageHeader";
 import { adminPageBreadcrumbs } from "./adminBreadcrumbs";
-import {
-  CompactAssociationSummary,
-  accountAssociationRoleLabels,
-  type CompactAssociationCategory,
-} from "./AssociationSummary";
 import AdminUserPlatformAccessPanel from "./AdminUserPlatformAccessPanel";
+import AdminUsersList, { type AdminUsersSortField } from "./AdminUsersList";
 import {
   DEFAULT_MANAGER_TOOL_ACCESS,
   normalizeManagerToolAccess,
+  roleSupportsOperationalAccess,
 } from "./adminAccessConfig";
 import PageBanner from "../../components/PageBanner";
 import SettingsForm from "../../components/settings/SettingsForm";
-import { SettingsSection } from "../../components/settings/SettingsLayout";
 import { SettingsButton, SettingsPersistentEditActions, useSettingsCloseGuard } from "../../components/settings/SettingsControls";
 import AdminUserIdentityFields, { userIdentityErrors, type UserIdentityErrors } from "./AdminUserIdentityFields";
 import SettingsNavigationGuard from "../../components/settings/SettingsNavigationGuard";
-import UserAvatarEditor from "../shared/UserAvatarEditor";
-import { UserLanguageField, UserNotificationFields } from "../shared/UserProfilePreferenceFields";
 import { useProfileI18n } from "../shared/profileMessages";
-import DataTableShell, {
-  dataTableDefaultActionProps,
-  type DataTableColumn,
-} from "../../components/list/DataTableShell";
-import { resolveListTableStatus } from "../../components/list/listTableStatus";
-import ToolbarSearchInput from "../../components/ToolbarSearchInput";
-import UserAvatar from "../../components/UserAvatar";
 import { useGeneralSettings } from "../../components/GeneralSettingsContext";
 
-import { cx, uiMutedTextClass } from "../../components/ui/styles";
 import { extractApiError } from "../../utils/apiError";
-import { stableSignature } from "../../utils/stableSignature";
 import { isAdminLikeRole, isSuperAdminRole, readStoredUser, setSessionUserCache } from "../../utils/workspaces";
 import {
   clearAdminPrincipalEditRequest,
@@ -81,12 +59,13 @@ import type { AccountSelection } from "./UserAccountAssociationsPanel";
 import { adminAssociationPanelClass } from "./AdminAssociationPicker";
 import UserGroupsSelector from "./UserGroupsSelector";
 import UserAuthenticationPanel from "./UserAuthenticationPanel";
-import { buildAccessAuditHref } from "./accessAuditLink";
+import AdminUserProfilePanel from "./AdminUserProfilePanel";
+import useAdminUserAssociationOptions from "./useAdminUserAssociationOptions";
+import { adminUserEditorSignature, emptyAdminUserEditorSignature } from "./adminUserEditorSignature";
 import { useUsersI18n } from "./usersMessage";
 import { useAdminUserI18n } from "./adminUserMessage";
 
 type UserModalTab = "general" | "authentication" | "associations" | "groups" | "access";
-type AuxiliaryLoadState = "idle" | "loading" | "loaded" | "error";
 
 function focusIdentityError(prefix: string, errors: UserIdentityErrors) {
   const field = errors.email ? "email" : "password";
@@ -94,8 +73,6 @@ function focusIdentityError(prefix: string, errors: UserIdentityErrors) {
 }
 
 export default function UsersPage() {
-  type SortField = "name" | "role" | "accounts" | "last_login_at";
-
   const { locale, text } = useUsersI18n();
   const { text: adminUserText } = useAdminUserI18n();
   const { text: adminProfileText } = useProfileI18n();
@@ -112,7 +89,7 @@ export default function UsersPage() {
     { id: "authentication", label: adminProfileText("security") },
     ...userWorkflowTabs.filter((tab) => tab.id !== "general"),
   ];
-  const closeLabel = locale === "zh" ? text("close") : undefined;
+  const closeLabel = locale === "en" ? undefined : text("close");
   const usersBreadcrumbs = (action?: string) =>
     adminPageBreadcrumbs("users", ...(action ? [{ label: action }] : [])).map((breadcrumb, index) => ({
       ...breadcrumb,
@@ -149,16 +126,22 @@ export default function UsersPage() {
   const requestedEditHandledRef = useRef(false);
   const startEditRef = useRef<(user: User) => void>(() => undefined);
   const [users, setUsers] = useState<User[]>([]);
-  const [accounts, setS3Accounts] = useState<S3AccountSummary[]>([]);
-  const [s3AccountsLoaded, setS3AccountsLoaded] = useState(false);
-  const [s3AccountsLoading, setS3AccountsLoading] = useState(false);
-  const [s3Users, setS3Users] = useState<S3UserSummary[]>([]);
-  const [s3UsersLoading, setS3UsersLoading] = useState(false);
-  const [s3Connections, setS3Connections] = useState<S3ConnectionSummary[]>([]);
-  const [s3ConnectionsLoading, setS3ConnectionsLoading] = useState(false);
-  const [groups, setGroups] = useState<UiGroupSummary[]>([]);
-  const [groupsLoaded, setGroupsLoaded] = useState(false);
-  const [groupsLoading, setGroupsLoading] = useState(false);
+  const {
+    accounts,
+    s3AccountsLoaded,
+    s3AccountsLoading,
+    refreshS3Accounts,
+    ensureS3Accounts,
+    s3Users,
+    s3UsersLoading,
+    s3Connections,
+    s3ConnectionsLoading,
+    groups,
+    groupsLoaded,
+    groupsLoading,
+    ensureGroups,
+    ensureAssociationOptionsForTab,
+  } = useAdminUserAssociationOptions();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -177,18 +160,7 @@ export default function UsersPage() {
   });
   const [form, setForm] = useState<CreateUserPayload>(() => createFormTemplate());
   const [createInitialSignature, setCreateInitialSignature] = useState(() =>
-    stableSignature({
-      form: createFormTemplate(),
-      selectedAccounts: [],
-      selectedS3Users: [],
-      selectedS3Connections: [],
-      selectedGroups: [],
-      pendingAccountSelections: [],
-      pendingS3UserSelections: [],
-      pendingConnectionSelections: [],
-      pendingGroupSelections: [],
-      accountAccessChoice: {},
-    })
+    emptyAdminUserEditorSignature(createFormTemplate())
   );
   const [createSelectedS3Accounts, setCreateSelectedS3Accounts] = useState<AccountSelection[]>([]);
   const [createSelectedS3Users, setCreateSelectedS3Users] = useState<S3UserMembership[]>([]);
@@ -214,18 +186,7 @@ export default function UsersPage() {
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [editForm, setEditForm] = useState<UpdateUserPayload>({});
   const [editInitialSignature, setEditInitialSignature] = useState(() =>
-    stableSignature({
-      form: {},
-      selectedAccounts: [],
-      selectedS3Users: [],
-      selectedS3Connections: [],
-      selectedGroups: [],
-      pendingAccountSelections: [],
-      pendingS3UserSelections: [],
-      pendingConnectionSelections: [],
-      pendingGroupSelections: [],
-      accountAccessChoice: {},
-    })
+    emptyAdminUserEditorSignature({})
   );
   const [editSelectedS3Accounts, setEditSelectedS3Accounts] = useState<AccountSelection[]>([]);
   const [editSelectedS3Users, setEditSelectedS3Users] = useState<S3UserMembership[]>([]);
@@ -263,25 +224,18 @@ export default function UsersPage() {
   const [createRoleHelpOpen, setCreateRoleHelpOpen] = useState(false);
   const [editRoleHelpOpen, setEditRoleHelpOpen] = useState(false);
   const [filter, setFilter] = useState(principalEditRequest?.search ?? "");
-  const [sort, setSort] = useState<{ field: SortField; direction: "asc" | "desc" }>({
+  const [sort, setSort] = useState<{ field: AdminUsersSortField; direction: "asc" | "desc" }>({
     field: "name",
     direction: "asc",
   });
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
   const [totalUsers, setTotalUsers] = useState(0);
-  const s3AccountsLoadStateRef = useRef<AuxiliaryLoadState>("idle");
-  const s3UsersLoadStateRef = useRef<AuxiliaryLoadState>("idle");
-  const s3ConnectionsLoadStateRef = useRef<AuxiliaryLoadState>("idle");
-  const groupsLoadStateRef = useRef<AuxiliaryLoadState>("idle");
   const accountOptions = useMemo(() => accounts.map((a) => ({ id: a.id, label: a.name })), [accounts]);
-  const accountOptionsById = useMemo(() => {
-    const map = new Map<number, S3AccountSummary>();
-    accounts.forEach((a) => {
-      map.set(a.id, a);
-    });
-    return map;
-  }, [accounts]);
+  const accountOptionsById = useMemo(
+    () => new Map(accounts.map((account) => [account.id, account] as const)),
+    [accounts],
+  );
   const s3UserOptions = useMemo(() => s3Users.map((u) => ({ id: u.id, label: u.name })), [s3Users]);
   const s3UserLabelById = useMemo(() => {
     const map = new Map<number, string>();
@@ -366,12 +320,10 @@ export default function UsersPage() {
   };
   const editRoleValue = editForm.role ?? editingUser?.role ?? "ui_user";
   const createRoleValue = form.role ?? "ui_user";
-  const createTargetSupportsCephAdmin = createRoleValue === "ui_admin" || createRoleValue === "ui_superadmin";
-  const createTargetSupportsStorageOps =
-    createRoleValue === "ui_user" || createRoleValue === "ui_admin" || createRoleValue === "ui_superadmin";
-  const editTargetSupportsCephAdmin = editRoleValue === "ui_admin" || editRoleValue === "ui_superadmin";
-  const editTargetSupportsStorageOps =
-    editRoleValue === "ui_user" || editRoleValue === "ui_admin" || editRoleValue === "ui_superadmin";
+  const createTargetSupportsCephAdmin = isAdminLikeRole(createRoleValue);
+  const createTargetSupportsStorageOps = roleSupportsOperationalAccess(createRoleValue);
+  const editTargetSupportsCephAdmin = isAdminLikeRole(editRoleValue);
+  const editTargetSupportsStorageOps = roleSupportsOperationalAccess(editRoleValue);
   const editTargetSupportsManagerTools = editTargetSupportsStorageOps;
   const createTargetSupportsManagerTools = createTargetSupportsStorageOps;
   const createCanGrantCephAdmin = currentIsSuperAdmin && createTargetSupportsCephAdmin;
@@ -379,77 +331,7 @@ export default function UsersPage() {
   const editCanGrantCephAdmin = currentIsSuperAdmin && editTargetSupportsCephAdmin;
   const editCanGrantStorageOps = currentIsAdminLike && editTargetSupportsStorageOps;
 
-  const formatLastLogin = (value?: string | null) => {
-    if (!value) return "-";
-    const parsed = new Date(value);
-    if (Number.isNaN(parsed.getTime())) {
-      return value;
-    }
-    return parsed.toLocaleString(locale);
-  };
-
-  const renderAssociationSummary = (user: User) => {
-    const effectiveAccountLinks = user.effective_access?.account_links ?? [];
-    const displayedAccountLinks = effectiveAccountLinks.length > 0
-      ? effectiveAccountLinks
-      : (user.account_links ?? []);
-    const accountItems = displayedAccountLinks.map((link) => {
-      const id = Number(link.account_id);
-      const label = accountOptionsById.get(id)?.name ?? text("accountFallback", { id });
-      const roleLabels = accountAssociationRoleLabels({
-        id,
-        label,
-        manager_role: link.manager_role,
-        portal_role: link.portal_role,
-      });
-      return {
-        id,
-        label,
-        manager_role: link.manager_role,
-        portal_role: link.portal_role,
-        role_labels: roleLabels,
-      };
-    });
-    const effectiveS3UserDetails = user.effective_access?.s3_user_details ?? [];
-    const s3UserItems =
-      effectiveS3UserDetails.length > 0
-        ? effectiveS3UserDetails.map((entry) => ({
-            id: entry.id,
-            label: entry.name || text("userFallback", { id: entry.id }),
-          }))
-        : (user.s3_user_details ?? []).map((entry) => ({
-            id: entry.id,
-            label: entry.name || text("userFallback", { id: entry.id }),
-          }));
-    const effectiveConnectionDetails = user.effective_access?.s3_connection_details ?? [];
-    const connectionItems =
-      effectiveConnectionDetails.length > 0
-        ? effectiveConnectionDetails.map((entry) => ({
-            id: entry.id,
-            label: entry.name || text("connectionFallback", { id: entry.id }),
-          }))
-        : (user.s3_connection_details ?? []).map((entry) => ({
-            id: entry.id,
-            label: entry.name || text("connectionFallback", { id: entry.id }),
-          }));
-    const categories: CompactAssociationCategory[] = [
-      {
-        id: "accounts",
-        label: text("accounts"),
-        itemLabel: text("rgwAccount"),
-        items: accountItems.map((account) => ({
-          id: account.id,
-          label: account.label,
-          role_labels: account.role_labels,
-        })),
-      },
-      { id: "s3_users", label: text("rgwUsers"), itemLabel: text("rgwUser"), items: s3UserItems },
-      { id: "connections", label: text("s3Connections"), itemLabel: text("s3Connection"), items: connectionItems },
-    ];
-    return <CompactAssociationSummary categories={categories} />;
-  };
-
-  const toggleSort = (field: SortField) => {
+  const toggleSort = (field: AdminUsersSortField) => {
     setSort((prev) => {
       if (prev.field === field) {
         return { field, direction: prev.direction === "asc" ? "desc" : "asc" };
@@ -500,122 +382,9 @@ export default function UsersPage() {
     }
   }, [filter, page, pageSize, sort.direction, sort.field]);
 
-  const fetchS3Accounts = useCallback(async () => {
-    if (s3AccountsLoadStateRef.current === "loading") return;
-    s3AccountsLoadStateRef.current = "loading";
-    setS3AccountsLoading(true);
-    try {
-      const data = await listMinimalS3Accounts();
-      setS3Accounts(data);
-      setS3AccountsLoaded(true);
-      s3AccountsLoadStateRef.current = "loaded";
-    } catch (err) {
-      s3AccountsLoadStateRef.current = "error";
-      console.error(err);
-    } finally {
-      setS3AccountsLoading(false);
-    }
-  }, []);
-
-  const fetchS3Users = useCallback(async () => {
-    if (s3UsersLoadStateRef.current === "loading") return;
-    s3UsersLoadStateRef.current = "loading";
-    setS3UsersLoading(true);
-    try {
-      const data = await listMinimalS3Users();
-      setS3Users(data);
-      s3UsersLoadStateRef.current = "loaded";
-    } catch (err) {
-      s3UsersLoadStateRef.current = "error";
-      console.error(err);
-    } finally {
-      setS3UsersLoading(false);
-    }
-  }, []);
-
-  const fetchS3Connections = useCallback(async () => {
-    if (s3ConnectionsLoadStateRef.current === "loading") return;
-    s3ConnectionsLoadStateRef.current = "loading";
-    setS3ConnectionsLoading(true);
-    try {
-      const data = await listMinimalS3Connections();
-      setS3Connections(data);
-      s3ConnectionsLoadStateRef.current = "loaded";
-    } catch (err) {
-      s3ConnectionsLoadStateRef.current = "error";
-      console.error(err);
-    } finally {
-      setS3ConnectionsLoading(false);
-    }
-  }, []);
-
-  const ensureS3Accounts = useCallback(async (options?: { retryOnError?: boolean }) => {
-    const loadState = s3AccountsLoadStateRef.current;
-    if (loadState === "loaded" || loadState === "loading") return;
-    if (loadState === "error" && !options?.retryOnError) return;
-    await fetchS3Accounts();
-  }, [fetchS3Accounts]);
-
-  const ensureS3Users = useCallback(async (options?: { retryOnError?: boolean }) => {
-    const loadState = s3UsersLoadStateRef.current;
-    if (loadState === "loaded" || loadState === "loading") return;
-    if (loadState === "error" && !options?.retryOnError) return;
-    await fetchS3Users();
-  }, [fetchS3Users]);
-
-  const ensureS3Connections = useCallback(async (options?: { retryOnError?: boolean }) => {
-    const loadState = s3ConnectionsLoadStateRef.current;
-    if (loadState === "loaded" || loadState === "loading") return;
-    if (loadState === "error" && !options?.retryOnError) return;
-    await fetchS3Connections();
-  }, [fetchS3Connections]);
-
-  const fetchGroups = useCallback(async () => {
-    if (groupsLoadStateRef.current === "loading") return;
-    groupsLoadStateRef.current = "loading";
-    setGroupsLoading(true);
-    try {
-      const data = await listMinimalGroups();
-      setGroups(data);
-      setGroupsLoaded(true);
-      groupsLoadStateRef.current = "loaded";
-    } catch (err) {
-      groupsLoadStateRef.current = "error";
-      console.error(err);
-    } finally {
-      setGroupsLoading(false);
-    }
-  }, []);
-
-  const ensureGroups = useCallback(async (options?: { retryOnError?: boolean }) => {
-    const loadState = groupsLoadStateRef.current;
-    if (loadState === "loaded" || loadState === "loading") return;
-    if (loadState === "error" && !options?.retryOnError) return;
-    await fetchGroups();
-  }, [fetchGroups]);
-
-  const ensureAssociationOptionsForTab = useCallback(
-    async (tab: AssociationTab, options?: { retryOnError?: boolean }) => {
-      if (tab === "accounts") {
-        await ensureS3Accounts(options);
-        return;
-      }
-      if (tab === "s3_users") {
-        await ensureS3Users(options);
-        return;
-      }
-      await ensureS3Connections(options);
-    },
-    [ensureS3Accounts, ensureS3Connections, ensureS3Users]
-  );
-
   useEffect(() => {
     fetchUsers();
   }, [fetchUsers]);
-
-  useEffect(() => {
-    ensureS3Accounts();
-  }, [ensureS3Accounts]);
 
   useEffect(() => {
     if ((showCreateModal && createModalTab === "groups") || (showEditModal && editModalTab === "groups")) {
@@ -659,23 +428,11 @@ export default function UsersPage() {
     );
   };
 
-  const emptyCreateSignature = () =>
-    stableSignature({
-      form: createFormTemplate(),
-      selectedAccounts: [],
-      selectedS3Users: [],
-      selectedS3Connections: [],
-      selectedGroups: [],
-      pendingAccountSelections: [],
-      pendingS3UserSelections: [],
-      pendingConnectionSelections: [],
-      pendingGroupSelections: [],
-      accountAccessChoice: {},
-    });
+  const emptyCreateSignature = () => emptyAdminUserEditorSignature(createFormTemplate());
 
   const createCurrentSignature = useMemo(
     () =>
-      stableSignature({
+      adminUserEditorSignature({
         form,
         selectedAccounts: createSelectedS3Accounts,
         selectedS3Users: createSelectedS3Users,
@@ -735,7 +492,7 @@ export default function UsersPage() {
 
   const editCurrentSignature = useMemo(
     () =>
-      stableSignature({
+      adminUserEditorSignature({
         form: editForm,
         selectedAccounts: editSelectedS3Accounts,
         selectedS3Users: editSelectedS3Users,
@@ -785,26 +542,13 @@ export default function UsersPage() {
     setEditAccountAccessChoice({});
     setEditForm({});
     setEditRoleHelpOpen(false);
-    setEditInitialSignature(
-      stableSignature({
-        form: {},
-        selectedAccounts: [],
-        selectedS3Users: [],
-        selectedS3Connections: [],
-        selectedGroups: [],
-        pendingAccountSelections: [],
-        pendingS3UserSelections: [],
-        pendingConnectionSelections: [],
-        pendingGroupSelections: [],
-        accountAccessChoice: {},
-      })
-    );
+    setEditInitialSignature(emptyAdminUserEditorSignature({}));
     clearAdminPrincipalEditRequest();
   };
 
   const roleAccessPatch = (role: UiRole, current: UpdateUserPayload) => {
-    const supportsCephAdmin = role === "ui_admin" || role === "ui_superadmin";
-    const supportsStorageOps = role === "ui_user" || supportsCephAdmin;
+    const supportsCephAdmin = isAdminLikeRole(role);
+    const supportsStorageOps = roleSupportsOperationalAccess(role);
     return {
       role,
       can_access_ceph_admin: currentIsSuperAdmin && supportsCephAdmin ? Boolean(current.can_access_ceph_admin) : false,
@@ -864,11 +608,11 @@ export default function UsersPage() {
       password: form.password,
       role,
       can_access_ceph_admin:
-        currentIsSuperAdmin && (role === "ui_admin" || role === "ui_superadmin")
+        currentIsSuperAdmin && isAdminLikeRole(role)
           ? Boolean(form.can_access_ceph_admin)
           : false,
       can_access_storage_ops:
-        currentIsAdminLike && (role === "ui_user" || role === "ui_admin" || role === "ui_superadmin")
+        currentIsAdminLike && roleSupportsOperationalAccess(role)
           ? Boolean(form.can_access_storage_ops)
           : false,
       can_create_manual_private_connections: createTargetSupportsManagerTools
@@ -910,7 +654,7 @@ export default function UsersPage() {
       resetCreateModalState();
       await fetchUsers();
       if (s3AccountsLoaded) {
-        await fetchS3Accounts();
+        await refreshS3Accounts();
       }
       setShowCreateModal(false);
     } catch (err) {
@@ -924,7 +668,7 @@ export default function UsersPage() {
   };
 
   const startEdit = (user: User) => {
-    if (!currentIsSuperAdmin && (user.role === "ui_admin" || user.role === "ui_superadmin")) {
+    if (!currentIsSuperAdmin && isAdminLikeRole(user.role)) {
       setActionError(text("standardUsersOnly"));
       return;
     }
@@ -937,19 +681,19 @@ export default function UsersPage() {
       quota_alerts_global_watch: Boolean(user.quota_alerts_global_watch),
       role,
       can_access_ceph_admin:
-        role === "ui_admin" || role === "ui_superadmin"
+        isAdminLikeRole(role)
           ? Boolean(user.can_access_ceph_admin)
           : false,
       can_access_storage_ops:
-        role === "ui_user" || role === "ui_admin" || role === "ui_superadmin"
+        roleSupportsOperationalAccess(role)
           ? Boolean(user.can_access_storage_ops)
           : false,
       can_create_manual_private_connections:
-        role === "ui_user" || role === "ui_admin" || role === "ui_superadmin"
+        roleSupportsOperationalAccess(role)
           ? Boolean(user.can_create_manual_private_connections)
           : false,
       can_provision_managed_private_connections:
-        role === "ui_user" || role === "ui_admin" || role === "ui_superadmin"
+        roleSupportsOperationalAccess(role)
           ? Boolean(user.can_provision_managed_private_connections)
           : false,
       manager_tool_access: normalizeManagerToolAccess(user.manager_tool_access),
@@ -999,7 +743,7 @@ export default function UsersPage() {
     setEditGroupSelections([]);
     setEditAccountAccessChoice({});
     setEditInitialSignature(
-      stableSignature({
+      adminUserEditorSignature({
         form: nextEditForm,
         selectedAccounts,
         selectedS3Users: nextSelectedS3Users,
@@ -1009,7 +753,7 @@ export default function UsersPage() {
         pendingS3UserSelections: [],
         pendingConnectionSelections: [],
         pendingGroupSelections: [],
-      accountAccessChoice: {},
+        accountAccessChoice: {},
       })
     );
     setEditModalTab("general");
@@ -1058,20 +802,19 @@ export default function UsersPage() {
       payload.full_name = editForm.full_name?.trim() || null;
       payload.ui_language = editForm.ui_language ?? null;
       payload.quota_alerts_enabled = editForm.quota_alerts_enabled !== false;
-      payload.quota_alerts_global_watch = (nextRole === "ui_admin" || nextRole === "ui_superadmin") && Boolean(editForm.quota_alerts_global_watch);
+      payload.quota_alerts_global_watch = isAdminLikeRole(nextRole) && Boolean(editForm.quota_alerts_global_watch);
       if (editForm.role) {
         payload.role = nextRole;
       }
       payload.can_access_ceph_admin =
-        currentIsSuperAdmin && (nextRole === "ui_admin" || nextRole === "ui_superadmin")
+        currentIsSuperAdmin && isAdminLikeRole(nextRole)
           ? Boolean(editForm.can_access_ceph_admin ?? editingUser.can_access_ceph_admin)
           : false;
       payload.can_access_storage_ops =
-        currentIsAdminLike && (nextRole === "ui_user" || nextRole === "ui_admin" || nextRole === "ui_superadmin")
+        currentIsAdminLike && roleSupportsOperationalAccess(nextRole)
           ? Boolean(editForm.can_access_storage_ops ?? editingUser.can_access_storage_ops)
           : false;
-      const nextRoleSupportsConnectionPermissions =
-        nextRole === "ui_user" || nextRole === "ui_admin" || nextRole === "ui_superadmin";
+      const nextRoleSupportsConnectionPermissions = roleSupportsOperationalAccess(nextRole);
       payload.can_create_manual_private_connections = nextRoleSupportsConnectionPermissions
         ? Boolean(
             editForm.can_create_manual_private_connections ??
@@ -1085,7 +828,7 @@ export default function UsersPage() {
           )
         : false;
       payload.manager_tool_access =
-        nextRole === "ui_user" || nextRole === "ui_admin" || nextRole === "ui_superadmin"
+        roleSupportsOperationalAccess(nextRole)
           ? normalizeManagerToolAccess(editForm.manager_tool_access ?? editingUser.manager_tool_access)
           : { ...DEFAULT_MANAGER_TOOL_ACCESS };
       payload.browser_advanced_features_enabled = Boolean(
@@ -1126,7 +869,7 @@ export default function UsersPage() {
       setEditConnectionSelections([]);
       setEditGroupSelections([]);
       setEditAccountAccessChoice({});
-      setEditInitialSignature(stableSignature({
+      setEditInitialSignature(adminUserEditorSignature({
         form: savedForm,
         selectedAccounts: editSelectedS3Accounts,
         selectedS3Users: editSelectedS3Users,
@@ -1141,7 +884,7 @@ export default function UsersPage() {
       setActionMessage(text("userUpdated"));
       await fetchUsers();
       if (s3AccountsLoaded) {
-        await fetchS3Accounts();
+        await refreshS3Accounts();
       }
     } catch (err) {
       if (!isRecentWebAuthnVerificationCancelled(err)) {
@@ -1183,111 +926,6 @@ export default function UsersPage() {
     }
   };
 
-  const usersDescription = text("description");
-  const associationLabel = text("storageAssociations");
-  const filterPlaceholder = text("searchPlaceholder");
-  const tableStatus = resolveListTableStatus({
-    loading,
-    error,
-    rowCount: users.length,
-  });
-  const userTableColumns: Array<DataTableColumn<User, SortField>> = [
-    {
-      id: "user",
-      label: text("user"),
-      field: "name",
-      primary: true,
-      render: (user) => {
-        const fullName = user.full_name?.trim();
-        return (
-          <span className="flex min-w-0 items-center gap-2.5">
-            <UserAvatar
-              avatar={user.avatar}
-              name={fullName || user.email}
-              email={user.email}
-              size="md"
-              decorative
-            />
-            <span className="min-w-0">
-              <span className="block break-words">{fullName || user.email}</span>
-              {fullName && (
-                <span className={cx("block break-all text-[11px] font-medium", uiMutedTextClass)}>
-                  {user.email}
-                </span>
-              )}
-            </span>
-          </span>
-        );
-      },
-    },
-    {
-      id: "role",
-      label: text("role"),
-      field: "role",
-      render: (user) => (
-        <div className="flex flex-wrap items-center gap-2">
-          <span>{displayUiRole(user.role)}</span>
-          {cephAdminFeatureEnabled &&
-            (user.role === "ui_admin" || user.role === "ui_superadmin") &&
-            user.can_access_ceph_admin && (
-              <ListBadge tone="warning" className="uppercase tracking-wide">
-                {text("cephAdmin")}
-              </ListBadge>
-            )}
-        </div>
-      ),
-    },
-    {
-      id: "last_login_at",
-      label: text("lastLogin"),
-      field: "last_login_at",
-      render: (user) => formatLastLogin(user.last_login_at),
-    },
-    {
-      id: "associations",
-      label: associationLabel,
-      field: "accounts",
-      mobileLabel: text("links"),
-      render: (user) => renderAssociationSummary(user),
-    },
-    {
-      id: "actions",
-      label: text("actions"),
-      align: "right",
-      field: null,
-      mobileRole: "actions",
-      cellClassName: "min-w-[220px]",
-      render: (user) => {
-        const isCurrentUser = currentUserId !== null && user.id === currentUserId;
-        const canManage = currentIsSuperAdmin || (user.role !== "ui_admin" && user.role !== "ui_superadmin");
-        return (
-          <ListActions>
-            <ListActionButton
-              type="button"
-              onClick={() => startEdit(user)}
-              disabled={!canManage}
-              {...dataTableDefaultActionProps}
-            >
-              {text("edit")}
-            </ListActionButton>
-            <ListActionLink to={buildAccessAuditHref({ userId: user.id })}>
-              {text("reviewAccess")}
-            </ListActionLink>
-            <ListActionButton
-              type="button"
-              onClick={() => handleDeleteRequest(user)}
-               variant="danger"
-              disabled={busyId === user.id || isCurrentUser || !canManage}
-              title={isCurrentUser ? text("cannotDeleteSelf") : !canManage ? text("standardUsersOnly") : undefined}
-            >
-              {busyId === user.id ? text("deleting") : text("delete")}
-            </ListActionButton>
-          </ListActions>
-        );
-      },
-    },
-  ];
-
   return (
     <div className={workflowPageHostClass(showCreateModal || (Boolean(editingUser) && showEditModal))}>
       <SettingsNavigationGuard {...discardLabels} dirty={createDirty || editDirty} onDiscard={() => {
@@ -1296,7 +934,7 @@ export default function UsersPage() {
       }} />
       <PageHeader actionPresentation="listing"
         title={text("uiUsers")}
-        description={usersDescription}
+        description={text("description")}
         breadcrumbs={usersBreadcrumbs()}
         actions={[
           {
@@ -1466,43 +1104,30 @@ export default function UsersPage() {
         </WorkflowPage>
       )}
 
-      <ListPageSection
-        variant="page"
-        mobileSort={<TableSortControls columns={userTableColumns} sort={{ field: sort.field, direction: sort.direction, onSort: toggleSort }}
-          labels={{ sortBy: text("sortBy"), direction: text("direction"), ascending: text("ascending"), descending: text("descending") }} />}
-          title={text("users")}
-          countLabel={text(totalUsers === 1 ? "entryCount" : "entriesCount", { count: totalUsers })}
-          search={
-            <ToolbarSearchInput
-              value={filter}
-              onChange={handleFilterChange}
-              placeholder={filterPlaceholder}
-              className="min-w-0 flex-1 sm:w-64 md:w-72"
-            />
-          }
-      >
-        <DataTableShell
-          columns={userTableColumns}
-          rows={users}
-          rowKey={(user) => user.id}
-          status={tableStatus}
-          loadingMessage={text("loadingUsers")}
-          errorMessage={text("loadError")}
-          emptyMessage={filter.trim() ? text("noMatches") : text("noUsers")}
-          primaryColumnId="user"
-          responsiveCards
-          tableClassName="ui-data-table"
-          sort={{ field: sort.field, direction: sort.direction, onSort: toggleSort }}
-          pagination={{
-            page,
-            pageSize,
-            total: totalUsers,
-            onPageChange: handlePageChange,
-            onPageSizeChange: handlePageSizeChange,
-            disabled: loading,
-          }}
-        />
-      </ListPageSection>
+      <AdminUsersList
+        users={users}
+        accountOptionsById={accountOptionsById}
+        locale={locale}
+        text={text}
+        roleLabel={displayUiRole}
+        cephAdminFeatureEnabled={cephAdminFeatureEnabled}
+        currentUserId={currentUserId}
+        currentIsSuperAdmin={currentIsSuperAdmin}
+        busyId={busyId}
+        loading={loading}
+        error={error}
+        totalUsers={totalUsers}
+        filter={filter}
+        onFilterChange={handleFilterChange}
+        sort={sort}
+        onSort={toggleSort}
+        page={page}
+        pageSize={pageSize}
+        onPageChange={handlePageChange}
+        onPageSizeChange={handlePageSizeChange}
+        onEdit={startEdit}
+        onDelete={handleDeleteRequest}
+      />
 
       {pendingDeleteUser && (
         <ConfirmActionDialog
@@ -1571,37 +1196,29 @@ export default function UsersPage() {
             >
 
             {editModalTab === "general" && (
-              <>
-                <AdminUserIdentityFields
-                  idPrefix="edit-user"
-                  values={{ ...editForm, role: editRoleValue }}
-                  errors={editAttempted ? userIdentityErrors(editForm, false, adminUserText) : {}}
-                  onChange={(patch) => setEditForm((current) => ({ ...current, ...patch }))}
-                  canAssignAdmin={currentIsSuperAdmin}
-                  helpOpen={editRoleHelpOpen}
-                  onToggleHelp={() => setEditRoleHelpOpen((open) => !open)}
-                  onRoleChange={(value) => setEditForm((current) => ({ ...current, ...roleAccessPatch(value, current) }))}
-                >
-                  <UserAvatarEditor avatar={editingUser.avatar} name={editingUser.full_name} email={editingUser.email}
-                    text={adminProfileText} disabled={busyId === editingUser.id || avatarBusy}
-                    onDirtyChange={setAvatarDirty} onBusyChange={setAvatarBusy} onSave={async (draft) => {
-                      const updated = draft.file && draft.preference === "uploaded" ? await uploadUserAvatar(editingUser.id, draft.file)
-                        : draft.remove ? await deleteUserAvatar(editingUser.id) : await updateUser(editingUser.id, { avatar_preference: draft.preference });
-                      setEditingUser(current => current ? { ...current, avatar: updated.avatar } : current);
-                      setUsers(current => current.map(user => user.id === editingUser.id ? { ...user, avatar: updated.avatar } : user));
-                      if (currentUserId === editingUser.id) setSessionUserCache({ ...(readStoredUser() ?? {}), avatar: updated.avatar });
-                      setActionMessage(adminProfileText("imageSaved"));
-                    }} />
-                </AdminUserIdentityFields>
-                <SettingsSection title={adminProfileText("display")} presentation="compact">
-                  <UserLanguageField value={editForm.ui_language ?? "auto"} text={adminProfileText}
-                    onChange={value => setEditForm(current => ({ ...current, ui_language: value === "auto" ? null : value }))} />
-                </SettingsSection>
-                <UserNotificationFields quotaAlerts={editForm.quota_alerts_enabled !== false}
-                  quotaWatch={Boolean(editForm.quota_alerts_global_watch)} canWatch={editRoleValue === "ui_admin" || editRoleValue === "ui_superadmin"}
-                  text={adminProfileText} onQuotaAlertsChange={value => setEditForm(current => ({ ...current, quota_alerts_enabled: value }))}
-                  onQuotaWatchChange={value => setEditForm(current => ({ ...current, quota_alerts_global_watch: value }))} />
-              </>
+              <AdminUserProfilePanel
+                user={editingUser}
+                values={editForm}
+                role={editRoleValue}
+                errors={editAttempted ? userIdentityErrors(editForm, false, adminUserText) : {}}
+                canAssignAdmin={currentIsSuperAdmin}
+                roleHelpOpen={editRoleHelpOpen}
+                busy={busyId === editingUser.id || avatarBusy}
+                text={adminProfileText}
+                onChange={(patch) => setEditForm((current) => ({ ...current, ...patch }))}
+                onToggleRoleHelp={() => setEditRoleHelpOpen((open) => !open)}
+                onRoleChange={(value) => setEditForm((current) => ({ ...current, ...roleAccessPatch(value, current) }))}
+                onAvatarDirtyChange={setAvatarDirty}
+                onAvatarBusyChange={setAvatarBusy}
+                onAvatarSave={async (draft) => {
+                  const updated = draft.file && draft.preference === "uploaded" ? await uploadUserAvatar(editingUser.id, draft.file)
+                    : draft.remove ? await deleteUserAvatar(editingUser.id) : await updateUser(editingUser.id, { avatar_preference: draft.preference });
+                  setEditingUser(current => current ? { ...current, avatar: updated.avatar } : current);
+                  setUsers(current => current.map(user => user.id === editingUser.id ? { ...user, avatar: updated.avatar } : user));
+                  if (currentUserId === editingUser.id) setSessionUserCache({ ...(readStoredUser() ?? {}), avatar: updated.avatar });
+                  setActionMessage(adminProfileText("imageSaved"));
+                }}
+              />
             )}
 
             {editModalTab === "authentication" && (

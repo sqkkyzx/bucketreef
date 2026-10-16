@@ -122,14 +122,14 @@ def naming_client(monkeypatch):
     )
     for router in [iam_users.router, iam_groups.router, iam_roles.router, topics.router]:
         application.include_router(router)
-    for dep in [dependencies.get_account_context, dependencies.get_current_account_admin, dependencies.require_iam_capable_manager, dependencies.require_sns_capable_manager, dependencies.get_audit_service]:
+    for dep in [dependencies.get_s3_execution_context, dependencies.get_current_account_admin, dependencies.require_iam_capable_manager, dependencies.require_sns_capable_manager, dependencies.get_audit_service]:
         application.dependency_overrides[dep] = lambda: account
     service = Mock()
     factories = []
     for module in [iam_users, iam_groups, iam_roles]:
         factory = Mock(return_value=service)
         factories.append(factory)
-        monkeypatch.setattr(module, "get_iam_service_for_account", factory)
+        monkeypatch.setattr(module, "get_iam_service_for_context", factory)
     application.dependency_overrides[topics.get_topics_service] = lambda: service
     application.dependency_overrides[dependencies.get_audit_service] = lambda: Mock()
     with TestClient(application) as client:
@@ -197,12 +197,12 @@ def test_private_access_prevalidates_before_claim_or_remote_work():
     service._ensure_managed_private_connection_provisioning_allowed = Mock()
     service.sources = Mock()
     service._claim = Mock()
-    service._iam_service_for_account = Mock()
+    service._iam_service_for_context = Mock()
     payload = ManagedIAMPrivateAccessRequest(connection_name="private", access_browser=True, access_manager=False, inline_policies=[{"name": "invalid_under", "document": {}}])
     with pytest.raises(RequestValidationError):
         service.provision_iam(
             user=Mock(),
-            account=S3ExecutionContext(
+            context=S3ExecutionContext(
                 context_id="test",
                 context_kind="account",
                 name="Test",
@@ -214,7 +214,7 @@ def test_private_access_prevalidates_before_claim_or_remote_work():
         )
     assert service.sources.mock_calls == []
     service._claim.assert_not_called()
-    service._iam_service_for_account.assert_not_called()
+    service._iam_service_for_context.assert_not_called()
 
 
 def test_external_inline_policy_read_model_remains_unrestricted():

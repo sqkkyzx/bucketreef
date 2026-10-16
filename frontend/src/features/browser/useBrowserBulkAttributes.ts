@@ -4,7 +4,7 @@
  */
 import { useCallback, useMemo, useState } from "react";
 import type { BrowserRequestOptions } from "../../api/browserWorkspace";
-import type { S3AccountSelector } from "../../api/accountParams";
+import type { S3ExecutionContextSelector } from "../../api/accountParams";
 import {
   updateObjectAcl,
   updateObjectLegalHold,
@@ -45,7 +45,7 @@ export type BrowserBulkAttributesDraft = {
 };
 
 type UseBrowserBulkAttributesOptions = {
-  accountId: S3AccountSelector;
+  contextId: S3ExecutionContextSelector;
   bucketName: string;
   clearOperationController: OperationRegistry["clearOperationController"];
   completeOperation: OperationRegistry["completeOperation"];
@@ -148,7 +148,7 @@ export function validateBrowserBulkAttributesDraft(
 }
 
 export function useBrowserBulkAttributes({
-  accountId,
+  contextId,
   bucketName,
   clearOperationController,
   completeOperation,
@@ -273,7 +273,7 @@ export function useBrowserBulkAttributes({
       const applyForKey = async (key: string) => {
         if (draft.applyMetadata || draft.applyStorageClass) {
           await updateObjectMetadata(
-            accountId,
+            contextId,
             bucketName,
             {
               key,
@@ -314,7 +314,7 @@ export function useBrowserBulkAttributes({
         }
         if (draft.applyTags) {
           await updateObjectTags(
-            accountId,
+            contextId,
             bucketName,
             { key, tags: tagsPairs },
             controller?.signal,
@@ -323,7 +323,7 @@ export function useBrowserBulkAttributes({
         }
         if (draft.applyAcl) {
           await updateObjectAcl(
-            accountId,
+            contextId,
             bucketName,
             { key, acl: draft.aclValue },
             controller?.signal,
@@ -332,7 +332,7 @@ export function useBrowserBulkAttributes({
         }
         if (draft.applyLegalHold) {
           await updateObjectLegalHold(
-            accountId,
+            contextId,
             bucketName,
             { key, status: draft.legalHoldStatus },
             controller?.signal,
@@ -341,7 +341,7 @@ export function useBrowserBulkAttributes({
         }
         if (draft.applyRetention) {
           await updateObjectRetention(
-            accountId,
+            contextId,
             bucketName,
             {
               key,
@@ -409,7 +409,7 @@ export function useBrowserBulkAttributes({
       setLoading(false);
     }
   }, [
-    accountId,
+    contextId,
     bucketName,
     clearOperationController,
     completeOperation,

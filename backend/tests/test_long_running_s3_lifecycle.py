@@ -92,15 +92,15 @@ def test_bucket_operations_close_their_client_on_every_exit(monkeypatch, operati
     account = make_s3_execution_context(can_manage_buckets=True)
     if operation == "usage":
         service = BucketUsageStatsService()
-        target = BucketUsageStatsResolvedTarget(account=account, bucket_name="bucket", scope_kind="manager", scope_id="1")
+        target = BucketUsageStatsResolvedTarget(context=account, bucket_name="bucket", scope_kind="manager", scope_id="1")
         run = lambda: service.calculate_bucket(target)
     elif operation == "integrity":
         service = BucketIntegrityCheckService()
-        target = BucketIntegrityResolvedTarget(account=account, bucket_name="bucket")
+        target = BucketIntegrityResolvedTarget(context=account, bucket_name="bucket")
         run = lambda: service.run([target], BucketIntegrityOptions())
     else:
         service = BucketPurgeService()
-        target = BucketPurgeResolvedTarget(account=account, bucket_name="bucket")
+        target = BucketPurgeResolvedTarget(context=account, bucket_name="bucket")
         monkeypatch.setattr(service, "_resolve_initial_entry_estimates", lambda targets: [None] * len(targets))
 
         def purge(client, bucket_name, **_kwargs):
@@ -146,7 +146,7 @@ def test_usage_current_listing_fallback_keeps_client_open_until_finished(monkeyp
     service = BucketUsageStatsService()
     monkeypatch.setattr(service, "_build_client", lambda _account: client)
     target = BucketUsageStatsResolvedTarget(
-        account=make_s3_execution_context(), bucket_name="bucket", scope_kind="manager", scope_id="1",
+        context=make_s3_execution_context(), bucket_name="bucket", scope_kind="manager", scope_id="1",
     )
     if outcome == "success":
         assert service.calculate_bucket(target).scan_mode == "current_only"
@@ -226,7 +226,7 @@ def test_comparison_remediation_closes_all_owned_clients(monkeypatch, action, ou
         return bucket_compare_remediation.BucketCompareRemediationResult(action, 1, 1, 0, [])
 
     monkeypatch.setattr(service, "_build_client", build_client)
-    monkeypatch.setattr(service, "_accounts_share_storage_endpoint", lambda *_args: True)
+    monkeypatch.setattr(service, "_contexts_share_storage_endpoint", lambda *_args: True)
     monkeypatch.setattr(bucket_compare_remediation, "remediate_bucket_content", remediate)
     if outcome == "success":
         assert service.run_compare_content_remediation("source", source, "target", target, action=action, object_keys=["one"]).succeeded_count == 1
@@ -263,7 +263,7 @@ def test_integrity_closes_client_only_after_in_flight_worker_finishes(monkeypatc
     client = ConcurrentClient()
     service = BucketIntegrityCheckService()
     monkeypatch.setattr(service, "_build_client", lambda _account: client)
-    target = BucketIntegrityResolvedTarget(account=make_s3_execution_context(), bucket_name="bucket")
+    target = BucketIntegrityResolvedTarget(context=make_s3_execution_context(), bucket_name="bucket")
     with ThreadPoolExecutor(max_workers=1) as executor:
         future = executor.submit(service.run, [target], BucketIntegrityOptions())
         try:
@@ -299,7 +299,7 @@ def test_usage_worker_cancellation_releases_client_without_persisting(monkeypatc
     client = TrackingClient(error=BucketUsageStatsCancelled("Canceled while listing"))
     monkeypatch.setattr(service, "_build_client", lambda _account: client)
     target = BucketUsageStatsResolvedTarget(
-        account=make_s3_execution_context(), bucket_name="bucket", scope_kind="manager", scope_id="1",
+        context=make_s3_execution_context(), bucket_name="bucket", scope_kind="manager", scope_id="1",
     )
 
     def run(progress_callback=None, cancel_check=None):

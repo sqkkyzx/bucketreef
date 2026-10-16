@@ -44,7 +44,7 @@ describe("useBrowserBucketCors", () => {
     const setStatusMessage = vi.fn();
     const { result } = renderHook(() =>
       useBrowserBucketCors({
-        accountIdForApi: "acc-1",
+        contextIdForApi: "acc-1",
         allowAction: true,
         bucketName: "bucket-a",
         enabled: true,
@@ -77,7 +77,7 @@ describe("useBrowserBucketCors", () => {
     const bucketARequest = deferred<BucketCorsStatus>();
     const bucketBRequest = deferred<BucketCorsStatus>();
     apiMocks.getBrowserBucketCorsStatus.mockImplementation(
-      (_accountId: string, bucketName: string) =>
+      (_contextId: string, bucketName: string) =>
         bucketName === "bucket-a"
           ? bucketARequest.promise
           : bucketBRequest.promise,
@@ -86,7 +86,7 @@ describe("useBrowserBucketCors", () => {
     const { result, rerender } = renderHook(
       ({ bucketName }) =>
         useBrowserBucketCors({
-          accountIdForApi: "acc-1",
+          contextIdForApi: "acc-1",
           allowAction: true,
           bucketName,
           enabled: true,
@@ -134,7 +134,7 @@ describe("useBrowserBucketCors", () => {
 
     const { result } = renderHook(() =>
       useBrowserBucketCors({
-        accountIdForApi: "acc-1",
+        contextIdForApi: "acc-1",
         allowAction: true,
         bucketName: "bucket-a",
         enabled: true,

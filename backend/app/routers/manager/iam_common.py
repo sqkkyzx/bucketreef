@@ -5,18 +5,50 @@ from __future__ import annotations
 from typing import Any, Callable
 
 from fastapi import HTTPException, status
+from sqlalchemy.orm import Session
 
+from app.db import AccountIAMUser
+from app.services.managed_private_access_service import ManagedPrivateAccessService
+from app.services.managed_private_access_sources import iam_source_reference
 from app.services.s3_execution_context import S3ExecutionContext
 from app.models.policy import InlinePolicy, Policy
 from app.services.rgw_iam import RGWIAMService, get_iam_service
 from app.utils.s3_endpoint import resolve_iam_client_options
 
 
-def get_iam_service_for_account(account: S3ExecutionContext) -> RGWIAMService:
-    access_key, secret_key = account.effective_rgw_credentials()
+def managed_iam_user_source(
+    db: Session, context: S3ExecutionContext, user_name: str,
+) -> tuple[str, int | None] | None:
+    source = iam_source_reference(context)
+    if source is not None:
+        provisioning = ManagedPrivateAccessService(db).managed_iam_user(*source, user_name)
+        if provisioning is not None:
+            return "private_access", provisioning.s3_connection_id
+    if context.id is not None and (
+        db.query(AccountIAMUser)
+        .filter(AccountIAMUser.account_id == context.id, AccountIAMUser.iam_username == user_name)
+        .first()
+        is not None
+    ):
+        return "portal", None
+    return None
+
+
+def ensure_unmanaged_iam_user(db: Session, context: S3ExecutionContext, user_name: str) -> None:
+    managed = managed_iam_user_source(db, context, user_name)
+    if managed is not None:
+        workflow = "private connection" if managed[0] == "private_access" else "Portal"
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"BucketReef-managed IAM users must be managed through their {workflow} workflow",
+        )
+
+
+def get_iam_service_for_context(context: S3ExecutionContext) -> RGWIAMService:
+    access_key, secret_key = context.effective_rgw_credentials()
     if not access_key or not secret_key:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Execution context credentials are missing")
-    endpoint, region, verify_tls = resolve_iam_client_options(account)
+    endpoint, region, verify_tls = resolve_iam_client_options(context)
     return get_iam_service(
         access_key,
         secret_key,

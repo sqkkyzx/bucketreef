@@ -15,11 +15,11 @@ from app.models.bucket_listing import BucketListingRequest
 from app.models.storage_ops import PaginatedStorageOpsBucketsResponse
 from app.routers.ceph_admin.listing_common import stream_listing_response
 from app.routers.dependencies import (
-    get_account_context,
+    get_s3_execution_context,
     get_current_storage_ops_admin,
 )
 from app.routers.execution_contexts import list_execution_contexts
-from app.services.bucket_listing_cache import invalidate_bucket_listing_cache_for_account
+from app.services.bucket_listing_cache import invalidate_bucket_listing_cache_for_context
 from app.services.bucket_listing_shared import BucketListingFilterError, is_advanced_filter_stream_payload
 from app.services.bucket_owner_enrichment import invalidate_bucket_owner_metadata_cache
 from app.services.bucket_ui_tags_service import BucketUiTagsService
@@ -43,7 +43,7 @@ def _collect_context_refs(user: User, db: Session) -> list[StorageOpsContextRef]
     return build_storage_ops_context_refs(contexts)
 
 
-def _resolve_context_account(
+def _resolve_context(
     ref: StorageOpsContextRef,
     *,
     request: Request,
@@ -51,7 +51,7 @@ def _resolve_context_account(
     user: User,
 ) -> S3ExecutionContext | None:
     try:
-        return get_account_context(request=request, account_ref=ref.context_id, actor=user, db=db)
+        return get_s3_execution_context(request=request, context_ref=ref.context_id, actor=user, db=db)
     except HTTPException as exc:
         if exc.status_code in {status.HTTP_403_FORBIDDEN, status.HTTP_404_NOT_FOUND}:
             return None
@@ -81,7 +81,7 @@ def _compute_storage_ops_listing(
         tag_service = BucketUiTagsService(db) if isinstance(db, Session) else None
         return compute_storage_ops_bucket_listing(
             load_context_refs=lambda: _collect_context_refs(user, db),
-            resolve_account=lambda ref: _resolve_context_account(
+            resolve_context=lambda ref: _resolve_context(
                 ref,
                 request=request,
                 db=db,
@@ -116,7 +116,7 @@ def refresh_storage_ops_bucket_listing_cache(
     refs = _collect_context_refs(user, db)
     resolved_contexts = resolve_storage_ops_contexts(
         refs=refs,
-        resolve_account=lambda ref: _resolve_context_account(
+        resolve_context=lambda ref: _resolve_context(
             ref,
             request=request,
             db=db,
@@ -125,8 +125,8 @@ def refresh_storage_ops_bucket_listing_cache(
     )
     endpoint_ids: set[int] = set()
     for context in resolved_contexts:
-        invalidate_bucket_listing_cache_for_account(context.account)
-        endpoint_id = int(context.account.storage_endpoint_id or 0)
+        invalidate_bucket_listing_cache_for_context(context.context)
+        endpoint_id = int(context.context.storage_endpoint_id or 0)
         if endpoint_id > 0:
             endpoint_ids.add(endpoint_id)
     for endpoint_id in endpoint_ids:

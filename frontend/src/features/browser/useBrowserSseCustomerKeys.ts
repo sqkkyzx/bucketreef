@@ -4,8 +4,8 @@
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  normalizeS3AccountSelectorId,
-  type S3AccountSelector,
+  normalizeS3SelectorId,
+  type S3ExecutionContextSelector,
 } from "../../api/accountParams";
 import { stableSignature } from "../../utils/stableSignature";
 import {
@@ -24,7 +24,7 @@ function resolveActionError(error: unknown, fallback: string): string {
 }
 
 type UseBrowserSseCustomerKeysOptions = {
-  accountIdForApi: S3AccountSelector;
+  contextIdForApi: S3ExecutionContextSelector;
   bucketName: string;
   enabled: boolean;
   onManualCopyRequired: (keyBase64: string) => void;
@@ -32,7 +32,7 @@ type UseBrowserSseCustomerKeysOptions = {
 };
 
 export function useBrowserSseCustomerKeys({
-  accountIdForApi,
+  contextIdForApi,
   bucketName,
   enabled,
   onManualCopyRequired,
@@ -50,10 +50,10 @@ export function useBrowserSseCustomerKeys({
   const [visible, setVisible] = useState(false);
 
   const scopeKey = useMemo(() => {
-    const accountId = normalizeS3AccountSelectorId(accountIdForApi);
-    if (!accountId || !bucketName) return null;
-    return `${accountId}::${bucketName}`;
-  }, [accountIdForApi, bucketName]);
+    const contextId = normalizeS3SelectorId(contextIdForApi);
+    if (!contextId || !bucketName) return null;
+    return `${contextId}::${bucketName}`;
+  }, [contextIdForApi, bucketName]);
   const storedKeyBase64 = useMemo(() => {
     if (!scopeKey) return null;
     return keysByScope[scopeKey] ?? null;
@@ -61,10 +61,10 @@ export function useBrowserSseCustomerKeys({
   const keyBase64 = enabled ? storedKeyBase64 : null;
 
   const getKeyForScope = useCallback(
-    (selector: S3AccountSelector, bucket: string) => {
-      const accountId = normalizeS3AccountSelectorId(selector);
-      if (!accountId || !bucket) return null;
-      return keysByScope[`${accountId}::${bucket}`] ?? null;
+    (selector: S3ExecutionContextSelector, bucket: string) => {
+      const contextId = normalizeS3SelectorId(selector);
+      if (!contextId || !bucket) return null;
+      return keysByScope[`${contextId}::${bucket}`] ?? null;
     },
     [keysByScope],
   );

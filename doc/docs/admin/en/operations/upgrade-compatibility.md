@@ -1,5 +1,30 @@
 # Operations: Upgrade and Compatibility Notes
 
+## 2026-10 Manager and Browser execution-context selector
+
+Manager and Browser routes that select an S3 execution identity now use the
+`context_id` query parameter. The former `account_id` parameter is removed from
+those routes because the selector may represent an account, S3 connection,
+S3 user, or authorized Ceph Admin context. Portal routes continue to use
+`account_id` because Portal selects a real BucketReef account.
+
+There is no runtime alias from `account_id` to `context_id`. Deploy the matching
+backend and frontend together, and update local scripts or functional clients
+that call `/manager` or `/browser` directly.
+
+## 2026-10 canonical production-readiness CLI
+
+The deployment-check CLI now uses the same `production_readiness` terminology
+as the Admin surface and service contract:
+
+```bash
+python -m app.scripts.check_production_readiness
+```
+
+The former `app.scripts.check_production_hardening` module was only a naming
+compatibility holdover and has been removed rather than retained as an alias.
+Update local operational commands when deploying this backend version.
+
 ## 2026-10 canonical audit execution context
 
 Migration `0155_canonical_audit_context` completes the audit execution-context
@@ -24,8 +49,10 @@ explicit `portal_manager` additions are preserved.
 
 After this migration, the runtime no longer supplies missing intent or role
 defaults when executing a persisted collaborator request. A malformed row is
-failed instead of being interpreted as a Portal User addition. Apply the
-database migration before starting the matching backend version.
+failed instead of being interpreted as a Portal User addition. Persisted
+intent, role, and role-change identifiers are consumed with their canonical
+JSON types and values; the runtime does not trim or coerce malformed values.
+Apply the database migration before starting the matching backend version.
 
 ## 2026-10 canonical audit statuses
 
@@ -618,8 +645,9 @@ non-object values with `{}`. Valid object fields remain unchanged.
 Deploy the migration and backend together. Once settings have been imported to
 the database, loading now uses the strict `AppSettings` contract and exposes
 invalid values instead of reverting silently to defaults. The optional disk
-bootstrap keeps its independent missing/invalid-file fallback. Data cleanup is
-not reversed on downgrade.
+bootstrap uses defaults only when the configured bootstrap file is absent; an
+invalid file fails validation and must already use the current schema. Data
+cleanup is not reversed on downgrade.
 
 ## 2026-08 canonical Portal request JSON
 

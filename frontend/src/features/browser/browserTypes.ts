@@ -2,7 +2,7 @@
  * Copyright (c) 2025 Laurent Barbe
  * Licensed under the Apache License, Version 2.0
  */
-import type { S3AccountSelector } from "../../api/accountParams";
+import type { S3ExecutionContextSelector } from "../../api/accountParams";
 
 export type BrowserItem = {
   id: string;
@@ -69,7 +69,7 @@ export type UploadQueueItem = {
   relativePath: string;
   key: string;
   bucket: string;
-  accountId: string;
+  contextId: string;
   groupId: string;
   groupLabel: string;
   groupKind: "folder" | "files";
@@ -172,7 +172,7 @@ export type ContextMenuState = {
 export type ClipboardState = {
   items: BrowserItem[];
   sourceBucket: string;
-  sourceSelector: S3AccountSelector;
+  sourceSelector: S3ExecutionContextSelector;
   mode: "copy" | "move";
 };
 

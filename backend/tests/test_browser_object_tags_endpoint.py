@@ -31,12 +31,12 @@ def test_browser_put_object_tags_passes_key_tags_and_version_id(client):
             captured["version_id"] = version_id
             return ObjectTags(key=key, tags=tags, version_id=version_id)
 
-    app.dependency_overrides[dependencies.get_account_context] = _account
+    app.dependency_overrides[dependencies.get_s3_execution_context] = _account
     app.dependency_overrides[browser_router.get_browser_service] = lambda: FakeService()
     app.dependency_overrides[browser_router.get_audit_service] = lambda: _FakeAuditService()
 
     response = client.put(
-        "/api/browser/buckets/my-bucket/object-tags?account_id=s3u-1",
+        "/api/browser/buckets/my-bucket/object-tags?context_id=s3u-1",
         json={
             "key": "folder/demo.txt",
             "version_id": "v1",
@@ -65,12 +65,12 @@ def test_browser_put_object_tags_preserves_whitespace_only_tag_key(client):
             captured["tags"] = tags
             return ObjectTags(key=key, tags=tags, version_id=version_id)
 
-    app.dependency_overrides[dependencies.get_account_context] = _account
+    app.dependency_overrides[dependencies.get_s3_execution_context] = _account
     app.dependency_overrides[browser_router.get_browser_service] = lambda: FakeService()
     app.dependency_overrides[browser_router.get_audit_service] = lambda: _FakeAuditService()
 
     response = client.put(
-        "/api/browser/buckets/my-bucket/object-tags?account_id=s3u-1",
+        "/api/browser/buckets/my-bucket/object-tags?context_id=s3u-1",
         json={"key": "folder/demo.txt", "tags": [{"key": " ", "value": " literal "}]},
     )
 
@@ -80,15 +80,15 @@ def test_browser_put_object_tags_preserves_whitespace_only_tag_key(client):
 
 
 def test_browser_put_object_tags_rejects_empty_and_duplicate_tag_keys(client):
-    app.dependency_overrides[dependencies.get_account_context] = _account
+    app.dependency_overrides[dependencies.get_s3_execution_context] = _account
     app.dependency_overrides[browser_router.get_audit_service] = lambda: _FakeAuditService()
 
     empty = client.put(
-        "/api/browser/buckets/my-bucket/object-tags?account_id=s3u-1",
+        "/api/browser/buckets/my-bucket/object-tags?context_id=s3u-1",
         json={"key": "folder/demo.txt", "tags": [{"key": "", "value": "value"}]},
     )
     duplicate = client.put(
-        "/api/browser/buckets/my-bucket/object-tags?account_id=s3u-1",
+        "/api/browser/buckets/my-bucket/object-tags?context_id=s3u-1",
         json={
             "key": "folder/demo.txt",
             "tags": [
@@ -107,12 +107,12 @@ def test_browser_put_object_tags_rejects_missing_key(client):
         def put_object_tags(self, bucket_name, account, key, tags, version_id=None):  # noqa: ANN001
             raise AssertionError("put_object_tags should not be called when key is empty")
 
-    app.dependency_overrides[dependencies.get_account_context] = _account
+    app.dependency_overrides[dependencies.get_s3_execution_context] = _account
     app.dependency_overrides[browser_router.get_browser_service] = lambda: FakeService()
     app.dependency_overrides[browser_router.get_audit_service] = lambda: _FakeAuditService()
 
     response = client.put(
-        "/api/browser/buckets/my-bucket/object-tags?account_id=s3u-1",
+        "/api/browser/buckets/my-bucket/object-tags?context_id=s3u-1",
         json={"key": "", "tags": [{"key": "env", "value": "dev"}]},
     )
 
@@ -125,12 +125,12 @@ def test_browser_put_object_tags_maps_runtime_error_to_bad_gateway(client):
         def put_object_tags(self, bucket_name, account, key, tags, version_id=None):  # noqa: ANN001
             raise RuntimeError("S3 put_object_tagging failed")
 
-    app.dependency_overrides[dependencies.get_account_context] = _account
+    app.dependency_overrides[dependencies.get_s3_execution_context] = _account
     app.dependency_overrides[browser_router.get_browser_service] = lambda: FakeService()
     app.dependency_overrides[browser_router.get_audit_service] = lambda: _FakeAuditService()
 
     response = client.put(
-        "/api/browser/buckets/my-bucket/object-tags?account_id=s3u-1",
+        "/api/browser/buckets/my-bucket/object-tags?context_id=s3u-1",
         json={"key": "folder/demo.txt", "tags": [{"key": "env", "value": "dev"}]},
     )
 

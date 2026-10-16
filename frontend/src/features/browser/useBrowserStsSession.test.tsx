@@ -52,7 +52,7 @@ describe("useBrowserStsSession", () => {
   it("prefetches and reuses unexpired credentials for the active scope", async () => {
     const { result } = renderHook(() =>
       useBrowserStsSession({
-        accountIdForApi: "acc-1",
+        contextIdForApi: "acc-1",
         enabled: true,
         hasContext: true,
       }),
@@ -74,7 +74,7 @@ describe("useBrowserStsSession", () => {
   it("retranslates fallback errors without repeating STS requests when the language changes", async () => {
     apiMocks.getBrowserStsCredentials.mockRejectedValue({});
     const { result } = renderHook(() => ({
-      session: useBrowserStsSession({ accountIdForApi: "acc-1", enabled: true, hasContext: true }),
+      session: useBrowserStsSession({ contextIdForApi: "acc-1", enabled: true, hasContext: true }),
       language: useLanguage(),
     }), { wrapper: LanguageProvider });
     await waitFor(() => expect(result.current.session.credentialsError).toBe("Unable to load STS credentials."));
@@ -89,20 +89,20 @@ describe("useBrowserStsSession", () => {
   it("does not reuse or commit an in-flight request from a previous account", async () => {
     const accountOneRequest = deferred<StsCredentials>();
     const accountTwoRequest = deferred<StsCredentials>();
-    apiMocks.getBrowserStsCredentials.mockImplementation((accountId: string) =>
-      accountId === "acc-1"
+    apiMocks.getBrowserStsCredentials.mockImplementation((contextId: string) =>
+      contextId === "acc-1"
         ? accountOneRequest.promise
         : accountTwoRequest.promise,
     );
 
     const { result, rerender } = renderHook(
-      ({ accountId }) =>
+      ({ contextId }) =>
         useBrowserStsSession({
-          accountIdForApi: accountId,
+          contextIdForApi: contextId,
           enabled: true,
           hasContext: true,
         }),
-      { initialProps: { accountId: "acc-1" } },
+      { initialProps: { contextId: "acc-1" } },
     );
     await waitFor(() => {
       expect(apiMocks.getBrowserStsCredentials).toHaveBeenCalledWith(
@@ -111,7 +111,7 @@ describe("useBrowserStsSession", () => {
       );
     });
 
-    rerender({ accountId: "acc-2" });
+    rerender({ contextId: "acc-2" });
     await waitFor(() => {
       expect(apiMocks.getBrowserStsCredentials).toHaveBeenCalledWith(
         "acc-2",

@@ -17,7 +17,6 @@ from app.models.managed_private_access import (
     ManagedPrivateAccessResult,
     ManagedRGWUserPrivateAccessRequest,
 )
-from app.models.s3_connection import CredentialOwnerType
 from app.services import app_settings_service
 from app.services.resource_name_validation import validate_inline_policy_requests
 from app.services.audit_service import AuditService
@@ -34,6 +33,7 @@ from app.services.managed_private_access_sources import (
     ManagedPrivateAccessSource,
     ManagedPrivateAccessSourceResolver,
 )
+from app.services.managed_resource_naming import PORTAL_MANAGED_IAM_GROUP_NAMES
 from app.services.mappers.s3_connection import mask_access_key_id
 from app.services.rgw_iam import RGWIAMService, get_iam_service
 from app.services.s3_connection_capabilities_service import (
@@ -44,6 +44,8 @@ from app.services.s3_execution_context import S3ExecutionContext, S3ExecutionTar
 from app.services.s3_users_service import S3UsersService
 from app.utils.s3_connection_endpoint import resolve_connection_details
 from app.utils.s3_endpoint import resolve_iam_client_options
+from app.utils.connection_rgw_identity import normalize_connection_rgw_identity
+from app.utils.rgw_payloads import extract_rgw_user_identity
 from app.utils.storage_endpoint_features import (
     aws_iam_client_options_for_region,
     resolve_iam_endpoint,
@@ -54,16 +56,6 @@ from app.utils.time import utcnow
 
 ACTIVE_STATES = ("provisioning", "active", "deleting", "cleanup_pending")
 AMAZON_S3_FULL_ACCESS_POLICY_ARN = "arn:aws:iam::aws:policy/AmazonS3FullAccess"
-
-
-def _credential_owner_type_for_principal(
-    principal_type: str,
-) -> CredentialOwnerType:
-    if principal_type == "iam_user":
-        return "iam_user"
-    if principal_type == "rgw_user":
-        return "s3_user"
-    raise ManagedPrivateAccessError(f"Unsupported remote principal type: {principal_type}")
 
 
 class ManagedPrivateAccessService:
@@ -80,14 +72,14 @@ class ManagedPrivateAccessService:
         self,
         *,
         user: User,
-        account: S3ExecutionTarget,
+        context: S3ExecutionTarget,
         payload: ManagedIAMPrivateAccessRequest,
     ) -> ManagedPrivateAccessResult:
         self._ensure_managed_private_connection_provisioning_allowed(user)
-        validate_inline_policy_requests(payload.inline_policies, "user", account)
-        source = self.sources.resolve_iam_source(user, account)
+        validate_inline_policy_requests(payload.inline_policies, "user", context)
+        source = self.sources.resolve_iam_source(user, context)
         destination = self.sources.derive_destination(source)
-        iam = self._iam_service_for_account(account)
+        iam = self._iam_service_for_context(context)
         try:
             self._validate_iam_selections(iam, payload)
         except ManagedPrivateAccessError:
@@ -182,11 +174,11 @@ class ManagedPrivateAccessService:
         self,
         *,
         user: User,
-        account: S3ExecutionTarget,
+        context: S3ExecutionTarget,
         payload: ManagedRGWUserPrivateAccessRequest,
     ) -> ManagedPrivateAccessResult:
         self._ensure_managed_private_connection_provisioning_allowed(user)
-        source = self.sources.resolve_rgw_user_source(user, account)
+        source = self.sources.resolve_rgw_user_source(user, context)
         destination = self.sources.derive_destination(source)
         existing = self._active_for_source(user.id, source)
         if existing is not None:
@@ -382,7 +374,7 @@ class ManagedPrivateAccessService:
     def rgw_user_provisioning_available(
         self,
         user: User,
-        account: S3ExecutionTarget,
+        context: S3ExecutionTarget,
         *,
         resolved: ResolvedUserAccess | None = None,
     ) -> bool:
@@ -391,7 +383,7 @@ class ManagedPrivateAccessService:
                 user,
                 resolved=resolved,
             )
-            self.sources.resolve_rgw_user_source(user, account)
+            self.sources.resolve_rgw_user_source(user, context)
         except ManagedPrivateAccessError:
             return False
         return True
@@ -412,6 +404,10 @@ class ManagedPrivateAccessService:
         iam: RGWIAMService,
         payload: ManagedIAMPrivateAccessRequest,
     ) -> None:
+        if set(payload.groups) & PORTAL_MANAGED_IAM_GROUP_NAMES:
+            raise ManagedPrivateAccessForbidden(
+                "Portal-managed IAM groups cannot be assigned to private access identities"
+            )
         available_groups = {group.name for group in iam.list_groups()}
         invalid_groups = sorted(set(payload.groups) - available_groups)
         if invalid_groups:
@@ -505,6 +501,7 @@ class ManagedPrivateAccessService:
         access_browser: bool,
         access_manager: bool,
     ) -> ManagedPrivateAccessResult:
+        rgw_user_uid, rgw_tenant, rgw_account_id = self._managed_connection_rgw_identity(provisioning)
         connection = S3Connection(
             created_by_user_id=user.id,
             name=connection_name,
@@ -513,10 +510,9 @@ class ManagedPrivateAccessService:
             access_manager=access_manager,
             access_browser=access_browser,
             server_managed=True,
-            credential_owner_type=_credential_owner_type_for_principal(
-                provisioning.remote_principal_type
-            ),
-            credential_owner_identifier=provisioning.remote_principal_identifier,
+            rgw_user_uid=rgw_user_uid,
+            rgw_tenant=rgw_tenant,
+            rgw_account_id=rgw_account_id,
             storage_endpoint_id=destination.storage_endpoint_id,
             custom_endpoint_config=destination.custom_endpoint_config,
             access_key_id=access_key_id,
@@ -539,6 +535,38 @@ class ManagedPrivateAccessService:
             connection=self.connections.serialize(connection),
         )
 
+    def _managed_connection_rgw_identity(
+        self,
+        provisioning: ManagedPrivateAccess,
+    ) -> tuple[str | None, str | None, str | None]:
+        user_uid = None
+        tenant = None
+        account_id = None
+        if provisioning.remote_principal_type == "iam_user":
+            if provisioning.source_context_type == "account":
+                source_account = (
+                    self.db.query(S3Account)
+                    .filter(S3Account.id == provisioning.source_context_id)
+                    .first()
+                )
+                account_id = source_account.rgw_account_id if source_account is not None else None
+            elif provisioning.source_context_type == "connection":
+                source_connection = (
+                    self.db.query(S3Connection)
+                    .filter(S3Connection.id == provisioning.source_context_id)
+                    .first()
+                )
+                account_id = source_connection.rgw_account_id if source_connection is not None else None
+        elif provisioning.remote_principal_type == "rgw_user":
+            user_uid, tenant = extract_rgw_user_identity(
+                {"uid": provisioning.remote_principal_identifier}
+            )
+        else:
+            raise ManagedPrivateAccessError(
+                f"Unsupported remote principal type: {provisioning.remote_principal_type}"
+            )
+        return normalize_connection_rgw_identity(user_uid, tenant, account_id)
+
     def _cleanup_remote(self, provisioning: ManagedPrivateAccess, *, user: User) -> None:
         if provisioning.remote_principal_type == "iam_user":
             iam = self._iam_service_for_source(provisioning, user)
@@ -558,7 +586,7 @@ class ManagedPrivateAccessService:
             account = self.db.query(S3Account).filter(S3Account.id == provisioning.source_context_id).first()
             if account is None:
                 raise ManagedPrivateAccessError("Source account not found")
-            return self._iam_service_for_account(account)
+            return self._iam_service_for_context(account)
         if provisioning.source_context_type != "connection":
             raise ManagedPrivateAccessError("Invalid IAM source context")
         connection = self.db.query(S3Connection).filter(S3Connection.id == provisioning.source_context_id).first()
@@ -622,11 +650,11 @@ class ManagedPrivateAccessService:
             raise ManagedPrivateAccessError("; ".join(str(error) for error in errors))
 
     @staticmethod
-    def _iam_service_for_account(account: S3ExecutionTarget) -> RGWIAMService:
-        access_key, secret_key = account.effective_rgw_credentials()
+    def _iam_service_for_context(context: S3ExecutionTarget) -> RGWIAMService:
+        access_key, secret_key = context.effective_rgw_credentials()
         if not access_key or not secret_key:
             raise ManagedPrivateAccessError("The source context has no IAM administration credentials")
-        endpoint, region, verify_tls = resolve_iam_client_options(account)
+        endpoint, region, verify_tls = resolve_iam_client_options(context)
         return get_iam_service(
             access_key,
             secret_key,

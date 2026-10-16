@@ -4,7 +4,7 @@
  */
 import { useCallback, useState } from "react";
 import type { BrowserRequestOptions } from "../../api/browserWorkspace";
-import type { S3AccountSelector } from "../../api/accountParams";
+import type { S3ExecutionContextSelector } from "../../api/accountParams";
 import { cleanupObjectVersions } from "../../api/browserObjects";
 import type { OperationCompletionStatus } from "./browserTypes";
 import type { useBrowserOperationRegistry } from "./useBrowserOperationRegistry";
@@ -19,7 +19,7 @@ export type BrowserVersionCleanupDraft = {
 };
 
 type UseBrowserVersionCleanupOptions = {
-  accountId: S3AccountSelector;
+  contextId: S3ExecutionContextSelector;
   bucketName: string;
   clearOperationController: OperationRegistry["clearOperationController"];
   completeOperation: OperationRegistry["completeOperation"];
@@ -47,7 +47,7 @@ export function createBrowserVersionCleanupDraft(): BrowserVersionCleanupDraft {
 }
 
 export function useBrowserVersionCleanup({
-  accountId,
+  contextId,
   bucketName,
   clearOperationController,
   completeOperation,
@@ -120,7 +120,7 @@ export function useBrowserVersionCleanup({
     let completionError: string | undefined;
     try {
       const result = await cleanupObjectVersions(
-        accountId,
+        contextId,
         bucketName,
         {
           prefix: normalizedPrefix,
@@ -152,7 +152,7 @@ export function useBrowserVersionCleanup({
       setLoading(false);
     }
   }, [
-    accountId,
+    contextId,
     bucketName,
     clearOperationController,
     completeOperation,

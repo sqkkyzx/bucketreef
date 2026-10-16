@@ -2,7 +2,7 @@
  * Copyright (c) 2026 Laurent Barbe
  * Licensed under the Apache License, Version 2.0
  */
-import type { S3AccountSelector } from "./accountParams";
+import type { S3ExecutionContextSelector } from "./accountParams";
 import type { BucketOperationTarget } from "./bucketOperation";
 import {
   buildJsonPostRequestInit,
@@ -77,12 +77,12 @@ type BucketIntegrityStreamOptions = {
 };
 
 export function streamManagerBucketIntegrityCheck(
-  contextId: S3AccountSelector,
+  contextId: S3ExecutionContextSelector,
   payload: BucketIntegrityCheckPayload,
   options?: BucketIntegrityStreamOptions
 ): Promise<BucketIntegrityResult> {
   const baseUrl = resolveApiBaseUrl();
-  const query = new URLSearchParams({ account_id: String(contextId) });
+  const query = new URLSearchParams({ context_id: String(contextId) });
   return streamBucketsWithSse<BucketIntegrityProgress, BucketIntegrityResult>({
     url: `${baseUrl}/manager/bucket-integrity/stream?${query.toString()}`,
     options,

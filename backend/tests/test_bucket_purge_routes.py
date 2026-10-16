@@ -26,7 +26,7 @@ from app.routers.storage_ops import purge as storage_ops_purge
 from tests.execution_context_factory import make_s3_execution_context
 
 
-def _build_request(path: str = "/api/manager/bucket-purge/stream", query_string: bytes = b"account_id=s3u-1") -> Request:
+def _build_request(path: str = "/api/manager/bucket-purge/stream", query_string: bytes = b"context_id=s3u-1") -> Request:
     return Request(
         {
             "type": "http",
@@ -93,7 +93,7 @@ def test_manager_purge_route_rejects_wrong_confirmation_with_400():
     previous_overrides = app.dependency_overrides.copy()
     app.dependency_overrides[dependencies_router.require_manager_enabled] = lambda: None
     app.dependency_overrides[manager_purge.require_bucket_purge_enabled] = lambda: _manager_tool_user()
-    app.dependency_overrides[manager_purge.get_account_context] = lambda: make_s3_execution_context(
+    app.dependency_overrides[manager_purge.get_s3_execution_context] = lambda: make_s3_execution_context(
         context_id="s3u-1", context_kind="s3_user", s3_user_id=1, id=None,
         name="Tenant A",
         can_manage_buckets=True,
@@ -102,7 +102,7 @@ def test_manager_purge_route_rejects_wrong_confirmation_with_400():
     try:
         with TestClient(app) as client:
             response = client.post(
-                "/api/manager/bucket-purge/stream?account_id=s3u-1",
+                "/api/manager/bucket-purge/stream?context_id=s3u-1",
                 json={"buckets": ["bucket-a", "bucket-b"], "confirmation": "PURGE 1 BUCKETS"},
             )
     finally:
@@ -116,7 +116,7 @@ def test_manager_delete_with_purge_route_rejects_wrong_confirmation_with_400():
     previous_overrides = app.dependency_overrides.copy()
     app.dependency_overrides[dependencies_router.require_manager_enabled] = lambda: None
     app.dependency_overrides[manager_buckets.require_bucket_purge_enabled] = lambda: _manager_tool_user()
-    app.dependency_overrides[manager_buckets.get_account_context] = lambda: make_s3_execution_context(
+    app.dependency_overrides[manager_buckets.get_s3_execution_context] = lambda: make_s3_execution_context(
         context_id="s3u-1", context_kind="s3_user", s3_user_id=1, id=None,
         name="Tenant A",
         can_manage_buckets=True,
@@ -125,7 +125,7 @@ def test_manager_delete_with_purge_route_rejects_wrong_confirmation_with_400():
     try:
         with TestClient(app) as client:
             response = client.post(
-                "/api/manager/buckets/bucket-a/delete/stream?account_id=s3u-1",
+                "/api/manager/buckets/bucket-a/delete/stream?context_id=s3u-1",
                 json={"confirmation": "DELETE BUCKET bucket-b"},
             )
     finally:
@@ -162,7 +162,7 @@ def test_manager_purge_route_streams_progress_and_result(monkeypatch):
     previous_overrides = app.dependency_overrides.copy()
     app.dependency_overrides[dependencies_router.require_manager_enabled] = lambda: None
     app.dependency_overrides[manager_purge.require_bucket_purge_enabled] = lambda: _manager_tool_user()
-    app.dependency_overrides[manager_purge.get_account_context] = lambda: make_s3_execution_context(
+    app.dependency_overrides[manager_purge.get_s3_execution_context] = lambda: make_s3_execution_context(
         context_id="s3u-1", context_kind="s3_user", s3_user_id=1, id=None,
         name="Tenant A",
         can_manage_buckets=True,
@@ -173,7 +173,7 @@ def test_manager_purge_route_streams_progress_and_result(monkeypatch):
     try:
         with TestClient(app) as client:
             response = client.post(
-                "/api/manager/bucket-purge/stream?account_id=s3u-1",
+                "/api/manager/bucket-purge/stream?context_id=s3u-1",
                 json={
                     "buckets": ["bucket-a"],
                     "parallelism": 4,
@@ -228,7 +228,7 @@ def test_manager_delete_with_purge_route_streams_progress_and_result(monkeypatch
     previous_overrides = app.dependency_overrides.copy()
     app.dependency_overrides[dependencies_router.require_manager_enabled] = lambda: None
     app.dependency_overrides[manager_buckets.require_bucket_purge_enabled] = lambda: _manager_tool_user()
-    app.dependency_overrides[manager_buckets.get_account_context] = lambda: make_s3_execution_context(
+    app.dependency_overrides[manager_buckets.get_s3_execution_context] = lambda: make_s3_execution_context(
         context_id="s3u-1", context_kind="s3_user", s3_user_id=1, id=None,
         name="Tenant A",
         can_manage_buckets=True,
@@ -236,11 +236,11 @@ def test_manager_delete_with_purge_route_streams_progress_and_result(monkeypatch
     app.dependency_overrides[manager_buckets.get_current_account_admin] = lambda: SimpleNamespace(id=1)
     monkeypatch.setattr(manager_buckets, "BucketPurgeService", FakeService)
     monkeypatch.setattr(manager_buckets, "record_bucket_purge_audit", lambda **kwargs: audit_calls.append(kwargs))
-    monkeypatch.setattr(manager_buckets, "_invalidate_bucket_listing_for_account", lambda account: None)
+    monkeypatch.setattr(manager_buckets, "_invalidate_bucket_listing_for_context", lambda context: None)
     try:
         with TestClient(app) as client:
             response = client.post(
-                "/api/manager/buckets/bucket-a/delete/stream?account_id=s3u-1",
+                "/api/manager/buckets/bucket-a/delete/stream?context_id=s3u-1",
                 json={
                     "parallelism": 4,
                     "confirmation": "DELETE BUCKET bucket-a",
@@ -339,7 +339,7 @@ def test_ceph_admin_purge_route_uses_dedicated_endpoint_credentials(monkeypatch)
     target = captured["targets"][0]
     assert target.bucket_name == "bucket-a"
     assert target.context_id == "ceph-admin-7"
-    assert target.account.effective_rgw_credentials() == ("admin-ak", "admin-sk")
+    assert target.context.effective_rgw_credentials() == ("admin-ak", "admin-sk")
     assert captured["options"].include_versions is True
     assert captured["options"].individual_deletes is True
 
@@ -357,9 +357,9 @@ def test_storage_ops_purge_route_resolves_authorized_manager_contexts(monkeypatc
         captured["stream_result"] = run_purge(lambda progress: None, lambda: None)
         return "stream"
 
-    def fake_get_account_context(*, request, account_ref, actor, db):
-        captured.setdefault("account_refs", []).append(account_ref)
-        return SimpleNamespace(name=f"Account {account_ref}")
+    def fake_get_s3_execution_context(*, request, context_ref, actor, db):
+        captured.setdefault("account_refs", []).append(context_ref)
+        return SimpleNamespace(name=f"Account {context_ref}")
 
     monkeypatch.setattr(storage_ops_purge, "BucketPurgeService", FakeService)
     monkeypatch.setattr(storage_ops_purge, "stream_bucket_purge", fake_stream)
@@ -368,7 +368,7 @@ def test_storage_ops_purge_route_resolves_authorized_manager_contexts(monkeypatc
         "list_execution_contexts",
         lambda *, workspace, user, db: [SimpleNamespace(id="s3u-1", display_name="S3 User 1")],
     )
-    monkeypatch.setattr(storage_ops_purge, "get_account_context", fake_get_account_context)
+    monkeypatch.setattr(storage_ops_purge, "get_s3_execution_context", fake_get_s3_execution_context)
 
     response = storage_ops_purge.stream_storage_ops_bucket_purge(
         payload=BucketPurgeRequest(

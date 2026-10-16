@@ -11,7 +11,7 @@ from app.db import S3Connection, StorageEndpoint, UiGroup, User, UserRole, UserU
 from app.main import app
 from app.routers import dependencies
 from app.routers.connections import _ensure_manual_private_connection_creation_allowed
-from app.routers.dependencies_internal.account_context import _resolve_connection_context
+from app.routers.dependencies_internal.execution_context import _resolve_connection_context
 from app.services.effective_access_service import EffectiveAccessService
 from app.utils.s3_connection_endpoint import build_custom_endpoint_config
 
@@ -171,8 +171,9 @@ def test_revocation_keeps_owned_connection_lifecycle_but_rejects_sensitive_forge
                 for payload in (
                     {"provider_hint": "other"},
                     {"storage_endpoint_id": endpoint.id},
-                    {"credential_owner_type": "iam_user"},
-                    {"credential_owner_identifier": "forged-owner"},
+                    {"rgw_user_uid": "forged-owner"},
+                    {"rgw_tenant": "forged-tenant"},
+                    {"rgw_account_id": "RGW00000000000000001"},
                     {"endpoint_url": "https://forged.example.test"},
                     {"region": "eu-west-3"},
                     {"access_key_id": "FORGED-AK"},
@@ -244,7 +245,7 @@ def test_existing_private_manual_connection_is_revalidated_before_use(db_session
     db_session.commit()
 
     monkeypatch.setattr(
-        "app.routers.dependencies_internal.account_context.validate_user_supplied_s3_endpoint",
+        "app.routers.dependencies_internal.execution_context.validate_user_supplied_s3_endpoint",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(ValueError("blocked")),
     )
 
@@ -279,7 +280,7 @@ def test_registered_admin_endpoint_is_exempt_from_user_endpoint_allowlist(db_ses
     db_session.commit()
 
     monkeypatch.setattr(
-        "app.routers.dependencies_internal.account_context.validate_user_supplied_s3_endpoint",
+        "app.routers.dependencies_internal.execution_context.validate_user_supplied_s3_endpoint",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("must stay exempt")),
     )
 
