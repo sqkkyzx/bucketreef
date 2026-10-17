@@ -4,9 +4,10 @@
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  normalizeS3SelectorId,
+  normalizeS3ExecutionContextId,
   type S3ExecutionContextSelector,
 } from "../../api/accountParams";
+import { extractApiError } from "../../utils/apiError";
 import { stableSignature } from "../../utils/stableSignature";
 import {
   activateSseCustomerKeyForScope,
@@ -17,10 +18,6 @@ import { useBrowserI18n } from "./browserI18n";
 
 function createInputSignature(value: string): string {
   return stableSignature({ sseCustomerKeyInput: value });
-}
-
-function resolveActionError(error: unknown, fallback: string): string {
-  return error instanceof Error && error.message ? error.message : fallback;
 }
 
 type UseBrowserSseCustomerKeysOptions = {
@@ -50,7 +47,7 @@ export function useBrowserSseCustomerKeys({
   const [visible, setVisible] = useState(false);
 
   const scopeKey = useMemo(() => {
-    const contextId = normalizeS3SelectorId(contextIdForApi);
+    const contextId = normalizeS3ExecutionContextId(contextIdForApi);
     if (!contextId || !bucketName) return null;
     return `${contextId}::${bucketName}`;
   }, [contextIdForApi, bucketName]);
@@ -62,7 +59,7 @@ export function useBrowserSseCustomerKeys({
 
   const getKeyForScope = useCallback(
     (selector: S3ExecutionContextSelector, bucket: string) => {
-      const contextId = normalizeS3SelectorId(selector);
+      const contextId = normalizeS3ExecutionContextId(selector);
       if (!contextId || !bucket) return null;
       return keysByScope[`${contextId}::${bucket}`] ?? null;
     },
@@ -117,7 +114,7 @@ export function useBrowserSseCustomerKeys({
       setStatusMessage(text("SSE-C key enabled for this bucket."));
     } catch (activationError) {
       setError(
-        resolveActionError(
+        extractApiError(
           activationError,
           "Unable to activate SSE-C key.",
         ),
@@ -141,7 +138,7 @@ export function useBrowserSseCustomerKeys({
       setVisible(false);
     } catch (generationError) {
       setError(
-        resolveActionError(generationError, "Unable to generate SSE-C key."),
+        extractApiError(generationError, "Unable to generate SSE-C key."),
       );
       setNotice(null);
       return;

@@ -5,7 +5,7 @@
 import ModalActions from "../../components/ModalActions";
 import { FormEvent, useMemo, useRef, useState } from "react";
 
-import type { S3AccountSelector } from "../../api/accountParams";
+import type { S3ExecutionContextSelector } from "../../api/accountParams";
 import type { IAMGroup } from "../../api/managerIamGroups";
 import type { IamPolicy } from "../../api/managerIamPolicies";
 import {
@@ -34,7 +34,7 @@ const INLINE_POLICY_TEMPLATE = '{\n  "Version": "2012-10-17",\n  "Statement": []
 type Props = {
   variant: "iam" | "rgw_user";
   namingValidationProfile?: NamingValidationProfile | null;
-  accountId: S3AccountSelector;
+  accountId: S3ExecutionContextSelector;
   contextName?: string | null;
   groups?: IAMGroup[];
   policies?: IamPolicy[];
@@ -293,7 +293,6 @@ export default function CreateManagedPrivateAccessModal({
                         hint={text("Provide a JSON object, then add it to the policies for this access.")}
                         onChange={(value) => { setInlineDocument(value); setInlineDocumentError(undefined); }}
                         rows={6}
-                        text={text}
                       />
                       <div className="flex justify-end">
                         <SettingsButton variant="secondary" onClick={addInlinePolicy}>{text("Add inline policy")}</SettingsButton>

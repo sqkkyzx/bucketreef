@@ -14,7 +14,7 @@ def test_bucket_tags_preserve_literal_keys_and_values_on_round_trip(monkeypatch)
         {"Key": " ", "Value": ""},
     ]
     client.get_bucket_tagging.return_value = {"TagSet": tag_set}
-    monkeypatch.setattr(s3_bucket_metadata, "get_s3_client", lambda *args, **kwargs: client)
+    monkeypatch.setattr(s3_bucket_metadata, "get_s3_bucket_client", lambda *args, **kwargs: client)
     service = BucketConfigurationService()
     monkeypatch.setattr(
         service,
@@ -32,7 +32,7 @@ def test_bucket_tags_preserve_literal_keys_and_values_on_round_trip(monkeypatch)
 
 def test_empty_bucket_tag_set_still_uses_native_delete(monkeypatch):
     client = Mock()
-    monkeypatch.setattr(s3_bucket_metadata, "get_s3_client", lambda *args, **kwargs: client)
+    monkeypatch.setattr(s3_bucket_metadata, "get_s3_bucket_client", lambda *args, **kwargs: client)
 
     s3_bucket_metadata.put_bucket_tags("reports", [])
 

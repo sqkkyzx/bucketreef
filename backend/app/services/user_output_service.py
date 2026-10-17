@@ -47,31 +47,25 @@ class UserOutputService:
     def __init__(self, db: Session) -> None:
         self.db = db
 
-    def preload(self, users: list[User]) -> UserOutputPreload:
-        user_ids = [int(user.id) for user in users]
-        account_links_by_user: dict[int, list[AccountMembership]] = {
-            user_id: [] for user_id in user_ids
-        }
-        group_ids_by_user: dict[int, list[int]] = {
-            user_id: [] for user_id in user_ids
-        }
-        s3_user_links_by_user: dict[int, list[S3UserMembership]] = {
-            user_id: [] for user_id in user_ids
-        }
-        connection_ids_by_user: dict[int, list[int]] = {
-            user_id: [] for user_id in user_ids
-        }
-        if not user_ids:
-            return UserOutputPreload(
-                account_links_by_user=account_links_by_user,
-                group_ids_by_user=group_ids_by_user,
-                group_names={},
-                s3_user_links_by_user=s3_user_links_by_user,
-                s3_user_names={},
-                connection_ids_by_user=connection_ids_by_user,
-                connection_names={},
-            )
+    @staticmethod
+    def _empty_preload(user_ids: list[int]) -> UserOutputPreload:
+        return UserOutputPreload(
+            account_links_by_user={user_id: [] for user_id in user_ids},
+            group_ids_by_user={user_id: [] for user_id in user_ids},
+            group_names={},
+            s3_user_links_by_user={user_id: [] for user_id in user_ids},
+            s3_user_names={},
+            connection_ids_by_user={user_id: [] for user_id in user_ids},
+            connection_names={},
+        )
 
+    def _load_account_links(
+        self,
+        user_ids: list[int],
+    ) -> dict[int, list[AccountMembership]]:
+        links_by_user: dict[int, list[AccountMembership]] = {
+            user_id: [] for user_id in user_ids
+        }
         account_rows = (
             self.db.query(UserS3Account)
             .filter(UserS3Account.user_id.in_(user_ids))
@@ -79,7 +73,7 @@ class UserOutputService:
             .all()
         )
         for link in account_rows:
-            account_links_by_user[int(link.user_id)].append(
+            links_by_user[int(link.user_id)].append(
                 AccountMembership(
                     account_id=link.account_id,
                     manager_role=link.manager_role,
@@ -89,7 +83,13 @@ class UserOutputService:
                     ),
                 )
             )
+        return links_by_user
 
+    def _load_group_links(
+        self,
+        user_ids: list[int],
+    ) -> tuple[dict[int, list[int]], dict[int, str]]:
+        ids_by_user = {user_id: [] for user_id in user_ids}
         group_rows = (
             self.db.query(UserUiGroup, UiGroup.name)
             .join(UiGroup, UiGroup.id == UserUiGroup.group_id)
@@ -100,9 +100,17 @@ class UserOutputService:
         group_names: dict[int, str] = {}
         for link, group_name in group_rows:
             group_id = int(link.group_id)
-            group_ids_by_user[int(link.user_id)].append(group_id)
+            ids_by_user[int(link.user_id)].append(group_id)
             group_names[group_id] = group_name
+        return ids_by_user, group_names
 
+    def _load_s3_user_links(
+        self,
+        user_ids: list[int],
+    ) -> tuple[dict[int, list[S3UserMembership]], set[int]]:
+        links_by_user: dict[int, list[S3UserMembership]] = {
+            user_id: [] for user_id in user_ids
+        }
         s3_user_rows = (
             self.db.query(UserS3User)
             .filter(UserS3User.user_id.in_(user_ids))
@@ -113,7 +121,7 @@ class UserOutputService:
         for link in s3_user_rows:
             s3_user_id = int(link.s3_user_id)
             s3_user_ids.add(s3_user_id)
-            s3_user_links_by_user[int(link.user_id)].append(
+            links_by_user[int(link.user_id)].append(
                 S3UserMembership(
                     s3_user_id=s3_user_id,
                     allow_manager_browser_data_access=bool(
@@ -121,7 +129,13 @@ class UserOutputService:
                     ),
                 )
             )
+        return links_by_user, s3_user_ids
 
+    def _load_connection_links(
+        self,
+        user_ids: list[int],
+    ) -> tuple[dict[int, list[int]], dict[int, str]]:
+        ids_by_user = {user_id: [] for user_id in user_ids}
         connection_rows = (
             self.db.query(UserS3Connection, S3Connection.name)
             .join(
@@ -138,8 +152,19 @@ class UserOutputService:
         connection_names: dict[int, str] = {}
         for link, connection_name in connection_rows:
             connection_id = int(link.s3_connection_id)
-            connection_ids_by_user[int(link.user_id)].append(connection_id)
+            ids_by_user[int(link.user_id)].append(connection_id)
             connection_names[connection_id] = connection_name
+        return ids_by_user, connection_names
+
+    def preload(self, users: list[User]) -> UserOutputPreload:
+        user_ids = [int(user.id) for user in users]
+        if not user_ids:
+            return self._empty_preload(user_ids)
+
+        account_links_by_user = self._load_account_links(user_ids)
+        group_ids_by_user, group_names = self._load_group_links(user_ids)
+        s3_user_links_by_user, s3_user_ids = self._load_s3_user_links(user_ids)
+        connection_ids_by_user, connection_names = self._load_connection_links(user_ids)
 
         return UserOutputPreload(
             account_links_by_user=account_links_by_user,
@@ -150,6 +175,43 @@ class UserOutputService:
             connection_ids_by_user=connection_ids_by_user,
             connection_names=connection_names,
         )
+
+    @staticmethod
+    def _s3_user_details(
+        links: list[S3UserMembership],
+        names: dict[int, str],
+    ) -> list[LinkedS3User]:
+        return [
+            LinkedS3User(
+                id=link.s3_user_id,
+                name=names.get(link.s3_user_id) or f"S3 User #{link.s3_user_id}",
+            )
+            for link in links
+        ]
+
+    @staticmethod
+    def _connection_details(
+        connection_ids: list[int],
+        names: dict[int, str],
+    ) -> list[LinkedS3Connection]:
+        return [
+            LinkedS3Connection(id=connection_id, name=names[connection_id])
+            for connection_id in connection_ids
+            if connection_id in names
+        ]
+
+    @staticmethod
+    def _group_details(
+        group_ids: list[int],
+        names: dict[int, str],
+    ) -> list[LinkedUiGroup]:
+        return [
+            LinkedUiGroup(
+                id=group_id,
+                name=names.get(group_id) or f"Group #{group_id}",
+            )
+            for group_id in group_ids
+        ]
 
     def to_out(
         self,
@@ -162,38 +224,7 @@ class UserOutputService:
         account_links = projection.account_links_by_user.get(user_id, [])
         group_ids = projection.group_ids_by_user.get(user_id, [])
         s3_user_links = projection.s3_user_links_by_user.get(user_id, [])
-        s3_user_ids = [link.s3_user_id for link in s3_user_links]
         s3_connection_ids = projection.connection_ids_by_user.get(user_id, [])
-        s3_user_names = projection.s3_user_names
-        s3_connection_names = projection.connection_names
-        group_names = projection.group_names
-        s3_user_details = [
-            LinkedS3User(
-                id=s3_user_id,
-                name=s3_user_names.get(s3_user_id)
-                or f"S3 User #{s3_user_id}",
-            )
-            for s3_user_id in s3_user_ids
-        ]
-        visible_connection_ids = [
-            connection_id
-            for connection_id in s3_connection_ids
-            if connection_id in s3_connection_names
-        ]
-        s3_connection_details = [
-            LinkedS3Connection(
-                id=connection_id,
-                name=s3_connection_names[connection_id],
-            )
-            for connection_id in visible_connection_ids
-        ]
-        group_details = [
-            LinkedUiGroup(
-                id=group_id,
-                name=group_names.get(group_id) or f"Group #{group_id}",
-            )
-            for group_id in group_ids
-        ]
 
         return UserOut(
             id=user.id,
@@ -224,10 +255,13 @@ class UserOutputService:
                 user.ui_preferences_json
             ),
             account_links=account_links,
-            group_details=group_details,
+            group_details=self._group_details(group_ids, projection.group_names),
             s3_user_links=s3_user_links,
-            s3_user_details=s3_user_details,
-            s3_connection_details=s3_connection_details,
+            s3_user_details=self._s3_user_details(s3_user_links, projection.s3_user_names),
+            s3_connection_details=self._connection_details(
+                s3_connection_ids,
+                projection.connection_names,
+            ),
             effective_access=EffectiveAccessService(
                 self.db
             ).to_user_effective_access(user),

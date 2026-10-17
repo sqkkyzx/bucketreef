@@ -2,6 +2,7 @@
 # Licensed under the Apache License, Version 2.0
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import Any, Callable, Literal, Optional
@@ -26,6 +27,18 @@ SortBy = Literal["period", "subject", "used_bytes", "used_objects", "ratio"]
 SortDir = Literal["asc", "desc"]
 TrendWindow = Literal["day", "week", "month"]
 TrendFilterBuilder = Callable[[Any], list]
+
+
+@dataclass(frozen=True)
+class _HistoryColumns:
+    model: Any
+    period: Any
+    used_bytes: Any
+    used_objects: Any
+    bucket_count: Any
+    ratio: Any
+    collected: Any
+    samples: Any | None
 
 
 class UsageHistoryService:
@@ -54,45 +67,36 @@ class UsageHistoryService:
         extra_filter_builder: Optional[TrendFilterBuilder] = None,
     ) -> UsageHistoryTrendResponse:
         granularity = self._trend_granularity(window)
-        model = QuotaUsageDaily if granularity == "daily" else QuotaUsageHourly
-        period_col = QuotaUsageDaily.day if granularity == "daily" else QuotaUsageHourly.hour_ts
-        used_bytes_col = QuotaUsageDaily.last_used_bytes if granularity == "daily" else QuotaUsageHourly.used_bytes
-        used_objects_col = QuotaUsageDaily.last_used_objects if granularity == "daily" else QuotaUsageHourly.used_objects
-        ratio_col = QuotaUsageDaily.max_ratio_pct if granularity == "daily" else QuotaUsageHourly.usage_ratio_pct
-        collected_col = QuotaUsageDaily.updated_at if granularity == "daily" else QuotaUsageHourly.collected_at
-        bucket_col = model.bucket_count
-        samples_col = QuotaUsageDaily.samples_count if granularity == "daily" else None
+        columns = self._history_columns(granularity)
+        model = columns.model
         start, end = self._trend_boundaries(window)
-
-        filters = []
-        if endpoint_id is not None:
-            filters.append(model.storage_endpoint_id == endpoint_id)
-        if subject_type == "account":
-            filters.append(model.s3_account_id.isnot(None))
-        elif subject_type == "s3_user":
-            filters.append(model.s3_user_id.isnot(None))
-        filters.append(period_col >= start)
-        filters.append(period_col <= end)
+        filters = self._history_filters(
+            columns,
+            endpoint_id=endpoint_id,
+            subject_type=subject_type,
+            start=start,
+            end=end,
+        )
         if extra_filter_builder is not None:
             filters.extend(extra_filter_builder(model))
 
-        samples_expr = func.sum(samples_col) if samples_col is not None else func.count(model.id)
+        samples_expr = func.sum(columns.samples) if columns.samples is not None else func.count(model.id)
         rows = (
             self.db.query(
-                period_col.label("period_start"),
-                func.sum(used_bytes_col).label("used_bytes"),
-                func.sum(used_objects_col).label("used_objects"),
-                func.sum(func.coalesce(bucket_col, 0)).label("bucket_count"),
-                func.max(ratio_col).label("max_usage_ratio_pct"),
+                columns.period.label("period_start"),
+                func.sum(columns.used_bytes).label("used_bytes"),
+                func.sum(columns.used_objects).label("used_objects"),
+                func.sum(func.coalesce(columns.bucket_count, 0)).label("bucket_count"),
+                func.max(columns.ratio).label("max_usage_ratio_pct"),
                 func.count(func.distinct(model.s3_account_id)).label("account_subjects"),
                 func.count(func.distinct(model.s3_user_id)).label("user_subjects"),
                 samples_expr.label("samples_count"),
-                func.max(collected_col).label("collected_at"),
+                func.max(columns.collected).label("collected_at"),
                 func.count(model.id).label("records_count"),
             )
             .filter(*filters)
-            .group_by(period_col)
-            .order_by(period_col.asc())
+            .group_by(columns.period)
+            .order_by(columns.period.asc())
             .all()
         )
 
@@ -145,13 +149,67 @@ class UsageHistoryService:
         sort_by: SortBy,
         sort_dir: SortDir,
     ) -> UsageHistoryResponse:
-        model = QuotaUsageDaily if granularity == "daily" else QuotaUsageHourly
-        period_col = QuotaUsageDaily.day if granularity == "daily" else QuotaUsageHourly.hour_ts
-        used_bytes_col = QuotaUsageDaily.last_used_bytes if granularity == "daily" else QuotaUsageHourly.used_bytes
-        used_objects_col = QuotaUsageDaily.last_used_objects if granularity == "daily" else QuotaUsageHourly.used_objects
-        ratio_col = QuotaUsageDaily.max_ratio_pct if granularity == "daily" else QuotaUsageHourly.usage_ratio_pct
-        collected_col = QuotaUsageDaily.updated_at if granularity == "daily" else QuotaUsageHourly.collected_at
+        columns = self._history_columns(granularity)
+        filters = self._history_filters(
+            columns,
+            endpoint_id=endpoint_id,
+            subject_type=subject_type,
+            start=start,
+            end=end,
+        )
+        total = int(self.db.query(func.count(columns.model.id)).filter(*filters).scalar() or 0)
+        rows = self._history_rows(
+            columns,
+            filters,
+            page=page,
+            page_size=page_size,
+            sort_by=sort_by,
+            sort_dir=sort_dir,
+        )
+        summary = self._history_summary(columns, filters, total=total)
+        return UsageHistoryResponse(
+            items=self._history_items(granularity, rows),
+            total=total,
+            page=page,
+            page_size=page_size,
+            has_next=page * page_size < total,
+            summary=summary,
+        )
 
+    @staticmethod
+    def _history_columns(granularity: Granularity) -> _HistoryColumns:
+        if granularity == "daily":
+            return _HistoryColumns(
+                model=QuotaUsageDaily,
+                period=QuotaUsageDaily.day,
+                used_bytes=QuotaUsageDaily.last_used_bytes,
+                used_objects=QuotaUsageDaily.last_used_objects,
+                bucket_count=QuotaUsageDaily.bucket_count,
+                ratio=QuotaUsageDaily.max_ratio_pct,
+                collected=QuotaUsageDaily.updated_at,
+                samples=QuotaUsageDaily.samples_count,
+            )
+        return _HistoryColumns(
+            model=QuotaUsageHourly,
+            period=QuotaUsageHourly.hour_ts,
+            used_bytes=QuotaUsageHourly.used_bytes,
+            used_objects=QuotaUsageHourly.used_objects,
+            bucket_count=QuotaUsageHourly.bucket_count,
+            ratio=QuotaUsageHourly.usage_ratio_pct,
+            collected=QuotaUsageHourly.collected_at,
+            samples=None,
+        )
+
+    @staticmethod
+    def _history_filters(
+        columns: _HistoryColumns,
+        *,
+        endpoint_id: Optional[int],
+        subject_type: SubjectType,
+        start: date | datetime | None,
+        end: date | datetime | None,
+    ) -> list:
+        model = columns.model
         filters = []
         if endpoint_id is not None:
             filters.append(model.storage_endpoint_id == endpoint_id)
@@ -160,21 +218,31 @@ class UsageHistoryService:
         elif subject_type == "s3_user":
             filters.append(model.s3_user_id.isnot(None))
         if start is not None:
-            filters.append(period_col >= start)
+            filters.append(columns.period >= start)
         if end is not None:
-            filters.append(period_col <= end)
+            filters.append(columns.period <= end)
+        return filters
 
-        total = int(self.db.query(func.count(model.id)).filter(*filters).scalar() or 0)
+    def _history_rows(
+        self,
+        columns: _HistoryColumns,
+        filters: list,
+        *,
+        page: int,
+        page_size: int,
+        sort_by: SortBy,
+        sort_dir: SortDir,
+    ) -> list:
+        model = columns.model
         order_col = {
-            "period": period_col,
+            "period": columns.period,
             "subject": func.coalesce(S3Account.name, S3User.name),
-            "used_bytes": used_bytes_col,
-            "used_objects": used_objects_col,
-            "ratio": ratio_col,
+            "used_bytes": columns.used_bytes,
+            "used_objects": columns.used_objects,
+            "ratio": columns.ratio,
         }[sort_by]
         ordered = order_col.asc() if sort_dir == "asc" else order_col.desc()
-
-        rows = (
+        return (
             self.db.query(
                 model,
                 StorageEndpoint.name.label("endpoint_name"),
@@ -194,13 +262,30 @@ class UsageHistoryService:
             .all()
         )
 
-        summary = UsageHistorySummary(
+    def _history_summary(
+        self,
+        columns: _HistoryColumns,
+        filters: list,
+        *,
+        total: int,
+    ) -> UsageHistorySummary:
+        return UsageHistorySummary(
             total_records=total,
-            subjects_count=self._count_subjects(model, filters),
-            latest_collected_at=self._iso(self.db.query(func.max(collected_col)).filter(*filters).scalar()),
-            max_usage_ratio_pct=self._float_or_none(self.db.query(func.max(ratio_col)).filter(*filters).scalar()),
+            subjects_count=self._count_subjects(columns.model, filters),
+            latest_collected_at=self._iso(
+                self.db.query(func.max(columns.collected)).filter(*filters).scalar()
+            ),
+            max_usage_ratio_pct=self._float_or_none(
+                self.db.query(func.max(columns.ratio)).filter(*filters).scalar()
+            ),
         )
-        items = [
+
+    def _history_items(
+        self,
+        granularity: Granularity,
+        rows: list,
+    ) -> list[UsageHistoryRecord]:
+        return [
             self._serialize_row(
                 granularity=granularity,
                 row=row,
@@ -221,14 +306,6 @@ class UsageHistoryService:
                 s3_user_uid,
             ) in rows
         ]
-        return UsageHistoryResponse(
-            items=items,
-            total=total,
-            page=page,
-            page_size=page_size,
-            has_next=page * page_size < total,
-            summary=summary,
-        )
 
     def _count_subjects(self, model, filters: list) -> int:
         accounts = int(

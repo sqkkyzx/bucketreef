@@ -80,6 +80,57 @@ class BucketUsageStatsOptions:
     parallelism: int = 8
 
 
+@dataclass(frozen=True)
+class _BucketUsageAggregateTotals:
+    partial_scan_count: int
+    object_version_count: int
+    current_version_count: int
+    noncurrent_version_count: int
+    delete_marker_count: int
+    total_bytes: int
+    current_bytes: int
+    noncurrent_bytes: int
+    oldest_snapshot_at: datetime | None
+    newest_snapshot_at: datetime | None
+
+
+@dataclass(frozen=True)
+class _BucketUsageAggregateDistributions:
+    data_type: list[BucketUsageStatsDistributionEntry]
+    storage_class: list[BucketUsageStatsDistributionEntry]
+    size: list[BucketUsageStatsDistributionEntry]
+    age: list[BucketUsageStatsDistributionEntry]
+    current_vs_noncurrent: list[BucketUsageStatsDistributionEntry]
+
+
+@dataclass
+class _BucketUsageRunTotals:
+    completed_buckets: int = 0
+    failed_buckets: int = 0
+    skipped_buckets: int = 0
+    listed_versions: int = 0
+    listed_delete_markers: int = 0
+    total_bytes: int = 0
+
+    def include(self, result: BucketUsageStatsBucketResult) -> None:
+        self.completed_buckets += 1
+        if result.status == "failed":
+            self.failed_buckets += 1
+        elif result.status == "skipped":
+            self.skipped_buckets += 1
+        if result.snapshot:
+            self.listed_versions += result.snapshot.object_version_count
+            self.listed_delete_markers += result.snapshot.delete_marker_count
+            self.total_bytes += result.snapshot.total_bytes
+
+    def status(self, total_buckets: int) -> BucketUsageStatsStatus:
+        if self.failed_buckets == total_buckets and total_buckets:
+            return "failed"
+        if self.failed_buckets or self.skipped_buckets:
+            return "completed_with_warnings"
+        return "completed"
+
+
 def _json_dumps(value: Any) -> str:
     return json.dumps(value, ensure_ascii=True, sort_keys=True, default=str)
 
@@ -442,32 +493,16 @@ class BucketUsageStatsService(LongRunningS3ClientMixin):
         skipped_account_count: int | None = None,
     ) -> BucketUsageStatsAggregate:
         missing_bucket_count = max(bucket_count - buckets_with_snapshot, 0)
-        partial_scan_count = sum(1 for snapshot in snapshots if snapshot.scan_mode == "current_only" or not snapshot.version_listing_available)
-        object_version_count = sum(snapshot.object_version_count for snapshot in snapshots)
-        current_version_count = sum(snapshot.current_version_count for snapshot in snapshots)
-        noncurrent_version_count = sum(snapshot.noncurrent_version_count for snapshot in snapshots)
-        delete_marker_count = sum(snapshot.delete_marker_count for snapshot in snapshots)
-        total_bytes = sum(snapshot.total_bytes for snapshot in snapshots)
-        current_bytes = sum(snapshot.current_bytes for snapshot in snapshots)
-        noncurrent_bytes = sum(snapshot.noncurrent_bytes for snapshot in snapshots)
-        calculated_at_values = [snapshot.calculated_at for snapshot in snapshots if snapshot.calculated_at]
-
-        aggregate_warnings: list[str] = []
-        for warning in warnings or []:
-            if warning and warning not in aggregate_warnings:
-                aggregate_warnings.append(warning)
-        if bucket_count > 0 and buckets_with_snapshot == 0:
-            aggregate_warnings.append("No bucket usage stats snapshot is available yet.")
-        elif missing_bucket_count > 0:
-            aggregate_warnings.append("Some buckets do not have usage stats snapshots yet.")
-        if partial_scan_count > 0:
-            aggregate_warnings.append(
-                "Some bucket snapshots were calculated from current-object listings only. Current/non-current distribution may be incomplete."
-            )
-        for snapshot in snapshots:
-            for warning in snapshot.warnings:
-                if warning not in aggregate_warnings:
-                    aggregate_warnings.append(warning)
+        totals = self._aggregate_totals(snapshots)
+        distributions = self._aggregate_distributions(snapshots, totals)
+        aggregate_warnings = self._aggregate_warnings(
+            warnings=warnings,
+            snapshots=snapshots,
+            bucket_count=bucket_count,
+            buckets_with_snapshot=buckets_with_snapshot,
+            missing_bucket_count=missing_bucket_count,
+            partial_scan_count=totals.partial_scan_count,
+        )
 
         return BucketUsageStatsAggregate(
             scope_kind=scope_kind,
@@ -479,53 +514,119 @@ class BucketUsageStatsService(LongRunningS3ClientMixin):
             bucket_count=bucket_count,
             buckets_with_snapshot=buckets_with_snapshot,
             missing_bucket_count=missing_bucket_count,
-            partial_scan_count=partial_scan_count,
-            object_version_count=object_version_count,
-            current_version_count=current_version_count,
-            noncurrent_version_count=noncurrent_version_count,
-            delete_marker_count=delete_marker_count,
-            total_bytes=total_bytes,
-            current_bytes=current_bytes,
-            noncurrent_bytes=noncurrent_bytes,
-            data_type_distribution=self._merge_distribution_entries(
+            partial_scan_count=totals.partial_scan_count,
+            object_version_count=totals.object_version_count,
+            current_version_count=totals.current_version_count,
+            noncurrent_version_count=totals.noncurrent_version_count,
+            delete_marker_count=totals.delete_marker_count,
+            total_bytes=totals.total_bytes,
+            current_bytes=totals.current_bytes,
+            noncurrent_bytes=totals.noncurrent_bytes,
+            data_type_distribution=distributions.data_type,
+            storage_class_distribution=distributions.storage_class,
+            size_distribution=distributions.size,
+            age_distribution=distributions.age,
+            current_vs_noncurrent=distributions.current_vs_noncurrent,
+            warnings=aggregate_warnings,
+            oldest_snapshot_at=totals.oldest_snapshot_at,
+            newest_snapshot_at=totals.newest_snapshot_at,
+        )
+
+    @staticmethod
+    def _aggregate_totals(
+        snapshots: list[BucketUsageStatsSnapshot],
+    ) -> _BucketUsageAggregateTotals:
+        calculated_at_values = [snapshot.calculated_at for snapshot in snapshots if snapshot.calculated_at]
+        return _BucketUsageAggregateTotals(
+            partial_scan_count=sum(
+                1
+                for snapshot in snapshots
+                if snapshot.scan_mode == "current_only" or not snapshot.version_listing_available
+            ),
+            object_version_count=sum(snapshot.object_version_count for snapshot in snapshots),
+            current_version_count=sum(snapshot.current_version_count for snapshot in snapshots),
+            noncurrent_version_count=sum(snapshot.noncurrent_version_count for snapshot in snapshots),
+            delete_marker_count=sum(snapshot.delete_marker_count for snapshot in snapshots),
+            total_bytes=sum(snapshot.total_bytes for snapshot in snapshots),
+            current_bytes=sum(snapshot.current_bytes for snapshot in snapshots),
+            noncurrent_bytes=sum(snapshot.noncurrent_bytes for snapshot in snapshots),
+            oldest_snapshot_at=min(calculated_at_values) if calculated_at_values else None,
+            newest_snapshot_at=max(calculated_at_values) if calculated_at_values else None,
+        )
+
+    @staticmethod
+    def _aggregate_warnings(
+        *,
+        warnings: Iterable[str] | None,
+        snapshots: list[BucketUsageStatsSnapshot],
+        bucket_count: int,
+        buckets_with_snapshot: int,
+        missing_bucket_count: int,
+        partial_scan_count: int,
+    ) -> list[str]:
+        aggregate_warnings: list[str] = []
+
+        def append_once(warning: str) -> None:
+            if warning and warning not in aggregate_warnings:
+                aggregate_warnings.append(warning)
+
+        for warning in warnings or []:
+            append_once(warning)
+        if bucket_count > 0 and buckets_with_snapshot == 0:
+            append_once("No bucket usage stats snapshot is available yet.")
+        elif missing_bucket_count > 0:
+            append_once("Some buckets do not have usage stats snapshots yet.")
+        if partial_scan_count > 0:
+            append_once(
+                "Some bucket snapshots were calculated from current-object listings only. Current/non-current distribution may be incomplete."
+            )
+        for snapshot in snapshots:
+            for warning in snapshot.warnings:
+                append_once(warning)
+        return aggregate_warnings
+
+    def _aggregate_distributions(
+        self,
+        snapshots: list[BucketUsageStatsSnapshot],
+        totals: _BucketUsageAggregateTotals,
+    ) -> _BucketUsageAggregateDistributions:
+        return _BucketUsageAggregateDistributions(
+            data_type=self._merge_distribution_entries(
                 [snapshot.data_type_distribution for snapshot in snapshots],
-                total_count=object_version_count,
-                total_bytes=total_bytes,
+                total_count=totals.object_version_count,
+                total_bytes=totals.total_bytes,
                 labels=DATA_TYPE_LABELS,
                 order=DATA_TYPE_ORDER,
             ),
-            storage_class_distribution=self._merge_distribution_entries(
+            storage_class=self._merge_distribution_entries(
                 [snapshot.storage_class_distribution for snapshot in snapshots],
-                total_count=object_version_count,
-                total_bytes=total_bytes,
+                total_count=totals.object_version_count,
+                total_bytes=totals.total_bytes,
             ),
-            size_distribution=self._merge_distribution_entries(
+            size=self._merge_distribution_entries(
                 [snapshot.size_distribution for snapshot in snapshots],
-                total_count=object_version_count,
-                total_bytes=total_bytes,
+                total_count=totals.object_version_count,
+                total_bytes=totals.total_bytes,
                 labels={key: label for key, label, _, _ in SIZE_BUCKETS},
                 order=[key for key, _, _, _ in SIZE_BUCKETS],
                 include_zero_keys=True,
             ),
-            age_distribution=self._merge_distribution_entries(
+            age=self._merge_distribution_entries(
                 [snapshot.age_distribution for snapshot in snapshots],
-                total_count=object_version_count,
-                total_bytes=total_bytes,
+                total_count=totals.object_version_count,
+                total_bytes=totals.total_bytes,
                 labels={key: label for key, label, _, _ in AGE_BUCKETS} | {"unknown": "Unknown"},
                 order=[key for key, _, _, _ in AGE_BUCKETS] + ["unknown"],
                 include_zero_keys=True,
             ),
             current_vs_noncurrent=self._current_noncurrent_entries(
-                current_count=current_version_count,
-                current_bytes=current_bytes,
-                noncurrent_count=noncurrent_version_count,
-                noncurrent_bytes=noncurrent_bytes,
-                total_count=object_version_count,
-                total_bytes=total_bytes,
+                current_count=totals.current_version_count,
+                current_bytes=totals.current_bytes,
+                noncurrent_count=totals.noncurrent_version_count,
+                noncurrent_bytes=totals.noncurrent_bytes,
+                total_count=totals.object_version_count,
+                total_bytes=totals.total_bytes,
             ),
-            warnings=aggregate_warnings,
-            oldest_snapshot_at=min(calculated_at_values) if calculated_at_values else None,
-            newest_snapshot_at=max(calculated_at_values) if calculated_at_values else None,
         )
 
     def _merge_distribution_entries(
@@ -638,62 +739,111 @@ class BucketUsageStatsService(LongRunningS3ClientMixin):
             )
 
         max_workers = max(1, min(options.parallelism, 32, len(targets) or 1))
-        bucket_results: list[BucketUsageStatsBucketResult] = []
-        completed_buckets = 0
-        failed_buckets = 0
-        skipped_buckets = 0
-        listed_versions = 0
-        listed_delete_markers = 0
-        total_bytes = 0
+        bucket_results, totals = self._collect_run_results(
+            targets,
+            max_workers=max_workers,
+            progress_callback=progress_callback,
+            cancel_check=cancel_check,
+            actor_user=actor_user,
+            actor_email=actor_email,
+            actor_role=actor_role,
+        )
+        finished_at = utcnow()
+        return BucketUsageStatsResult(
+            status=totals.status(len(targets)),
+            total_buckets=len(targets),
+            completed_buckets=totals.completed_buckets,
+            failed_buckets=totals.failed_buckets,
+            skipped_buckets=totals.skipped_buckets,
+            listed_versions=totals.listed_versions,
+            listed_delete_markers=totals.listed_delete_markers,
+            total_bytes=totals.total_bytes,
+            started_at=started_at,
+            finished_at=finished_at,
+            buckets=sorted(bucket_results, key=lambda item: ((item.context_name or item.context_id or ""), item.bucket_name)),
+        )
 
-        def run_target(target: BucketUsageStatsResolvedTarget) -> BucketUsageStatsBucketResult:
-            started = monotonic()
-            lease = self._acquire_bucket_lease(target)
-            if self.session_factory is not None and lease is None:
-                return BucketUsageStatsBucketResult(
-                    bucket_name=target.bucket_name,
-                    context_id=target.context_id,
-                    context_name=target.context_name,
-                    status="skipped",
-                    duration_seconds=monotonic() - started,
-                    message="Skipped because bucket usage statistics are already being calculated.",
-                )
-            try:
-                snapshot = self.calculate_and_persist(
+    def _run_target(
+        self,
+        target: BucketUsageStatsResolvedTarget,
+        *,
+        progress_callback: ProgressCallback | None,
+        cancel_check: CancelCheck | None,
+        actor_user: User | None,
+        actor_email: str | None,
+        actor_role: str | None,
+    ) -> BucketUsageStatsBucketResult:
+        started = monotonic()
+        lease = self._acquire_bucket_lease(target)
+        if self.session_factory is not None and lease is None:
+            return BucketUsageStatsBucketResult(
+                bucket_name=target.bucket_name,
+                context_id=target.context_id,
+                context_name=target.context_name,
+                status="skipped",
+                duration_seconds=monotonic() - started,
+                message="Skipped because bucket usage statistics are already being calculated.",
+            )
+        try:
+            snapshot = self.calculate_and_persist(
+                target,
+                progress_callback=progress_callback,
+                cancel_check=cancel_check,
+                actor_user=actor_user,
+                actor_email=actor_email,
+                actor_role=actor_role,
+            )
+            status_value: BucketUsageStatsStatus = "completed_with_warnings" if snapshot.warnings else "completed"
+            return BucketUsageStatsBucketResult(
+                bucket_name=target.bucket_name,
+                context_id=target.context_id,
+                context_name=target.context_name,
+                status=status_value,
+                snapshot=snapshot,
+                duration_seconds=monotonic() - started,
+                message=snapshot.warnings[0] if snapshot.warnings else None,
+            )
+        except BucketUsageStatsCancelled:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            return BucketUsageStatsBucketResult(
+                bucket_name=target.bucket_name,
+                context_id=target.context_id,
+                context_name=target.context_name,
+                status="failed",
+                duration_seconds=monotonic() - started,
+                message=format_s3_error(exc),
+            )
+        finally:
+            if lease is not None:
+                self._release_bucket_lease(lease)
+
+    def _collect_run_results(
+        self,
+        targets: list[BucketUsageStatsResolvedTarget],
+        *,
+        max_workers: int,
+        progress_callback: ProgressCallback | None,
+        cancel_check: CancelCheck | None,
+        actor_user: User | None,
+        actor_email: str | None,
+        actor_role: str | None,
+    ) -> tuple[list[BucketUsageStatsBucketResult], _BucketUsageRunTotals]:
+        bucket_results: list[BucketUsageStatsBucketResult] = []
+        totals = _BucketUsageRunTotals()
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            pending = {
+                executor.submit(
+                    self._run_target,
                     target,
                     progress_callback=progress_callback,
                     cancel_check=cancel_check,
                     actor_user=actor_user,
                     actor_email=actor_email,
                     actor_role=actor_role,
-                )
-                status_value: BucketUsageStatsStatus = "completed_with_warnings" if snapshot.warnings else "completed"
-                return BucketUsageStatsBucketResult(
-                    bucket_name=target.bucket_name,
-                    context_id=target.context_id,
-                    context_name=target.context_name,
-                    status=status_value,
-                    snapshot=snapshot,
-                    duration_seconds=monotonic() - started,
-                    message=snapshot.warnings[0] if snapshot.warnings else None,
-                )
-            except BucketUsageStatsCancelled:
-                raise
-            except Exception as exc:  # noqa: BLE001
-                return BucketUsageStatsBucketResult(
-                    bucket_name=target.bucket_name,
-                    context_id=target.context_id,
-                    context_name=target.context_name,
-                    status="failed",
-                    duration_seconds=monotonic() - started,
-                    message=format_s3_error(exc),
-                )
-            finally:
-                if lease is not None:
-                    self._release_bucket_lease(lease)
-
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            pending = {executor.submit(run_target, target): target for target in targets}
+                ): target
+                for target in targets
+            }
             while pending:
                 if cancel_check:
                     cancel_check()
@@ -702,15 +852,7 @@ class BucketUsageStatsService(LongRunningS3ClientMixin):
                     pending.pop(future)
                     result = future.result()
                     bucket_results.append(result)
-                    completed_buckets += 1
-                    if result.status == "failed":
-                        failed_buckets += 1
-                    elif result.status == "skipped":
-                        skipped_buckets += 1
-                    if result.snapshot:
-                        listed_versions += result.snapshot.object_version_count
-                        listed_delete_markers += result.snapshot.delete_marker_count
-                        total_bytes += result.snapshot.total_bytes
+                    totals.include(result)
                     if progress_callback:
                         progress_callback(
                             BucketUsageStatsProgress(
@@ -719,34 +861,14 @@ class BucketUsageStatsService(LongRunningS3ClientMixin):
                                 context_id=result.context_id,
                                 context_name=result.context_name,
                                 total_buckets=len(targets),
-                                completed_buckets=completed_buckets,
-                                listed_versions=listed_versions,
-                                listed_delete_markers=listed_delete_markers,
-                                total_bytes=total_bytes,
-                                message=f"{completed_buckets}/{len(targets)} buckets completed",
+                                completed_buckets=totals.completed_buckets,
+                                listed_versions=totals.listed_versions,
+                                listed_delete_markers=totals.listed_delete_markers,
+                                total_bytes=totals.total_bytes,
+                                message=f"{totals.completed_buckets}/{len(targets)} buckets completed",
                             )
                         )
-
-        finished_at = utcnow()
-        if failed_buckets == len(targets) and targets:
-            status_value: BucketUsageStatsStatus = "failed"
-        elif failed_buckets or skipped_buckets:
-            status_value = "completed_with_warnings"
-        else:
-            status_value = "completed"
-        return BucketUsageStatsResult(
-            status=status_value,
-            total_buckets=len(targets),
-            completed_buckets=completed_buckets,
-            failed_buckets=failed_buckets,
-            skipped_buckets=skipped_buckets,
-            listed_versions=listed_versions,
-            listed_delete_markers=listed_delete_markers,
-            total_bytes=total_bytes,
-            started_at=started_at,
-            finished_at=finished_at,
-            buckets=sorted(bucket_results, key=lambda item: ((item.context_name or item.context_id or ""), item.bucket_name)),
-        )
+        return bucket_results, totals
 
     def _snapshot_from_row(self, row: BucketUsageStatsSnapshotRow) -> BucketUsageStatsSnapshot:
         return BucketUsageStatsSnapshot(

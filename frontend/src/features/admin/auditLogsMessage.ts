@@ -1,6 +1,6 @@
 /* Copyright (c) 2026 Laurent Barbe; Licensed under the Apache License, Version 2.0 */
 import { useCallback } from "react";
-import { useI18n, type I18nMessage } from "../../i18n";
+import { interpolateText, useI18n, type I18nMessage } from "../../i18n";
 import { adminMessage } from "./adminI18n";
 
 const m = (en: string, zh: string) => adminMessage(en, zh);
@@ -23,8 +23,7 @@ const auditLogsMessage = {
   portalUi: m("Portal UI", "Portal 界面"),
   success: m("Success", "成功"),
   failure: m("Failure", "失败"),
-  failed: m("Failed", "失败"),
-  error: m("Error", "错误"),
+  partial: { en: "Partial", fr: "Partiel", de: "Teilweise", zh: "部分" },
   loadError: m("Unable to load audit logs.", "无法加载操作审计日志。"),
   refreshError: m("Unable to refresh audit logs.", "无法刷新操作审计日志。"),
   olderError: m("Unable to load older logs.", "无法加载较早的日志。"),
@@ -71,7 +70,7 @@ export type AuditLogsText = (key: AuditLogsMessageKey, values?: Record<string, s
 export function useAuditLogsI18n() {
   const { locale, t } = useI18n();
   const text: AuditLogsText = useCallback(
-    (key, values) => t(auditLogsMessage[key]).replace(/\{(\w+)\}/g, (match, name: string) => String(values?.[name] ?? match)),
+    (key, values) => interpolateText(t(auditLogsMessage[key]), values),
     [t],
   );
   return { locale, text };
