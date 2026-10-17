@@ -7,15 +7,19 @@ from typing import Optional
 from fastapi import Depends, HTTPException, Query, Request, status
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.core.database import get_db
+from app.core.domain_errors import S3ConnectionNotFoundError, S3UserNotFoundError
 from app.models.access_context import EffectiveAccountLink, ManagerActor
 from app.models.account_capabilities import AccountCapabilities
 from app.db import S3Account, S3Connection, S3User, StorageEndpoint, User, UserS3Account
 from app.models.session import ManagerSessionPrincipal
 from app.services import app_settings_service, effective_access_service
 from app.services.effective_access_service import EffectiveAccessService
+from app.services.s3_accounts_service import get_s3_accounts_service
 from app.services.s3_connections_service import S3ConnectionsService
 from app.services.s3_execution_context import S3ExecutionContext
+from app.services.s3_users_service import get_s3_users_service
 from app.services.storage_endpoints_service import get_storage_endpoints_service
 from app.utils.s3_connection_capabilities import s3_connection_can_manage_iam
 from app.utils.s3_connection_endpoint import resolve_connection_details
@@ -24,40 +28,15 @@ from app.utils.s3_endpoint import (
     resolve_s3_endpoint,
     validate_user_supplied_s3_endpoint,
 )
+from app.utils.request_paths import path_matches_prefix
 
-from .auth_session import get_current_actor, settings
-from .ceph_admin_context import _resolve_default_endpoint
-
-
-def _resolve_ceph_admin_browser_context(
-    db: Session,
-    actor: User,
-    endpoint_id: int,
-    *,
-    surface: str,
-) -> S3ExecutionContext:
-    from .ceph_admin_context import _resolve_ceph_admin_browser_context as resolve_context
-
-    return resolve_context(db, actor, endpoint_id, surface=surface)
+from .auth_session import get_current_actor
+from .ceph_admin_context import resolve_ceph_admin_browser_context, resolve_default_endpoint
+from .portal_access import is_portal_browser_request, resolve_portal_browser_context
+from .workspace_context import resolve_account_by_id, resolve_user_account_link, resolve_workspace_surface
 
 
-def _is_portal_browser_request(request: Optional[Request], surface: str) -> bool:
-    from .portal_access import _is_portal_browser_request as is_portal_browser_request
-
-    return is_portal_browser_request(request, surface)
-
-
-def _resolve_portal_browser_context(
-    db: Session,
-    user: User,
-    account: S3Account,
-    link: UserS3Account | EffectiveAccountLink,
-    *,
-    request: Request,
-) -> S3ExecutionContext:
-    from .portal_access import _resolve_portal_browser_context as resolve_context
-
-    return resolve_context(db, user, account, link, request=request)
+settings = get_settings()
 
 def _parse_execution_context_selector(
     context_ref: Optional[str],
@@ -132,8 +111,9 @@ def _resolve_s3_user_context(
             detail="Manager Browser data access is not allowed for this S3 user",
         )
 
-    s3_user = db.query(S3User).filter(S3User.id == s3_user_id).first()
-    if not s3_user:
+    try:
+        s3_user = get_s3_users_service(db).get_user_record(s3_user_id)
+    except S3UserNotFoundError:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="S3 user not found")
 
     return _build_s3_user_context(
@@ -155,8 +135,10 @@ def _resolve_connection_context(
     touch_usage: bool = True,
 ) -> S3ExecutionContext:
     """Resolve a connection through the same policy used by the catalogue."""
-    conn = db.query(S3Connection).filter(S3Connection.id == connection_id).first()
-    if not conn:
+    connections = S3ConnectionsService(db)
+    try:
+        conn = connections.get_record(connection_id)
+    except S3ConnectionNotFoundError:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="S3Connection not found")
     service = effective_access_service.EffectiveAccessService(db)
     effective = service.resolve_user(user)
@@ -185,10 +167,7 @@ def _resolve_connection_context(
 
     # Keep a minimal usage signal for UX (recently used sorting / hints).
     if touch_usage:
-        try:
-            S3ConnectionsService(db).touch_usage(conn)
-        except Exception:
-            db.rollback()
+        connections.touch_usage_best_effort(conn)
     can_manage_iam = _connection_iam_capable(conn)
     return _build_s3_connection_context(
         conn,
@@ -199,49 +178,6 @@ def _resolve_connection_context(
             using_root_key=False,
         ),
     )
-
-def _resolve_workspace_surface(request: Optional[Request]) -> str:
-    if not request:
-        return "manager"
-    path = str(request.url.path)
-    browser_prefix = f"{settings.api_v1_prefix}/browser"
-    if path.startswith(browser_prefix):
-        if (request.headers.get("X-S3-Workspace") or "").strip().lower() == "manager-browser":
-            return "manager-browser"
-        return "browser"
-    return "manager"
-
-
-def _resolve_default_account_id(db: Session, user: User) -> int:
-    links = effective_access_service.EffectiveAccessService(db).resolve_user(user).account_links
-    if len(links) == 1:
-        return links[0].account_id
-    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="S3Account id required")
-
-
-def _resolve_account_by_id(db: Session, account_id: int) -> S3Account:
-    account = db.query(S3Account).filter(S3Account.id == account_id).first()
-    if not account:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="S3Account not found")
-    return account
-
-
-def _resolve_user_account_link(
-    db: Session,
-    user: User,
-    account_id: Optional[int],
-    allow_default: bool,
-) -> tuple[S3Account, UserS3Account | EffectiveAccountLink]:
-    if account_id is None or account_id <= 0:
-        if not allow_default:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="S3Account id required")
-        account_id = _resolve_default_account_id(db, user)
-    account = _resolve_account_by_id(db, account_id)
-    link = effective_access_service.EffectiveAccessService(db).resolve_user(user).account_link_for(account.id)
-    if not link:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized for this account")
-    return account, link
-
 
 def manager_membership_capabilities(
     link: UserS3Account | EffectiveAccountLink,
@@ -267,15 +203,11 @@ def _resolve_session_account(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="S3Account context unavailable for session")
     account: Optional[S3Account] = None
     if account_id and account_id > 0:
-        account = _resolve_account_by_id(db, account_id)
+        account = resolve_account_by_id(db, account_id)
         if account.rgw_account_id.lower() != actor.account_id.lower():
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized for this account")
     else:
-        account = (
-            db.query(S3Account)
-            .filter(S3Account.rgw_account_id == actor.account_id)
-            .first()
-        )
+        account = get_s3_accounts_service(db).find_account_by_rgw_id(actor.account_id)
     context_name = account.name if account is not None else actor.account_name or actor.account_id
     context_rgw_account_id = account.rgw_account_id if account is not None else actor.account_id
     context_rgw_user_uid = account.rgw_user_uid if account is not None else actor.user_uid
@@ -284,15 +216,11 @@ def _resolve_session_account(
     context_endpoint_id = account.storage_endpoint_id if account is not None else None
     resolved_endpoint: Optional[StorageEndpoint] = None
     if not requested_endpoint and not resolve_s3_endpoint(account):
-        endpoint = _resolve_default_endpoint(db)
+        endpoint = resolve_default_endpoint(db)
         requested_endpoint = endpoint.endpoint_url
         resolved_endpoint = endpoint
     elif requested_endpoint:
-        resolved_endpoint = (
-            db.query(StorageEndpoint)
-            .filter(StorageEndpoint.endpoint_url == requested_endpoint)
-            .first()
-        )
+        resolved_endpoint = get_storage_endpoints_service(db).find_endpoint_record_by_url(requested_endpoint)
     if resolved_endpoint:
         context_endpoint_id = resolved_endpoint.id
         context_endpoint = resolved_endpoint
@@ -309,6 +237,7 @@ def _resolve_session_account(
         secret_key=actor.secret_key,
         storage_endpoint_id=context_endpoint_id,
         storage_endpoint=context_endpoint,
+        source_account=account,
         session_endpoint=requested_endpoint,
         manager_capabilities=AccountCapabilities(
             can_manage_buckets=actor.capabilities.can_manage_buckets,
@@ -348,14 +277,17 @@ def get_s3_execution_context(
     db: Session = Depends(get_db),
 ) -> S3ExecutionContext:
     account_id, s3_user_id, connection_id, ceph_admin_endpoint_id = _parse_execution_context_selector(context_ref)
-    surface = _resolve_workspace_surface(request)
+    surface = resolve_workspace_surface(request)
     requested_endpoint = normalize_s3_endpoint(request.headers.get("X-S3-Endpoint")) if request else None
     if isinstance(actor, ManagerSessionPrincipal):
         requested_endpoint = _resolve_requested_session_endpoint(db, actor, requested_endpoint)
     else:
         # UI users are bound to the endpoint configured on the selected account.
         requested_endpoint = None
-    is_storage_ops_surface = bool(request and str(request.url.path).startswith(f"{settings.api_v1_prefix}/storage-ops"))
+    is_storage_ops_surface = bool(
+        request
+        and path_matches_prefix(str(request.url.path), f"{settings.api_v1_prefix}/storage-ops")
+    )
     if isinstance(actor, User):
         if ceph_admin_endpoint_id is not None:
             if surface == "manager-browser":
@@ -363,7 +295,7 @@ def get_s3_execution_context(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail="Ceph Admin contexts are not available in Manager Browser",
                 )
-            return _resolve_ceph_admin_browser_context(db, actor, ceph_admin_endpoint_id, surface=surface)
+            return resolve_ceph_admin_browser_context(db, actor, ceph_admin_endpoint_id, surface=surface)
         if connection_id is not None:
             return _resolve_connection_context(
                 db,
@@ -374,14 +306,14 @@ def get_s3_execution_context(
             )
         if s3_user_id is not None:
             return _resolve_s3_user_context(db, actor, s3_user_id, surface=surface)
-        if surface == "browser" and not _is_portal_browser_request(request, surface):
+        if surface == "browser" and not is_portal_browser_request(request, surface):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Accounts are not available in standard Browser",
             )
-        account, link = _resolve_user_account_link(db, actor, account_id, allow_default=False)
-        if _is_portal_browser_request(request, surface):
-            return _resolve_portal_browser_context(db, actor, account, link, request=request)
+        account, link = resolve_user_account_link(db, actor, account_id, allow_default=False)
+        if is_portal_browser_request(request, surface):
+            return resolve_portal_browser_context(db, actor, account, link, request=request)
         if surface == "manager-browser" and not (
             isinstance(link, EffectiveAccountLink) and link.manager_browser_allowed
         ):

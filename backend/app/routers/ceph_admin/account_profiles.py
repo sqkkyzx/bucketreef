@@ -15,17 +15,17 @@ from app.models.ceph_admin import (
     CephAdminRgwAccountCreateResponse,
     CephAdminRgwAccountDetail,
 )
-from app.routers.ceph_admin.account_common import (
+from app.services.ceph_admin_account_access import load_account_payload
+from app.services.ceph_admin_account_payloads import (
     build_account_detail,
     extract_account_bucket_list,
-    load_account_payload,
 )
-from app.routers.ceph_admin.account_listing_cache import invalidate_accounts_listing_cache
-from app.routers.ceph_admin.audit import record_ceph_admin_action
-from app.routers.ceph_admin.dependencies import CephAdminContext, get_ceph_admin_context
-from app.routers.ceph_admin.listing_common import fields_set
+from app.routers.ceph_admin.dependencies import get_ceph_admin_context
+from app.services.ceph_admin_context import CephAdminContext
 from app.routers.ceph_admin.profile_common import nullable_update, raise_if_unsupported
 from app.services.app_settings_service import load_app_settings
+from app.services.ceph_admin_identity_listing_cache import invalidate_accounts_listing_cache
+from app.services.ceph_admin_audit import record_ceph_admin_action
 from app.services.rgw_admin import RGWAdminError
 from app.utils.http_errors import raise_http_exception_from_exception
 from app.utils.rgw_identifiers import generate_rgw_account_id
@@ -116,7 +116,10 @@ def create_rgw_account(
         raise_if_unsupported(quota_result, "RGW bucket quota update is not supported on this cluster")
 
     invalidate_accounts_listing_cache(ctx.endpoint.id)
-    account_detail = build_account_detail(load_account_payload(account_id, ctx), account_id_fallback=account_id)
+    account_detail = build_account_detail(
+        load_account_payload(account_id, ctx.rgw_admin),
+        account_id_fallback=account_id,
+    )
     record_ceph_admin_action(
         ctx,
         action="rgw_account.create",
@@ -136,7 +139,10 @@ def get_rgw_account_detail(
     account_id: str,
     ctx: CephAdminContext = Depends(get_ceph_admin_context),
 ) -> CephAdminRgwAccountDetail:
-    return build_account_detail(load_account_payload(account_id, ctx), account_id_fallback=account_id.strip())
+    return build_account_detail(
+        load_account_payload(account_id, ctx.rgw_admin),
+        account_id_fallback=account_id.strip(),
+    )
 
 
 @router.put("/{account_id}/config", response_model=CephAdminRgwAccountDetail)
@@ -149,7 +155,7 @@ def update_rgw_account_config(
     if not normalized_account_id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="account_id is required")
 
-    field_set = fields_set(update)
+    field_set = set(update.model_fields_set)
     account_fields = {
         "account_name",
         "email",
@@ -227,7 +233,7 @@ def update_rgw_account_config(
         raise_if_unsupported(quota_result, "RGW bucket quota update is not supported on this cluster")
 
     invalidate_accounts_listing_cache(ctx.endpoint.id)
-    payload = load_account_payload(normalized_account_id, ctx)
+    payload = load_account_payload(normalized_account_id, ctx.rgw_admin)
     record_ceph_admin_action(
         ctx,
         action="rgw_account.update",
@@ -279,4 +285,4 @@ def get_rgw_account(
     account_id: str,
     ctx: CephAdminContext = Depends(get_ceph_admin_context),
 ) -> dict[str, Any]:
-    return load_account_payload(account_id, ctx)
+    return load_account_payload(account_id, ctx.rgw_admin)

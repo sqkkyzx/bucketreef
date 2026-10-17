@@ -281,12 +281,15 @@ def test_feature_detection_rejects_system_only_ceph_admin_credentials(
 
 @pytest.mark.parametrize("blocked", [None, "global", "allowed", "validation", "incomplete", "system"])
 def test_browser_ceph_admin_requires_active_external_identity(identities, db_session, monkeypatch, blocked):
-    from app.routers.dependencies_internal.ceph_admin_context import _resolve_ceph_admin_browser_context
+    from app.routers.dependencies_internal.ceph_admin_context import resolve_ceph_admin_browser_context
 
     service, endpoint, rgw = identities
     configure(db_session, endpoint, rgw)
     service.validate_ceph_admin(endpoint)
-    monkeypatch.setattr("app.routers.ceph_admin.dependencies.get_rgw_admin_client", lambda **kwargs: rgw.signed(kwargs["access_key"]))
+    monkeypatch.setattr(
+        "app.services.ceph_admin_service_identity.get_rgw_admin_client",
+        lambda **kwargs: rgw.signed(kwargs["access_key"]),
+    )
     actor = User(email="ceph-browser@example.test", hashed_password="x", is_active=True,
                  role=UserRole.UI_SUPERADMIN.value, can_access_ceph_admin=True)
     db_session.add(actor)
@@ -305,9 +308,9 @@ def test_browser_ceph_admin_requires_active_external_identity(identities, db_ses
     db_session.commit()
     if blocked:
         with pytest.raises(HTTPException) as error:
-            _resolve_ceph_admin_browser_context(db_session, actor, endpoint.id, surface="browser")
+            resolve_ceph_admin_browser_context(db_session, actor, endpoint.id, surface="browser")
         assert error.value.status_code == 403
     else:
-        context = _resolve_ceph_admin_browser_context(db_session, actor, endpoint.id, surface="browser")
+        context = resolve_ceph_admin_browser_context(db_session, actor, endpoint.id, surface="browser")
         assert context.access_key == "CEPH-AK" and context.secret_key == "CEPH-SK"
     assert not rgw.calls

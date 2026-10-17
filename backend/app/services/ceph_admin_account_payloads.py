@@ -1,26 +1,19 @@
 # Copyright (c) 2026 Laurent Barbe
 # Licensed under the Apache License, Version 2.0
-
-"""Shared Ceph Admin RGW account payload helpers."""
+from __future__ import annotations
 
 from typing import Any, Optional
 
-from fastapi import HTTPException, status
-
 from app.models.ceph_admin import CephAdminRgwAccountDetail, CephAdminRgwQuotaConfig
-from app.routers.ceph_admin.dependencies import CephAdminContext
-from app.routers.ceph_admin.listing_common import parse_bool, parse_int
 from app.services.rgw_bucket_metadata import resolve_bucket_owner_identity
-from app.services.rgw_admin import RGWAdminError
-from app.utils.http_errors import raise_http_exception_from_exception
 from app.utils.normalize import normalize_optional_scalar
 from app.utils.quota_stats import extract_quota_limits
-from app.utils.rgw_payloads import extract_bucket_list
+from app.utils.rgw_payloads import extract_bucket_list, parse_rgw_bool, parse_rgw_int
 
 
 def extract_count(data: dict[str, Any], keys: tuple[str, ...]) -> Optional[int]:
     for key in keys:
-        parsed = parse_int(data.get(key))
+        parsed = parse_rgw_int(data.get(key))
         if parsed is not None:
             return parsed
     return None
@@ -53,15 +46,7 @@ def extract_user_count(payload: dict[str, Any]) -> Optional[int]:
 
 
 def extract_account_bucket_list(payload: Any, account_id: str) -> list[dict]:
-    """Defensively scope an RGW bucket listing to one account.
-
-    Some RGW versions accept ``account-id`` on ``/admin/bucket`` but still
-    return a cluster-wide listing. When ownership metadata is available, only
-    retain buckets that explicitly resolve to the requested RGW account. If
-    the payload exposes no ownership metadata at all, preserve the upstream
-    response for compatibility with older RGW payloads.
-    """
-
+    """Defensively scope an RGW bucket listing to one account."""
     normalized_account_id = account_id.strip()
     entries = extract_bucket_list(payload)
     if not normalized_account_id or not entries:
@@ -117,31 +102,16 @@ def build_account_detail(payload: dict[str, Any], account_id_fallback: str) -> C
             payload.get("name") or payload.get("account_name") or payload.get("display_name")
         ),
         email=normalize_optional_scalar(payload.get("email") or payload.get("mail")),
-        max_users=parse_int(payload.get("max_users") or limits_payload.get("max_users")),
-        max_buckets=parse_int(payload.get("max_buckets") or limits_payload.get("max_buckets")),
-        max_roles=parse_int(payload.get("max_roles") or limits_payload.get("max_roles")),
-        max_groups=parse_int(payload.get("max_groups") or limits_payload.get("max_groups")),
-        max_access_keys=parse_int(payload.get("max_access_keys") or limits_payload.get("max_access_keys")),
+        max_users=parse_rgw_int(payload.get("max_users") or limits_payload.get("max_users")),
+        max_buckets=parse_rgw_int(payload.get("max_buckets") or limits_payload.get("max_buckets")),
+        max_roles=parse_rgw_int(payload.get("max_roles") or limits_payload.get("max_roles")),
+        max_groups=parse_rgw_int(payload.get("max_groups") or limits_payload.get("max_groups")),
+        max_access_keys=parse_rgw_int(payload.get("max_access_keys") or limits_payload.get("max_access_keys")),
         bucket_count=extract_bucket_count(payload),
         user_count=extract_user_count(payload),
         quota=quota,
         bucket_quota=bucket_quota,
     )
-
-
-def load_account_payload(account_id: str, ctx: CephAdminContext) -> dict[str, Any]:
-    normalized_account_id = account_id.strip()
-    if not normalized_account_id:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="account_id is required")
-    try:
-        payload = ctx.rgw_admin.get_account(normalized_account_id, allow_not_found=True)
-    except RGWAdminError as exc:
-        raise_http_exception_from_exception(status.HTTP_502_BAD_GATEWAY, exc)
-    if not payload or (isinstance(payload, dict) and payload.get("not_found")):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="RGW account not found")
-    if not isinstance(payload, dict):
-        return {"payload": payload}
-    return payload
 
 
 def _extract_quota_enabled(
@@ -151,7 +121,7 @@ def _extract_quota_enabled(
     for key in keys:
         value = payload.get(key)
         if isinstance(value, dict):
-            parsed = parse_bool(value.get("enabled"))
+            parsed = parse_rgw_bool(value.get("enabled"))
             if parsed is not None:
                 return parsed
     return None

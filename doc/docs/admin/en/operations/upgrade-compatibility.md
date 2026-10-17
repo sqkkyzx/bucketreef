@@ -1,5 +1,30 @@
 # Operations: Upgrade and Compatibility Notes
 
+## 2026-10 Ceph Admin access-key read contract
+
+Ceph Admin user access-key list and user-detail responses no longer include
+`secret_key`. Existing RGW keys remain unchanged; this only tightens the
+application API so ordinary reads cannot disclose stored or upstream-returned
+secret material. Newly created access keys still return their secret once from
+the dedicated creation response.
+
+Deploy the backend and bundled frontend together. Direct callers must stop
+expecting `secret_key` on existing-key reads. No database migration is required.
+
+## 2026-10 surface-specific bucket operation requests
+
+Bucket integrity checks, purge operations, and targeted usage-statistics scans
+now expose separate request schemas for their execution surface. Manager and
+Ceph Admin routes accept `buckets`; Storage Ops routes accept `targets` with an
+explicit execution context. A request can no longer include, omit, or switch to
+the other surface's target collection and rely on router-side compatibility
+validation.
+
+Deploy the backend and bundled frontend together. The canonical frontend JSON
+payloads are unchanged, but direct callers using the wrong collection now fail
+request validation with HTTP `422`. No database migration is required for this
+API cutover.
+
 ## 2026-10 Manager and Browser execution-context selector
 
 Manager and Browser routes that select an S3 execution identity now use the

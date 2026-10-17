@@ -47,6 +47,10 @@ class BillingSubjectNotFoundError(ResourceNotFoundError):
     pass
 
 
+class BillingDisabledError(ValueError):
+    pass
+
+
 class S3ConnectionNotFoundError(ResourceNotFoundError):
     pass
 
@@ -60,4 +64,12 @@ class AvatarNotFoundError(ResourceNotFoundError):
 
 
 class ExternalIdentityNotFoundError(ResourceNotFoundError):
+    pass
+
+
+class ManagerIAMManagedUserConflictError(ResourceConflictError):
+    pass
+
+
+class ManagerIAMCredentialsMissingError(ValueError):
     pass

@@ -14,12 +14,17 @@ from starlette.requests import Request
 from app.db import StorageEndpoint, User, UserRole
 from app.main import app
 from app.models.app_settings import AppSettings
-from app.models.bucket_purge import BucketPurgeProgress, BucketPurgeRequest, BucketPurgeResult
+from app.models.bucket_purge import (
+    BucketPurgeBucketRequest,
+    BucketPurgeProgress,
+    BucketPurgeResult,
+    BucketPurgeTargetRequest,
+)
 from app.routers import dependencies as dependencies_router
-from app.routers.bucket_purge_stream import BucketPurgeAuditLifecycle
+from app.services.bucket_purge_audit import BucketPurgeAuditLifecycle
 from app.services import app_settings_service
 from app.routers.ceph_admin import purge as ceph_purge
-from app.routers.ceph_admin.dependencies import CephAdminContext
+from app.services.ceph_admin_context import CephAdminContext
 from app.routers.manager import buckets as manager_buckets
 from app.routers.manager import purge as manager_purge
 from app.routers.storage_ops import purge as storage_ops_purge
@@ -89,7 +94,7 @@ def test_require_bucket_purge_enabled_blocks_without_user_tool_access(db_session
     assert str(exc.value.detail) == "Not authorized"
 
 
-def test_manager_purge_route_rejects_wrong_confirmation_with_400():
+def test_manager_purge_route_rejects_wrong_confirmation_during_request_validation():
     previous_overrides = app.dependency_overrides.copy()
     app.dependency_overrides[dependencies_router.require_manager_enabled] = lambda: None
     app.dependency_overrides[manager_purge.require_bucket_purge_enabled] = lambda: _manager_tool_user()
@@ -108,7 +113,7 @@ def test_manager_purge_route_rejects_wrong_confirmation_with_400():
     finally:
         app.dependency_overrides = previous_overrides
 
-    assert response.status_code == 400
+    assert response.status_code == 422
     assert "PURGE 2 BUCKETS" in response.text
 
 
@@ -329,7 +334,7 @@ def test_ceph_admin_purge_route_uses_dedicated_endpoint_credentials(monkeypatch)
     monkeypatch.setattr(ceph_purge, "stream_bucket_purge", fake_stream)
 
     response = ceph_purge.stream_ceph_admin_bucket_purge(
-        payload=BucketPurgeRequest(buckets=["bucket-a"], confirmation="PURGE 1 BUCKETS"),
+        payload=BucketPurgeBucketRequest(buckets=["bucket-a"], confirmation="PURGE 1 BUCKETS"),
         request=_build_request(path="/api/ceph-admin/endpoints/7/buckets/purge/stream", query_string=b""),
         user=SimpleNamespace(id=1, email="admin@example.test", role=UserRole.UI_ADMIN.value),
         ctx=ctx,
@@ -365,13 +370,13 @@ def test_storage_ops_purge_route_resolves_authorized_manager_contexts(monkeypatc
     monkeypatch.setattr(storage_ops_purge, "stream_bucket_purge", fake_stream)
     monkeypatch.setattr(
         storage_ops_purge,
-        "list_execution_contexts",
-        lambda *, workspace, user, db: [SimpleNamespace(id="s3u-1", display_name="S3 User 1")],
+        "storage_ops_context_names",
+        lambda user, db: {"s3u-1": "S3 User 1"},
     )
     monkeypatch.setattr(storage_ops_purge, "get_s3_execution_context", fake_get_s3_execution_context)
 
     response = storage_ops_purge.stream_storage_ops_bucket_purge(
-        payload=BucketPurgeRequest(
+        payload=BucketPurgeTargetRequest(
             targets=[{"context_id": "s3u-1", "bucket_name": "bucket-a"}],
             confirmation="PURGE 1 BUCKETS",
         ),

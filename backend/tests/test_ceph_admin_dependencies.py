@@ -3,9 +3,11 @@
 from types import SimpleNamespace
 
 import pytest
+from fastapi import HTTPException
 
 from app.db import StorageProvider
 from app.routers.ceph_admin import dependencies as deps
+from app.services import ceph_admin_service_identity as identity_service
 from app.services.rgw_admin import RGWAdminError
 from app.services.rgw_admin_identity import classify_rgw_credential_failure
 
@@ -61,9 +63,9 @@ features:
         def get_user_by_access_key(self, access_key: str, allow_not_found: bool = True):
             raise RGWAdminError("connect timeout")
 
-    monkeypatch.setattr(deps, "get_rgw_admin_client", lambda **kwargs: FakeRGWClient())
+    monkeypatch.setattr(identity_service, "get_rgw_admin_client", lambda **kwargs: FakeRGWClient())
 
-    probe = deps.probe_ceph_admin_service_identity(endpoint)
+    probe = identity_service.probe_ceph_admin_service_identity(endpoint)
 
     assert probe.status == "unavailable"
     assert probe.warning is not None
@@ -95,9 +97,9 @@ def test_probe_ceph_admin_service_identity_classifies_denied(monkeypatch):
                 error_code="AccessDenied",
             )
 
-    monkeypatch.setattr(deps, "get_rgw_admin_client", lambda **kwargs: FakeRGWClient())
+    monkeypatch.setattr(identity_service, "get_rgw_admin_client", lambda **kwargs: FakeRGWClient())
 
-    probe = deps.probe_ceph_admin_service_identity(endpoint)
+    probe = identity_service.probe_ceph_admin_service_identity(endpoint)
 
     assert probe.status == "denied"
     assert probe.warning == "Ceph Admin credentials were denied for endpoint 'Ceph endpoint'."
@@ -131,9 +133,9 @@ def test_probe_ceph_admin_service_identity_classifies_redirect_as_misconfigured(
                 error_code="RedirectNotAllowed",
             )
 
-    monkeypatch.setattr(deps, "get_rgw_admin_client", lambda **kwargs: FakeRGWClient())
+    monkeypatch.setattr(identity_service, "get_rgw_admin_client", lambda **kwargs: FakeRGWClient())
 
-    probe = deps.probe_ceph_admin_service_identity(endpoint)
+    probe = identity_service.probe_ceph_admin_service_identity(endpoint)
 
     assert probe.status == "misconfigured"
     assert probe.warning == "Ceph Admin endpoint configuration is invalid; check the RGW Admin Ops URL and redirects."
@@ -164,9 +166,9 @@ features:
         def get_user_by_access_key(self, access_key: str, allow_not_found: bool = True):
             return {"admin": admin, "system": system}
 
-    monkeypatch.setattr(deps, "get_rgw_admin_client", lambda **kwargs: FakeRGWClient())
+    monkeypatch.setattr(identity_service, "get_rgw_admin_client", lambda **kwargs: FakeRGWClient())
 
-    detail = deps.validate_ceph_admin_service_identity(endpoint)
+    detail = identity_service.validate_ceph_admin_service_identity(endpoint)
 
     assert (detail is None) is allowed
 
@@ -190,8 +192,7 @@ class _FakeSession:
         return _FakeQuery(self._endpoint)
 
 
-def test_resolve_ceph_admin_workspace_endpoint_does_not_require_admin_feature_enabled(monkeypatch):
-    monkeypatch.setattr("app.services.app_settings_service.load_app_settings_for_db_readonly", lambda db: SimpleNamespace(general=SimpleNamespace(ceph_admin_enabled=True)))
+def test_resolve_ceph_admin_workspace_endpoint_does_not_require_admin_feature_enabled():
     endpoint = SimpleNamespace(
         ceph_admin_allowed=True,
         service_identity=lambda kind: SimpleNamespace(
@@ -211,8 +212,44 @@ features:
     assert resolved is endpoint
 
 
+def test_resolve_ceph_admin_workspace_endpoint_maps_missing_endpoint():
+    with pytest.raises(HTTPException) as error:
+        deps._resolve_ceph_admin_workspace_endpoint(_FakeSession(None), endpoint_id=999)
+
+    assert error.value.status_code == 404
+    assert error.value.detail == "Storage endpoint not found"
+
+
+def test_resolve_ceph_admin_workspace_endpoint_rejects_non_ceph_provider():
+    endpoint = SimpleNamespace(
+        id=7,
+        provider=StorageProvider.OTHER.value,
+    )
+
+    with pytest.raises(HTTPException) as error:
+        deps._resolve_ceph_admin_workspace_endpoint(_FakeSession(endpoint), endpoint_id=7)
+
+    assert error.value.status_code == 400
+    assert error.value.detail == "Storage endpoint is not a Ceph provider"
+
+
+def test_resolve_ceph_admin_workspace_endpoint_rejects_inactive_identity():
+    endpoint = SimpleNamespace(
+        ceph_admin_allowed=False,
+        service_identity=lambda kind: None,
+        id=8,
+        name="Ceph inactive",
+        provider=StorageProvider.CEPH.value,
+    )
+
+    with pytest.raises(HTTPException) as error:
+        deps._resolve_ceph_admin_workspace_endpoint(_FakeSession(endpoint), endpoint_id=8)
+
+    assert error.value.status_code == 403
+    assert error.value.detail == "Ceph Admin is not active on this endpoint"
+
+
 def test_get_ceph_admin_context_uses_rgw_admin_endpoint_when_admin_feature_disabled(monkeypatch):
-    monkeypatch.setattr("app.services.app_settings_service.load_app_settings_for_db_readonly", lambda db: SimpleNamespace(general=SimpleNamespace(ceph_admin_enabled=True)))
     endpoint = SimpleNamespace(
         ceph_admin_allowed=True,
         service_identity=lambda kind: SimpleNamespace(
@@ -276,6 +313,6 @@ features:
         is_default=False,
     )
 
-    payload = deps.build_ceph_admin_endpoint_payload(endpoint)
+    payload = identity_service.build_ceph_admin_endpoint_payload(endpoint)
 
     assert payload["admin_endpoint"] == "https://rgw-admin.example.test"

@@ -1,63 +1,26 @@
 # Copyright (c) 2026 Laurent Barbe
 # Licensed under the Apache License, Version 2.0
-
-"""Shared Ceph Admin RGW user payload helpers."""
+from __future__ import annotations
 
 from typing import Any, Optional
 
 from fastapi import HTTPException, status
 
+from app.db import StorageEndpoint
 from app.models.ceph_admin import CephAdminRgwAccessKey
-from app.routers.ceph_admin.dependencies import CephAdminContext
-from app.services.rgw_admin import RGWAdminError
+from app.services.ceph_admin_user_identity import split_tenant_uid
+from app.services.rgw_admin import RGWAdminClient, RGWAdminError
 from app.utils.http_errors import raise_http_exception_from_exception
 from app.utils.normalize import normalize_optional_scalar
 from app.utils.rgw_payloads import extract_rgw_user_payload
 from app.utils.storage_endpoint_features import resolve_feature_flags
 
 
-def split_tenant_uid(value: str) -> tuple[Optional[str], str]:
-    raw = value.strip()
-    if "$" in raw:
-        tenant, uid = raw.split("$", 1)
-        if tenant and uid:
-            return tenant, uid
-    return None, raw
-
-
-def optional_account_lookup_enabled(ctx: CephAdminContext) -> bool | None:
+def optional_account_lookup_enabled(endpoint: StorageEndpoint) -> bool | None:
     try:
-        return resolve_feature_flags(ctx.endpoint).account_enabled
+        return resolve_feature_flags(endpoint).account_enabled
     except Exception:
         return None
-
-
-def parse_suspended(raw: Any) -> Optional[bool]:
-    if isinstance(raw, bool):
-        return raw
-    if isinstance(raw, (int, float)):
-        return bool(raw)
-    if isinstance(raw, str):
-        normalized = raw.strip().lower()
-        if normalized in {"true", "1", "yes", "suspended", "enabled"}:
-            return True
-        if normalized in {"false", "0", "no", "disabled", "active"}:
-            return False
-    return None
-
-
-def coerce_bool(value: object) -> bool | None:
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, (int, float)):
-        return bool(value)
-    if isinstance(value, str):
-        normalized = value.strip().lower()
-        if normalized in {"true", "1", "yes", "y", "on", "enabled", "suspended"}:
-            return True
-        if normalized in {"false", "0", "no", "n", "off", "disabled", "active"}:
-            return False
-    return None
 
 
 def serialize_access_keys(entries: list[dict]) -> list[CephAdminRgwAccessKey]:
@@ -77,7 +40,6 @@ def serialize_access_keys(entries: list[dict]) -> list[CephAdminRgwAccessKey]:
         results.append(
             CephAdminRgwAccessKey(
                 access_key=access_key,
-                secret_key=normalize_optional_scalar(entry.get("secret_key")),
                 status=status_text,
                 is_active=is_active,
                 created_at=entry.get("create_date") or entry.get("created_at"),
@@ -88,12 +50,20 @@ def serialize_access_keys(entries: list[dict]) -> list[CephAdminRgwAccessKey]:
     return results
 
 
-def load_user_payload(uid: str, tenant: Optional[str], ctx: CephAdminContext) -> dict[str, Any]:
+def load_user_payload(
+    uid: str,
+    tenant: Optional[str],
+    rgw_admin: RGWAdminClient,
+) -> dict[str, Any]:
     normalized_uid = uid.strip()
     if not normalized_uid:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="uid is required")
     try:
-        payload = ctx.rgw_admin.get_user(normalized_uid, tenant=tenant, allow_not_found=True)
+        payload = rgw_admin.get_user(
+            normalized_uid,
+            tenant=tenant,
+            allow_not_found=True,
+        )
     except RGWAdminError as exc:
         raise_http_exception_from_exception(status.HTTP_502_BAD_GATEWAY, exc)
     if not payload or (isinstance(payload, dict) and payload.get("not_found")):
@@ -107,29 +77,45 @@ def require_user_scope(
     uid: str,
     tenant: Optional[str],
     expected_account_id: Optional[str],
-    ctx: CephAdminContext,
+    rgw_admin: RGWAdminClient,
 ) -> dict[str, Any]:
     """Resolve the RGW identity before any user/key mutation, failing closed on drift."""
-    payload = load_user_payload(uid, tenant, ctx)
+    payload = load_user_payload(uid, tenant, rgw_admin)
     user = extract_rgw_user_payload(payload)
-    raw_uid = normalize_optional_scalar(user.get("uid") or user.get("user_id") or payload.get("uid") or payload.get("user_id"))
+    raw_uid = normalize_optional_scalar(
+        user.get("uid")
+        or user.get("user_id")
+        or payload.get("uid")
+        or payload.get("user_id")
+    )
     actual_tenant = normalize_optional_scalar(user.get("tenant") or payload.get("tenant"))
     if raw_uid and "$" in raw_uid:
         embedded_tenant, raw_uid = split_tenant_uid(raw_uid)
         actual_tenant = actual_tenant or embedded_tenant
     account_values = {
-        value for value in (
+        value
+        for value in (
             normalize_optional_scalar(user.get("account_id")),
             normalize_optional_scalar(payload.get("account_id")),
-        ) if value
+        )
+        if value
     }
     if raw_uid != uid or (actual_tenant or None) != (tenant or None):
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="RGW user identity has changed; refresh the user list")
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="RGW user identity has changed; refresh the user list",
+        )
     if expected_account_id:
         if account_values != {expected_account_id}:
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="RGW user account has changed; refresh the user list")
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="RGW user account has changed; refresh the user list",
+            )
     elif account_values:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="expected_account_id is required for an account user")
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="expected_account_id is required for an account user",
+        )
     return payload
 
 

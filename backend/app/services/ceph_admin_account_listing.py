@@ -5,137 +5,107 @@ from __future__ import annotations
 from typing import Any, Callable
 
 from app.models.ceph_admin import (
-    CephAdminRgwUserSummary,
-    CephAdminUserFilterQuery,
-    CephAdminUserFilterRule,
-    PaginatedCephAdminUsersResponse,
+    CephAdminAccountFilterQuery,
+    CephAdminAccountFilterRule,
+    CephAdminRgwAccountSummary,
+    PaginatedCephAdminAccountsResponse,
 )
-from app.routers.ceph_admin.dependencies import CephAdminContext
-from app.routers.ceph_admin.listing_common import (
+from app.services.ceph_admin_account_payloads import (
+    extract_bucket_count,
+    extract_user_count,
+)
+from app.services.ceph_admin_identity_listing_cache import (
     EndpointListCacheKey,
+    get_cached_accounts_listing,
+    get_cached_rgw_accounts_payload,
+)
+from app.services.ceph_admin_account_listing_enrichment import (
+    account_field_needs_enrichment,
+    account_profile_needs_enrichment,
+    enrich_accounts,
+)
+from app.services.bucket_listing_shared import listing_sort_key, parse_includes, serialize_filter
+from app.services.ceph_admin_identity_listing_support import (
     apply_advanced_filter,
     apply_simple_search,
     coerce_number,
     collect_filter_fields,
     paginate,
-    parse_filter_query,
-    parse_includes,
 )
-from app.routers.ceph_admin.user_common import (
-    coerce_bool,
-    split_tenant_uid,
-)
-from app.routers.ceph_admin.user_listing_enrichment import enrich_users
-from app.routers.ceph_admin.user_listing_cache import (
-    get_cached_rgw_users_payload,
-    get_cached_users_listing,
-)
-from app.services.bucket_listing_shared import listing_sort_key, serialize_filter
 from app.services.listing_progress import (
     ListingProgressEmitter,
     ListingProgressSnapshot,
     emit_listing_ready,
     invoke_cancel_check,
 )
-from app.services.listing_rule_matching import (
-    match_boolean_rule,
-    match_numeric_rule,
-    match_text_rule,
-)
+from app.services.listing_filter_query import parse_filter_query
+from app.services.listing_rule_matching import match_numeric_rule, match_text_rule
+from app.services.rgw_admin import RGWAdminClient
+from app.utils.normalize import normalize_optional_scalar
+from app.utils.quota_stats import extract_quota_limits
+from app.utils.rgw_payloads import parse_rgw_int
 from app.utils.usage_stats import compute_usage_ratio_percent
 
 
-def _clone_user(user: CephAdminRgwUserSummary) -> CephAdminRgwUserSummary:
-    return user.model_copy(deep=True)
+def _clone_account(account: CephAdminRgwAccountSummary) -> CephAdminRgwAccountSummary:
+    return account.model_copy(deep=True)
 
 
-def _clone_user_list(
-    items: list[CephAdminRgwUserSummary],
-) -> list[CephAdminRgwUserSummary]:
-    return [_clone_user(item) for item in items]
+def _clone_account_list(
+    items: list[CephAdminRgwAccountSummary],
+) -> list[CephAdminRgwAccountSummary]:
+    return [_clone_account(item) for item in items]
 
 
-def _clear_optional_user_details(item: CephAdminRgwUserSummary) -> None:
-    item.account_id = None
-    item.account_name = None
-    item.full_name = None
-    item.email = None
-    item.suspended = None
-    item.max_buckets = None
-    item.quota_max_size_bytes = None
-    item.quota_max_objects = None
-    item.used_bytes = None
-    item.object_count = None
+def _parse_advanced_filter(raw: str | None) -> CephAdminAccountFilterQuery | None:
+    return parse_filter_query(raw, query_cls=CephAdminAccountFilterQuery)
 
 
-def _parse_advanced_filter(raw: str | None) -> CephAdminUserFilterQuery | None:
-    return parse_filter_query(raw, query_cls=CephAdminUserFilterQuery)
-
-
-def _match_user_field_rule(
-    user: CephAdminRgwUserSummary,
-    rule: CephAdminUserFilterRule,
+def _match_account_field_rule(
+    account: CephAdminRgwAccountSummary,
+    rule: CephAdminAccountFilterRule,
 ) -> bool:
     field = rule.field
     op = rule.op
     if field == "quota_usage_size_percent":
         value = compute_usage_ratio_percent(
-            user.used_bytes,
-            user.quota_max_size_bytes,
+            account.used_bytes,
+            account.quota_max_size_bytes,
         )
     elif field == "quota_usage_object_percent":
         value = compute_usage_ratio_percent(
-            user.object_count,
-            user.quota_max_objects,
+            account.object_count,
+            account.quota_max_objects,
         )
     else:
-        value = getattr(user, field, None)
+        value = getattr(account, field, None)
     if op == "is_null":
         return value is None
     if op == "not_null":
         return value is not None
-    if field == "suspended":
-        return match_boolean_rule(
-            value,
-            op,
-            rule.value,
-            coerce=coerce_bool,
-            default_if_none=False,
-        )
     if value is None:
         return False
-    if field in {
-        "uid",
-        "tenant",
-        "account_id",
-        "account_name",
-        "full_name",
-        "email",
-    }:
+    if field in {"account_id", "account_name", "email"}:
         return match_text_rule(value, op, rule.value)
     return match_numeric_rule(value, op, rule.value, coerce=coerce_number)
 
 
-def _match_user_rules(
-    user: CephAdminRgwUserSummary,
-    rules: list[CephAdminUserFilterRule],
+def _match_account_rules(
+    account: CephAdminRgwAccountSummary,
+    rules: list[CephAdminAccountFilterRule],
     match: str,
 ) -> bool:
     if not rules:
         return True
-    results = [_match_user_field_rule(user, rule) for rule in rules]
+    results = [_match_account_field_rule(account, rule) for rule in rules]
     return all(results) if match == "all" else any(results)
 
 
-def _includes_for_user_fields(fields: set[str]) -> set[str]:
+def _includes_for_account_fields(fields: set[str]) -> set[str]:
     include: set[str] = set()
-    if fields & {"account_id", "account_name"}:
-        include.add("account")
-    if fields & {"full_name", "email"}:
+    if fields & {"account_name", "email"}:
         include.add("profile")
-    if "suspended" in fields:
-        include.add("status")
-    if "max_buckets" in fields:
+    if fields & {"max_users", "max_buckets"}:
         include.add("limits")
     if fields & {
         "quota_max_size_bytes",
@@ -144,6 +114,8 @@ def _includes_for_user_fields(fields: set[str]) -> set[str]:
         "quota_usage_object_percent",
     }:
         include.add("quota")
+    if fields & {"bucket_count", "user_count"}:
+        include.add("stats")
     if fields & {
         "used_bytes",
         "object_count",
@@ -154,38 +126,56 @@ def _includes_for_user_fields(fields: set[str]) -> set[str]:
     return include
 
 
-def _user_from_entry(entry: object) -> CephAdminRgwUserSummary | None:
-    if isinstance(entry, dict):
-        raw_uid = entry.get("user") or entry.get("uid") or entry.get("id")
-    else:
-        raw_uid = entry
-    uid = str(raw_uid or "").strip()
-    if not uid:
+def _account_from_entry(entry: object) -> CephAdminRgwAccountSummary | None:
+    if not isinstance(entry, dict):
+        account_id = str(entry or "").strip()
+        return CephAdminRgwAccountSummary(account_id=account_id) if account_id else None
+
+    account_id = str(entry.get("account_id") or entry.get("id") or "").strip()
+    if not account_id:
         return None
-    tenant, user_uid = split_tenant_uid(uid)
-    return CephAdminRgwUserSummary(uid=user_uid if tenant else uid, tenant=tenant)
+    limits = entry.get("limits") if isinstance(entry.get("limits"), dict) else {}
+    quota_size, quota_objects = extract_quota_limits(
+        entry,
+        keys=("quota", "account_quota"),
+    )
+    return CephAdminRgwAccountSummary(
+        account_id=account_id,
+        account_name=normalize_optional_scalar(
+            entry.get("account_name") or entry.get("name") or entry.get("display_name")
+        ),
+        email=normalize_optional_scalar(entry.get("email") or entry.get("mail")),
+        max_users=parse_rgw_int(entry.get("max_users") or limits.get("max_users")),
+        max_buckets=parse_rgw_int(entry.get("max_buckets") or limits.get("max_buckets")),
+        quota_max_size_bytes=quota_size,
+        quota_max_objects=quota_objects,
+        bucket_count=extract_bucket_count(entry),
+        user_count=extract_user_count(entry),
+    )
 
 
-def _user_sort_key(
-    user: CephAdminRgwUserSummary,
+def _account_sort_key(
+    account: CephAdminRgwAccountSummary,
     sort_by: str,
 ) -> tuple[int, Any, str]:
-    if sort_by == "tenant":
-        value: Any = user.tenant or ""
-    elif sort_by == "account_name":
-        value = user.account_name or user.account_id or ""
-    elif sort_by in {"full_name", "email"}:
-        value = getattr(user, sort_by) or ""
-    elif sort_by == "suspended":
-        value = -1 if user.suspended is None else int(bool(user.suspended))
-    elif sort_by in {"max_buckets", "quota_max_size_bytes", "quota_max_objects"}:
-        value = getattr(user, sort_by)
+    if sort_by in {"account_name", "name"}:
+        value: Any = account.account_name or account.account_id
+    elif sort_by in {
+        "email",
+        "max_users",
+        "max_buckets",
+        "quota_max_size_bytes",
+        "quota_max_objects",
+        "bucket_count",
+        "user_count",
+    }:
+        value = getattr(account, sort_by)
     else:
-        value = user.uid
-    return listing_sort_key(value, user.uid or "")
+        value = account.account_id
+    return listing_sort_key(value, account.account_id or "")
 
 
-class _UserListingPipeline:
+class _AccountListingPipeline:
     def __init__(
         self,
         *,
@@ -196,7 +186,8 @@ class _UserListingPipeline:
         sort_by: str,
         sort_dir: str,
         include: list[str],
-        ctx: CephAdminContext,
+        endpoint_id: int,
+        rgw_admin: RGWAdminClient,
         progress_callback: Callable[[ListingProgressSnapshot], None] | None,
         cancel_check: Callable[[], None] | None,
     ) -> None:
@@ -207,15 +198,16 @@ class _UserListingPipeline:
         self.sort_by = sort_by
         self.sort_dir = sort_dir
         self.include = include
-        self.ctx = ctx
+        self.endpoint_id = endpoint_id
+        self.rgw_admin = rgw_admin
         self.progress = ListingProgressEmitter(progress_callback)
         self.cancel_check = cancel_check
-        self.parsed_filter: CephAdminUserFilterQuery | None = None
+        self.parsed_filter: CephAdminAccountFilterQuery | None = None
         self.advanced_filter_active = False
         self.requested: set[str] = set()
         self.cache_key: EndpointListCacheKey | None = None
 
-    def run(self) -> PaginatedCephAdminUsersResponse:
+    def run(self) -> PaginatedCephAdminAccountsResponse:
         self.progress.emit(
             percent=0,
             stage="prepare",
@@ -224,10 +216,10 @@ class _UserListingPipeline:
         )
         invoke_cancel_check(self.cancel_check)
         self._prepare_query()
-        if self.cache_key is None:
-            raise RuntimeError("User listing cache key is not initialized")
 
-        results = get_cached_users_listing(self.cache_key, self._build_listing)
+        if self.cache_key is None:
+            raise RuntimeError("Account listing cache key is not initialized")
+        results = get_cached_accounts_listing(self.cache_key, self._build_listing)
         emit_listing_ready(
             self.progress,
             item_count=len(results),
@@ -244,7 +236,7 @@ class _UserListingPipeline:
             message="Search completed",
             force=True,
         )
-        return PaginatedCephAdminUsersResponse(
+        return PaginatedCephAdminAccountsResponse(
             items=page_items,
             total=total,
             page=self.page,
@@ -254,50 +246,49 @@ class _UserListingPipeline:
 
     def _prepare_query(self) -> None:
         self.requested = parse_includes(self.include) & {
-            "account",
             "profile",
-            "status",
             "limits",
             "quota",
+            "stats",
         }
         self.parsed_filter = _parse_advanced_filter(self.raw_advanced_filter)
         self.advanced_filter_active = bool(
             self.parsed_filter and self.parsed_filter.rules
         )
         self.cache_key = EndpointListCacheKey(
-            endpoint_id=self.ctx.endpoint.id,
+            endpoint_id=self.endpoint_id,
             advanced_filter=serialize_filter(self.parsed_filter),
             sort_by=self.sort_by,
             sort_dir=self.sort_dir,
         )
 
-    def _build_listing(self) -> list[CephAdminRgwUserSummary]:
+    def _build_listing(self) -> list[CephAdminRgwAccountSummary]:
         self.progress.emit(
             percent=10,
             stage="load_entries",
-            message="Loading RGW users",
+            message="Loading RGW accounts",
             force=True,
         )
         invoke_cancel_check(self.cancel_check)
-        payload = get_cached_rgw_users_payload(self.ctx)
+        payload = get_cached_rgw_accounts_payload(
+            self.endpoint_id,
+            lambda: self.rgw_admin.list_accounts(include_details=False),
+        )
         results = [
-            user
+            account
             for entry in payload or []
-            if (user := _user_from_entry(entry)) is not None
+            if (account := _account_from_entry(entry)) is not None
         ]
         self.progress.emit(
             percent=35,
             stage="scan_entries",
             processed=len(results),
             total=len(results),
-            message="RGW user scanning completed",
+            message="RGW account scanning completed",
             force=True,
         )
         invoke_cancel_check(self.cancel_check)
-        requested = _includes_for_user_fields(
-            collect_filter_fields(self.parsed_filter) | {self.sort_by or "uid"}
-        )
-        results = self._enrich_for_listing(results, requested)
+        results = self._enrich_for_listing(results)
         if self.advanced_filter_active:
             self.progress.emit(
                 percent=65,
@@ -307,22 +298,31 @@ class _UserListingPipeline:
                 message="Applying advanced filters",
                 force=True,
             )
-        results = apply_advanced_filter(results, self.parsed_filter, _match_user_rules)
+        results = apply_advanced_filter(
+            results,
+            self.parsed_filter,
+            _match_account_rules,
+        )
         invoke_cancel_check(self.cancel_check)
         results.sort(
-            key=lambda user: _user_sort_key(user, self.sort_by),
+            key=lambda account: _account_sort_key(account, self.sort_by),
             reverse=self.sort_dir == "desc",
         )
-        if requested:
-            for user in results:
-                _clear_optional_user_details(user)
         return results
 
     def _enrich_for_listing(
         self,
-        results: list[CephAdminRgwUserSummary],
-        requested: set[str],
-    ) -> list[CephAdminRgwUserSummary]:
+        results: list[CephAdminRgwAccountSummary],
+    ) -> list[CephAdminRgwAccountSummary]:
+        fields = collect_filter_fields(self.parsed_filter) | {
+            self.sort_by or "account_id"
+        }
+        fields_needing_enrichment = {
+            field
+            for field in fields
+            if any(account_field_needs_enrichment(item, field) for item in results)
+        }
+        requested = _includes_for_account_fields(fields_needing_enrichment)
         if not requested:
             return results
         self.progress.emit(
@@ -330,16 +330,16 @@ class _UserListingPipeline:
             stage="detail_enrichment",
             processed=0,
             total=len(results),
-            message="Loading user details",
+            message="Loading account details",
             force=True,
         )
-        enriched = enrich_users(
+        enriched = enrich_accounts(
             results,
             requested,
-            self.ctx,
+            self.rgw_admin,
             progress=self.progress,
             progress_stage="detail_enrichment",
-            progress_message="Loading user details",
+            progress_message="Loading account details",
             progress_start=50,
             progress_end=64,
             cancel_check=self.cancel_check,
@@ -349,22 +349,25 @@ class _UserListingPipeline:
 
     def _search(
         self,
-        results: list[CephAdminRgwUserSummary],
-    ) -> list[CephAdminRgwUserSummary]:
+        results: list[CephAdminRgwAccountSummary],
+    ) -> list[CephAdminRgwAccountSummary]:
         return apply_simple_search(
             results,
             search=self.search,
             parsed_filter=self.parsed_filter,
-            match_with_filter=lambda user, needle: needle in user.uid.lower(),
-            match_without_filter=lambda user, needle: (
-                needle in user.uid.lower() or needle in (user.tenant or "").lower()
+            match_with_filter=lambda account, needle: (
+                needle in account.account_id.lower()
+            ),
+            match_without_filter=lambda account, needle: (
+                needle in account.account_id.lower()
+                or needle in (account.account_name or "").lower()
             ),
         )
 
     def _paginate(
         self,
-        filtered_results: list[CephAdminRgwUserSummary],
-    ) -> tuple[list[CephAdminRgwUserSummary], int, bool]:
+        filtered_results: list[CephAdminRgwAccountSummary],
+    ) -> tuple[list[CephAdminRgwAccountSummary], int, bool]:
         self.progress.emit(
             percent=85,
             stage="paginate",
@@ -378,14 +381,24 @@ class _UserListingPipeline:
             filtered_results,
             page=self.page,
             page_size=self.page_size,
-            clone=_clone_user_list,
+            clone=_clone_account_list,
         )
 
     def _enrich_page(
         self,
-        page_items: list[CephAdminRgwUserSummary],
-    ) -> list[CephAdminRgwUserSummary]:
-        if not self.requested or not page_items:
+        page_items: list[CephAdminRgwAccountSummary],
+    ) -> list[CephAdminRgwAccountSummary]:
+        requested = set(self.requested)
+        if "profile" in requested and not any(
+            account_profile_needs_enrichment(item) for item in page_items
+        ):
+            requested.discard("profile")
+        if any(
+            account_field_needs_enrichment(item, "account_name")
+            for item in page_items
+        ):
+            requested.add("profile")
+        if not requested or not page_items:
             return page_items
         self.progress.emit(
             percent=92,
@@ -395,10 +408,10 @@ class _UserListingPipeline:
             message="Loading page details",
             force=True,
         )
-        enriched = enrich_users(
+        enriched = enrich_accounts(
             page_items,
-            self.requested,
-            self.ctx,
+            requested,
+            self.rgw_admin,
             progress=self.progress,
             progress_stage="page_enrichment",
             progress_message="Loading page details",
@@ -410,7 +423,7 @@ class _UserListingPipeline:
         return enriched
 
 
-def compute_users_listing(
+def compute_accounts_listing(
     *,
     page: int,
     page_size: int,
@@ -419,11 +432,12 @@ def compute_users_listing(
     sort_by: str,
     sort_dir: str,
     include: list[str],
-    ctx: CephAdminContext,
+    endpoint_id: int,
+    rgw_admin: RGWAdminClient,
     progress_callback: Callable[[ListingProgressSnapshot], None] | None = None,
     cancel_check: Callable[[], None] | None = None,
-) -> PaginatedCephAdminUsersResponse:
-    return _UserListingPipeline(
+) -> PaginatedCephAdminAccountsResponse:
+    return _AccountListingPipeline(
         page=page,
         page_size=page_size,
         search=search,
@@ -431,7 +445,8 @@ def compute_users_listing(
         sort_by=sort_by,
         sort_dir=sort_dir,
         include=include,
-        ctx=ctx,
+        endpoint_id=endpoint_id,
+        rgw_admin=rgw_admin,
         progress_callback=progress_callback,
         cancel_check=cancel_check,
     ).run()

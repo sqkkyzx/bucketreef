@@ -14,16 +14,16 @@ from app.models.bucket import (
     BucketVersioningStatus,
     BucketVersioningUpdate,
 )
-from app.routers.ceph_admin.audit import record_ceph_admin_action
+from app.services.ceph_admin_audit import record_ceph_admin_action
 from app.routers.ceph_admin.bucket_config_common import (
-    _require_sse_feature,
     _run_bucket_config_delete,
     _run_bucket_config_update,
 )
+from app.services.storage_endpoint_feature_guards import require_sse_feature
 from app.routers.ceph_admin.dependencies import (
-    CephAdminContext,
     get_ceph_admin_context,
 )
+from app.services.ceph_admin_context import CephAdminContext
 from app.services import bucket_config_actions
 from app.services.bucket_configuration_service import BucketConfigurationService
 from app.services.ceph_admin_bucket_listing_cache import invalidate_bucket_listing_cache
@@ -161,7 +161,7 @@ def get_bucket_encryption(
     bucket_name: str,
     ctx: CephAdminContext = Depends(get_ceph_admin_context),
 ) -> BucketEncryptionConfiguration:
-    _require_sse_feature(ctx)
+    require_sse_feature(ctx.endpoint)
     service = BucketConfigurationService()
     context = build_ceph_admin_s3_context(ctx)
     return bucket_config_actions.get_bucket_encryption_config(
@@ -177,7 +177,7 @@ def put_bucket_encryption(
     payload: BucketEncryptionConfiguration,
     ctx: CephAdminContext = Depends(get_ceph_admin_context),
 ) -> BucketEncryptionConfiguration:
-    _require_sse_feature(ctx)
+    require_sse_feature(ctx.endpoint)
     return _run_bucket_config_update(
         ctx,
         bucket_name,
@@ -192,7 +192,7 @@ def delete_bucket_encryption(
     bucket_name: str,
     ctx: CephAdminContext = Depends(get_ceph_admin_context),
 ) -> Response:
-    _require_sse_feature(ctx)
+    require_sse_feature(ctx.endpoint)
     return _run_bucket_config_delete(
         ctx,
         bucket_name,

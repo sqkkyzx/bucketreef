@@ -13,24 +13,26 @@ from app.models.ceph_admin import (
     CephAdminRgwUserCreate,
     CephAdminRgwUserConfigUpdate,
 )
-from app.routers.ceph_admin import account_listing_cache
 from app.routers.ceph_admin import account_profiles as account_profiles_router
 from app.routers.ceph_admin import accounts as accounts_router
 from app.routers.ceph_admin import buckets as buckets_router
-from app.routers.ceph_admin import user_listing_cache
 from app.routers.ceph_admin import user_profiles as user_profiles_router
 from app.routers.ceph_admin import user_keys as user_keys_router
 from app.services import ceph_admin_bucket_listing_cache
+from app.services.ceph_admin_identity_listing_cache import (
+    invalidate_accounts_listing_cache,
+    invalidate_users_listing_cache,
+)
 
 
 @pytest.fixture(autouse=True)
 def clear_ceph_admin_caches():
-    account_listing_cache.invalidate_accounts_listing_cache()
-    user_listing_cache.invalidate_users_listing_cache()
+    invalidate_accounts_listing_cache()
+    invalidate_users_listing_cache()
     ceph_admin_bucket_listing_cache.reset_ceph_admin_bucket_listing_caches_for_tests()
     yield
-    account_listing_cache.invalidate_accounts_listing_cache()
-    user_listing_cache.invalidate_users_listing_cache()
+    invalidate_accounts_listing_cache()
+    invalidate_users_listing_cache()
     ceph_admin_bucket_listing_cache.reset_ceph_admin_bucket_listing_caches_for_tests()
 
 
@@ -589,7 +591,7 @@ def test_detail_read_checks_account_before_fetching_keys():
     assert raised.value.status_code == 409
 
 
-def test_key_creation_checks_account_before_mutating_rgw():
+def test_key_creation_checks_account_before_mutating_rgw(db_session):
     class GuardedAdmin(FakeUsersAdmin):
         def create_access_key(self, uid, tenant=None):
             pytest.fail("A foreign user key must not be created")
@@ -597,7 +599,7 @@ def test_key_creation_checks_account_before_mutating_rgw():
     with pytest.raises(HTTPException) as raised:
         user_keys_router.create_rgw_user_key(
             "billing-user", expected_account_id="RGW88888888888888888",
-            ctx=_ctx(902, GuardedAdmin()),
+            ctx=_ctx(902, GuardedAdmin()), db=db_session,
         )
     assert raised.value.status_code == 409
 
