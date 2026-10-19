@@ -36,16 +36,10 @@ type TopbarProps = {
   profilePath?: string;
 };
 
-type StoredAccountLink = {
-  account_id: number;
-};
-
 type StoredTopbarUser = {
   full_name?: string | null;
   avatar?: UserAvatarDescriptor | null;
   role?: UiRole | null;
-  can_create_manual_private_connections?: boolean | null;
-  can_provision_managed_private_connections?: boolean | null;
   effective_access?: Pick<
     EffectiveUserAccess,
     | "can_create_manual_private_connections"
@@ -53,7 +47,6 @@ type StoredTopbarUser = {
     | "has_owned_private_connections"
   > | null;
   authType?: "password" | "s3_session" | "oidc" | "ldap" | null;
-  account_links?: StoredAccountLink[] | null;
 };
 
 function resolveUiRoleLabel(user: StoredTopbarUser | null, text: ShellText): string {
@@ -139,7 +132,7 @@ export default function Topbar({
   }, [adaptiveControlDescriptors, controlsAvailableWidth, hasAdaptiveControls, isMobileViewport]);
 
   useEffect(() => {
-    if (!hasAdaptiveControls) return;
+    if (!hasAdaptiveControls || isMobileViewport) return;
     const target = controlsStripRef.current;
     if (!target) return;
 
@@ -171,7 +164,7 @@ export default function Topbar({
     return () => {
       window.removeEventListener("resize", update);
     };
-  }, [hasAdaptiveControls]);
+  }, [hasAdaptiveControls, isMobileViewport]);
 
   return (
     <>
@@ -198,7 +191,7 @@ export default function Topbar({
               <TopbarWorkspaceSelector section={section} workspaceSwitcher={workspaceSwitcher} />
             ) : null}
 
-            {hasAdaptiveControls ? (
+            {hasAdaptiveControls && !isMobileViewport ? (
               <div ref={controlsStripRef} className="flex min-w-0 flex-1 items-center" style={{ minWidth: minimumControlsWidth }}>
                 <div className="flex min-w-0 items-center gap-2">
                   {inlineControls.map((entry) => {
@@ -206,9 +199,9 @@ export default function Topbar({
                   })}
                 </div>
               </div>
-            ) : (
+            ) : !hasAdaptiveControls ? (
               controlsContent && <div className="hidden min-w-0 items-center md:flex">{controlsContent}</div>
-            )}
+            ) : null}
           </div>
 
           {inlineContent && <div className="hidden min-w-0 items-center pl-1 xl:flex">{inlineContent}</div>}
@@ -232,6 +225,18 @@ export default function Topbar({
           </div>
         </div>
       </div>
+
+      {isMobileViewport && hasAdaptiveControls ? (
+        <div className="shell-mobile-context-strip flex min-w-0 items-center gap-2 overflow-x-auto border-t px-3 py-1.5 md:hidden">
+          {[...adaptiveControlDescriptors]
+            .sort((left, right) => left.priority - right.priority)
+            .map((descriptor) => (
+              <div key={descriptor.id} className="min-w-[11rem] max-w-[18rem] flex-1">
+                {descriptor.renderControl("icon_label")}
+              </div>
+            ))}
+        </div>
+      ) : null}
 
     </>
   );

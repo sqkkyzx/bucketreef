@@ -1,4 +1,5 @@
 import type { AccountUserLink } from "../../../src/api/accounts";
+import { DEFAULT_MANAGER_FEATURE_POLICIES } from "../../../src/api/featurePolicies";
 import type { User } from "../../../src/api/users";
 import type { MockRule } from "../types";
 import { adminUser, storageUser, superAdminUser } from "./users";
@@ -47,6 +48,10 @@ const ADMIN_UI_USERS: User[] = [
   {
     ...superAdminUser,
     can_access_storage_ops: true,
+    effective_access: {
+      ...superAdminUser.effective_access,
+      can_access_storage_ops: true,
+    },
     last_login_at: "2026-03-08T08:45:00Z",
   },
   {
@@ -56,11 +61,34 @@ const ADMIN_UI_USERS: User[] = [
       ...adminUser.account_links,
       { account_id: 102, manager_role: "account_administrator", portal_role: null },
     ],
+    effective_access: {
+      ...adminUser.effective_access,
+      can_access_storage_ops: true,
+      account_links: [
+        ...adminUser.effective_access.account_links,
+        {
+          account_id: 102,
+          manager_role: "account_administrator",
+          portal_role: null,
+          provenance: {
+            direct_manager_role: "account_administrator",
+            direct_portal_role: null,
+            direct_determines_effective_manager_role: true,
+            direct_determines_effective_portal_role: false,
+            groups: [],
+          },
+        },
+      ],
+    },
     last_login_at: "2026-03-08T08:15:00Z",
   },
   {
     ...storageUser,
     can_access_storage_ops: true,
+    effective_access: {
+      ...storageUser.effective_access,
+      can_access_storage_ops: true,
+    },
     last_login_at: "2026-03-07T17:20:00Z",
   },
 ];
@@ -158,6 +186,7 @@ const ADMIN_STORAGE_ENDPOINTS = [
 ];
 
 const GENERAL_SETTINGS = {
+  manager_feature_policies: DEFAULT_MANAGER_FEATURE_POLICIES,
   manager_enabled: true,
   ceph_admin_enabled: true,
   browser_enabled: true,
@@ -1617,7 +1646,7 @@ export function buildBaseRules(): MockRule[] {
         admin: { available: false, context_count: 0 },
         ceph_admin: { available: false, context_count: 0 },
         storage_ops: { available: false, context_count: 0 },
-        manager: { available: false, context_count: 0 },
+        manager: { available: true, context_count: EXECUTION_CONTEXTS.length },
         browser: { available: true, context_count: 1 },
         portal: { available: true, context_count: 1 },
         default_workspace: "portal",
