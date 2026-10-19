@@ -28,7 +28,7 @@ export type BillingCost = {
   complete: boolean;
 };
 
-export type BillingStorageChargeQuantity = {
+type BillingStorageChargeQuantity = {
   basis: "actual_usage" | "allocated_quota";
   quantity_gib_month?: BillingDecimal | null;
   observations_collected: number;
@@ -253,19 +253,25 @@ export type BillingAnalysisPreview = {
   conflicts: BillingEntityConflict[];
 };
 
-export type BillingStatementUnitPrices = {
+type BillingStatementUnitPrices = {
   storage_gb_month_price?: BillingDecimal | null;
   egress_gb_price?: BillingDecimal | null;
   ingress_gb_price?: BillingDecimal | null;
   requests_per_1000_price?: BillingDecimal | null;
 };
 
-export type BillingStatementComponentAmounts = {
+type BillingStatementComponentAmounts = {
   storage_cost?: BillingDecimal | null;
   egress_cost?: BillingDecimal | null;
   ingress_cost?: BillingDecimal | null;
   requests_cost?: BillingDecimal | null;
   total_cost?: BillingDecimal | null;
+};
+
+type BillingStatementLineEstimation = {
+  usage_extrapolation_factor?: BillingDecimal | null;
+  storage_method?: "observed_daily_average" | "allocated_quota_average" | null;
+  storage_extrapolation_factor?: BillingDecimal | null;
 };
 
 export type BillingStatementLineSnapshot = {
@@ -286,6 +292,7 @@ export type BillingStatementLineSnapshot = {
   rate_resolution: BillingRateResolution;
   unit_prices: BillingStatementUnitPrices;
   amounts: BillingStatementComponentAmounts;
+  estimation?: BillingStatementLineEstimation | null;
   complete: boolean;
   issues: string[];
 };
@@ -313,6 +320,9 @@ export type BillingStatementItem = {
   coverage: BillingAnalysisCoverage;
   blockers: string[];
   storage_charge_bases: Array<"actual_usage" | "allocated_quota">;
+  estimation_mode: "strict" | "coverage_extrapolation";
+  estimation_reason?: string | null;
+  estimation_requested_by_email?: string | null;
   subtotal: BillingDecimal;
   total: BillingDecimal;
   revision: number;
@@ -323,7 +333,7 @@ export type BillingStatementItem = {
   lines: BillingStatementLineItem[];
 };
 
-export type BillingStatementGenerationResult = {
+type BillingStatementGenerationResult = {
   month: string;
   billing_entity_id: number;
   blockers: string[];
@@ -480,11 +490,15 @@ export async function generateBillingStatements(
   month: string,
   billingEntityId: number,
   regenerate = false,
+  estimationMode: "strict" | "coverage_extrapolation" = "strict",
+  estimationReason?: string | null,
 ): Promise<BillingStatementGenerationResult> {
   const { data } = await client.post<BillingStatementGenerationResult>("/admin/billing/statements/generate", {
     month,
     billing_entity_id: billingEntityId,
     regenerate,
+    estimation_mode: estimationMode,
+    estimation_reason: estimationReason || null,
   });
   return data;
 }
@@ -583,7 +597,7 @@ export type BillingRateCardPayload = {
   storage_endpoint_id?: number | null;
 };
 
-export type BillingRateCardVersionPayload = Omit<
+type BillingRateCardVersionPayload = Omit<
   BillingRateCardPayload,
   "name" | "storage_endpoint_id" | "effective_to"
 >;

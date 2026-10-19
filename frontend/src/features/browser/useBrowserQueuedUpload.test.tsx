@@ -74,9 +74,8 @@ function createOptions() {
       complete: vi.fn(),
       fail: vi.fn(),
     },
-    allowProxyFallback: true,
     updateOperation: vi.fn(),
-    useProxyTransfers: false,
+    uploadMode: "direct" as const,
   };
 }
 
@@ -129,7 +128,7 @@ describe("useBrowserQueuedUpload", () => {
 
   it("uploads through the authenticated S3 session when no account selector is needed", async () => {
     uploadMocks.uploadBrowserFile.mockImplementation(async ({ uploadProxy }: { uploadProxy: () => Promise<void> }) => uploadProxy());
-    const options = { ...createOptions(), useProxyTransfers: true };
+    const options = { ...createOptions(), uploadMode: "proxy" as const };
     const { result } = renderHook(() => useBrowserQueuedUpload(options));
     await act(async () => expect(result.current({ ...makeItem(), contextId: "" })).resolves.toBe(true));
     expect(apiMocks.proxyUpload).toHaveBeenCalledWith("", "bucket-a", "prefix/docs/report.txt", expect.any(File), expect.any(Function), expect.any(AbortSignal), "customer-key", undefined, options.requestOptions);
@@ -196,34 +195,35 @@ describe("useBrowserQueuedUpload", () => {
     });
   });
 
-  it("falls back to the proxy when a direct browser upload cannot reach S3", async () => {
-    uploadMocks.uploadBrowserFile
-      .mockRejectedValueOnce(new TypeError("Failed to fetch"))
-      .mockResolvedValueOnce(undefined);
+  it("never replays a failed direct upload through the proxy", async () => {
+    uploadMocks.uploadBrowserFile.mockRejectedValueOnce(new TypeError("Failed to fetch"));
     const options = createOptions();
     const { result } = renderHook(() => useBrowserQueuedUpload(options));
+    let uploaded = true;
+    await act(async () => { uploaded = await result.current(makeItem()); });
+    expect(uploadMocks.uploadBrowserFile).toHaveBeenCalledOnce();
+    expect(uploadMocks.uploadBrowserFile).toHaveBeenCalledWith(expect.objectContaining({ mode: "direct" }));
+    expect(apiMocks.proxyUpload).not.toHaveBeenCalled();
+    expect(options.completeOperation).toHaveBeenCalledWith("op-1", "failed", expect.any(String));
+    expect(uploaded).toBe(false);
+  });
 
-    let uploaded = false;
+  it("rejects uploads when no upload mode is available", async () => {
+    const options = { ...createOptions(), uploadMode: "unavailable" as const };
+    const { result } = renderHook(() => useBrowserQueuedUpload(options));
+
+    let uploaded = true;
     await act(async () => {
       uploaded = await result.current(makeItem());
     });
 
-    expect(uploadMocks.uploadBrowserFile).toHaveBeenNthCalledWith(
-      1,
-      expect.objectContaining({ mode: "direct" }),
-    );
-    expect(uploadMocks.uploadBrowserFile).toHaveBeenNthCalledWith(
-      2,
-      expect.objectContaining({ mode: "proxy" }),
-    );
-    expect(options.updateOperation).toHaveBeenCalledWith("op-1", {
-      label: "Proxy upload fallback",
-    });
+    expect(uploadMocks.uploadBrowserFile).not.toHaveBeenCalled();
+    expect(uploadMocks.uploadBrowserFileMultipart).not.toHaveBeenCalled();
+    expect(apiMocks.proxyUpload).not.toHaveBeenCalled();
     expect(options.onWarning).toHaveBeenCalledWith(
-      "Direct upload was unavailable, so BucketReef completed it through the proxy.",
+      "Uploads are unavailable with the current Browser transfer settings.",
     );
-    expect(options.completeOperation).toHaveBeenCalledWith("op-1", "done");
-    expect(uploaded).toBe(true);
+    expect(uploaded).toBe(false);
   });
 
   it("marks an aborted upload as cancelled", async () => {

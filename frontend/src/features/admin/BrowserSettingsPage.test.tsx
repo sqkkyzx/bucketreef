@@ -26,6 +26,7 @@ function buildSettings(overrides: Partial<AppSettings["general"]> = {}): AppSett
       project_feature_policies: DEFAULT_PROJECT_FEATURE_POLICIES,
       project_collection_policies: DEFAULT_PROJECT_COLLECTION_POLICIES,
       rgw_account_id_prefix: "80",
+      allow_managed_rgw_tenant_creation: false,
       documentation_base_url: "https://docs.bucketreef.ksperis.com",
       manager_enabled: true,
       ceph_admin_enabled: false,
@@ -79,6 +80,8 @@ function buildSettings(overrides: Partial<AppSettings["general"]> = {}): AppSett
       smtp_timeout_seconds: 15,
     },
     browser: {
+      allow_direct_uploads: true,
+      allow_sts_uploads: true,
       allow_proxy_transfers: true,
       direct_upload_parallelism: 5,
       proxy_upload_parallelism: 2,
@@ -130,5 +133,22 @@ describe("BrowserSettingsPage", () => {
     await waitFor(() => {
       expect(toggle).toBeChecked();
     });
+  });
+
+  it("requires at least one upload mode", async () => {
+    render(<BrowserSettingsPage />);
+
+    const direct = await screen.findByLabelText("Allow direct uploads");
+    const sts = screen.getByLabelText("Allow STS uploads");
+    const proxy = screen.getByLabelText("Enable proxy mode");
+    fireEvent.click(direct);
+    fireEvent.click(sts);
+    fireEvent.click(proxy);
+    fireEvent.click(screen.getByRole("button", { name: /save changes/i }));
+
+    expect(updateAppSettingsMock).not.toHaveBeenCalled();
+    expect(
+      screen.getByText("Enable at least one upload mode: direct, STS, or proxy."),
+    ).toBeInTheDocument();
   });
 });

@@ -19,6 +19,7 @@ const listMinimalUsersMock = vi.fn();
 const listMinimalGroupsMock = vi.fn();
 const listAdminTagDefinitionsMock = vi.fn();
 const adminS3UserStatsMock = vi.fn();
+let managedTenantCreationEnabled = false;
 
 const makeTag = (id: number, label: string, color_key = "neutral", scope = "standard") => ({
   id,
@@ -75,6 +76,7 @@ vi.mock("../../api/tags", () => ({
 describe("S3UsersPage modal tabs", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    managedTenantCreationEnabled = false;
     adminS3UserStatsMock.mockReturnValue({ stats: null, loading: false, error: null, reload: vi.fn() });
 
     setSessionUserCache({ id: 1, role: "ui_superadmin" });
@@ -209,8 +211,8 @@ describe("S3UsersPage modal tabs", () => {
 
     const table = await screen.findByRole("table");
     expect(within(table).queryByRole("columnheader", { name: "Ceph tenant" })).not.toBeInTheDocument();
-    expect(within(table).queryByText("RGW tenant: Default")).not.toBeInTheDocument();
-    const tenantLabel = within(table).getByText("RGW tenant: customer01");
+    expect(within(table).queryByText("(Default)")).not.toBeInTheDocument();
+    const tenantLabel = within(table).getByText("(customer01)");
     expect(tenantLabel).toHaveClass("ui-caption");
     expect(within(tenantLabel.closest("td") as HTMLElement).getByText("tenant-user")).toBeInTheDocument();
   });
@@ -596,6 +598,7 @@ describe("S3UsersPage modal tabs", () => {
     }
     expect(nameInput).toHaveClass("ui-control");
     expect(within(dialog).getByLabelText("UID (optional)")).toHaveClass("ui-control");
+    expect(within(dialog).queryByLabelText("Ceph tenant (optional)")).not.toBeInTheDocument();
     expect(within(dialog).getByLabelText("Ceph endpoint *")).toHaveClass("ui-control");
     expect(within(dialog).getByLabelText("Email")).toHaveClass("ui-control");
     expect(within(dialog).getByLabelText("Storage quota")).toHaveClass("ui-control");
@@ -620,6 +623,40 @@ describe("S3UsersPage modal tabs", () => {
       expect.objectContaining({
         name: "tagged-user",
         tags: [expect.objectContaining({ label: "finance", color_key: "neutral" })],
+      })
+    );
+  });
+
+  it("shows and submits the user tenant only when managed tenant creation is enabled", async () => {
+    managedTenantCreationEnabled = true;
+    render(
+      <MemoryRouter>
+        <S3UsersPage />
+      </MemoryRouter>
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "Create user" }));
+    const dialog = screen.getByRole("dialog");
+    fireEvent.change(within(dialog).getByLabelText("Display name *"), {
+      target: { value: "tenant-user" },
+    });
+    fireEvent.change(within(dialog).getByLabelText("UID (optional)"), {
+      target: { value: "tenant-user" },
+    });
+    fireEvent.change(within(dialog).getByLabelText("Ceph tenant (optional)"), {
+      target: { value: "team_a" },
+    });
+    await waitFor(() =>
+      expect(within(dialog).getByRole("button", { name: "Create user" })).toBeEnabled()
+    );
+    fireEvent.click(within(dialog).getByRole("button", { name: "Create user" }));
+
+    await waitFor(() => expect(createS3UserMock).toHaveBeenCalled());
+    expect(createS3UserMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: "tenant-user",
+        uid: "tenant-user",
+        rgw_tenant: "team_a",
       })
     );
   });
@@ -783,9 +820,12 @@ describe("S3UsersPage modal tabs", () => {
   });
 
   it("validates import identifiers inline and freezes the same payload through a retry", async () => {
+    managedTenantCreationEnabled = true;
     render(<MemoryRouter><S3UsersPage /></MemoryRouter>);
     fireEvent.click(await screen.findByRole("button", {name: "Import", exact: true}));
+    const dialog = screen.getByRole("dialog", {name: "Import RGW users"});
     const form = await screen.findByRole("form", {name: "Import RGW users"});
+    expect(dialog).toContainElement(form);
     const fields = within(form), text = fields.getByLabelText("RGW user IDs");
     await waitFor(() => expect(fields.getByRole("button", {name: "Import", exact: true})).toBeEnabled());
     fireEvent.submit(form);
@@ -804,6 +844,7 @@ describe("S3UsersPage modal tabs", () => {
     expect(text).toBeDisabled();
     expect(fields.getByRole("combobox")).toBeDisabled();
     expect(fields.getByRole("button", {name: "Cancel"})).toBeDisabled();
+    expect(within(dialog).getByRole("button", {name: "Close modal"})).toBeDisabled();
     await act(async () => reject(new Error("Fixture import refused")));
     expect(await fields.findByText("Fixture import refused")).toHaveAttribute("role", "alert");
     expect(text).toHaveValue("tenant$user-alpha\nuser-beta");
@@ -816,6 +857,19 @@ describe("S3UsersPage modal tabs", () => {
     fireEvent.click(fields.getByRole("button", {name: "Cancel"}));
     expect(screen.queryByText("Discard changes?")).not.toBeInTheDocument();
     expect(screen.queryByRole("form", {name: "Import RGW users"})).not.toBeInTheDocument();
+  });
+
+  it("blocks tenant-qualified imports while managed RGW tenant creation is disabled", async () => {
+    render(<MemoryRouter><S3UsersPage /></MemoryRouter>);
+    fireEvent.click(await screen.findByRole("button", {name: "Import", exact: true}));
+    const form = await screen.findByRole("form", {name: "Import RGW users"});
+    const fields = within(form);
+    const text = fields.getByLabelText("RGW user IDs");
+    expect(fields.getByText(/for the default tenant/)).toBeInTheDocument();
+    fireEvent.change(text, {target: {value: "tenant$user-alpha"}});
+    fireEvent.submit(form);
+    expect(text).toHaveAccessibleDescription("Tenant-qualified RGW user IDs require Managed RGW tenant creation.");
+    expect(importS3UsersMock).not.toHaveBeenCalled();
   });
 
   it("keeps endpoint capability failures visible and prevents creating or importing", async () => {
@@ -841,5 +895,6 @@ describe("S3UsersPage modal tabs", () => {
 vi.mock("../../components/GeneralSettingsContext", async (importOriginal) => {
     const actual = await importOriginal<typeof import("../../components/GeneralSettingsContext")>();
     return { ...actual, useGeneralSettings: () => ({ generalSettings: { ...actual.DEFAULT_GENERAL_SETTINGS,
+      allow_managed_rgw_tenant_creation: managedTenantCreationEnabled,
       manager_feature_policies: { ...DEFAULT_MANAGER_FEATURE_POLICIES, bucket_quota_management: "targeted", managed_private_connection_provisioning: "targeted" } } }) };
 });

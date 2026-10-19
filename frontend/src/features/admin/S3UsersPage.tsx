@@ -95,6 +95,7 @@ export default function S3UsersPage() {
   const { intlLocale, text: adminText } = useAdminI18n();
   const adminBreadcrumbs = useAdminPageBreadcrumbs();
   const { generalSettings } = useGeneralSettings();
+  const managedTenantCreationEnabled = generalSettings.allow_managed_rgw_tenant_creation;
   const [users, setUsers] = useState<S3User[]>([]);
   const [portalUsers, setPortalUsers] = useState<UserSummary[]>([]);
   const [portalUsersLoaded, setPortalUsersLoaded] = useState(false);
@@ -603,7 +604,7 @@ export default function S3UsersPage() {
   };
 
   const createValidation = useAdminRgwFormValidation(createForm, rgwCreateErrors(createForm, "user"));
-  const importEntries = rgwImportEntries(importText, "user");
+  const importEntries = rgwImportEntries(importText, "user", managedTenantCreationEnabled);
   const importValidation = useAdminRgwFormValidation({importText, storage_endpoint_id: importEndpointId}, {
     ...(importEntries.error ? {importText: importEntries.error} : {}),
     ...(!importEndpointId ? {storage_endpoint_id: adminText("Select a Ceph endpoint.")} : {}),
@@ -629,7 +630,7 @@ export default function S3UsersPage() {
       await createS3User({
         name: createForm.name.trim(),
         uid: createForm.uid.trim() || undefined,
-        rgw_tenant: createForm.rgw_tenant.trim(),
+        rgw_tenant: managedTenantCreationEnabled ? createForm.rgw_tenant.trim() : "",
         email: createForm.email.trim() || undefined,
         tags: normalizeUiTags(createForm.tags),
         quota_max_size_gb: createForm.quota_max_size_gb ? Number(createForm.quota_max_size_gb) : undefined,
@@ -770,7 +771,7 @@ export default function S3UsersPage() {
               <span className="min-w-0 truncate">{user.name}</span>
               {user.rgw_tenant && (
                 <span className="ui-caption shrink-0 text-[var(--ui-text-muted)]">
-                  {adminText("RGW tenant: {tenant}", { tenant: user.rgw_tenant })}
+                  ({user.rgw_tenant})
                 </span>
               )}
             </div>
@@ -867,7 +868,7 @@ export default function S3UsersPage() {
   };
 
   return (
-    <div className={workflowPageHostClass(showImportModal || Boolean(editingUser))}>
+    <div className={workflowPageHostClass(Boolean(editingUser))}>
       <PageHeader actionPresentation="listing"
         title={adminText("RGW Users")}
         description={adminText("Manage standalone RGW users for direct access to Manager.")}
@@ -961,6 +962,7 @@ export default function S3UsersPage() {
             submitDisabled={createPermissionLoading || !createEndpointCanWrite}
             onCancel={createCloseGuard.requestClose} submitLabel={adminText("Create user")} busyLabel={adminText("Creating...")}>
             <AdminRgwCreateFields kind="user" value={createForm} onChange={patch => setCreateForm(current => ({...current, ...patch}))}
+              showTenant={managedTenantCreationEnabled}
               errors={createValidation.errors} busy={creating}
               endpoint={{label: adminText("Ceph endpoint *"), endpoints: adminCephEndpoints, loading: loadingEndpoints,
                 operation: "users", permissionLoading: createPermissionLoading, permissionError: createPermissionError, canWrite: createEndpointCanWrite}}
@@ -972,12 +974,14 @@ export default function S3UsersPage() {
       )}
 
       {showImportModal && (
-        <WorkflowPage title={adminText("Import RGW users")} description={adminText("Import existing standalone RGW users from a Ceph endpoint.")} breadcrumbs={adminBreadcrumbs("rgw-users", {label: adminText("Import")})} backLabel={adminText("Back to RGW users")} backDisabled={importBusy} onBack={importCloseGuard.requestClose} contentVariant="plain" width="standard">
-          <SettingsForm label={adminText("Import RGW users")} busy={importBusy} onSubmit={submitImport}
+        <SettingsDialog title={adminText("Import RGW users")} onClose={importCloseGuard.requestClose} closeDisabled={importBusy} maxWidthClass="max-w-xl">
+          <SettingsForm label={adminText("Import RGW users")} presentation="dialog" busy={importBusy} onSubmit={submitImport}
             submitDisabled={importPermissionLoading || !importEndpointCanWrite}
             onCancel={importCloseGuard.requestClose} submitLabel={adminText("Import")} busyLabel={adminText("Importing...")}>
             <div className="settings-fields settings-form">
-              <p className="settings-body text-[var(--ui-text-muted)]">{adminText("Enter RGW user IDs, one per line. Use tenant$uid for an explicit tenant, or uid for the default tenant. The platform creates a dedicated access key.")}</p>
+              <p className="settings-body text-[var(--ui-text-muted)]">{adminText(managedTenantCreationEnabled
+                ? "Enter RGW user IDs, one per line. Use tenant$uid for an explicit tenant, or uid for the default tenant. The platform creates a dedicated access key."
+                : "Enter RGW user IDs, one per line, for the default tenant. Enable Managed RGW tenant creation to import tenant-qualified users. The platform creates a dedicated access key.")}</p>
               <UiTextarea label={adminText("RGW user IDs")} name="importText" rows={6} required value={importText}
                 error={importValidation.errors.importText} placeholder="user-alpha"
                 onChange={event => setImportText(event.target.value)} />
@@ -990,7 +994,7 @@ export default function S3UsersPage() {
             </div>
           </SettingsForm>
           {importCloseGuard.confirmationDialog}
-        </WorkflowPage>
+        </SettingsDialog>
       )}
 
       {editingUser && (

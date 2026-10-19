@@ -9,7 +9,6 @@ import {
   fetchHealthOverview,
   fetchHealthWorkspaceOverview,
   type EndpointHealthOverviewResponse,
-  type HealthCheckStatus,
   type WorkspaceEndpointHealthEntry,
   type WorkspaceEndpointHealthOverviewResponse,
 } from "../../api/healthchecks";
@@ -369,10 +368,13 @@ function RecentActivityCard({ logs, loading, unavailableReason }: {
 }) {
   const { text } = useAdminDashboardI18n();
   return (
-    <WorkspaceDashboardCard title={text("recentActivity")}>
+    <WorkspaceDashboardCard
+      title={text("recentActivity")}
+      action={<WorkspaceDashboardActionLink to="/admin/audit">{text("auditLogs")}<OpenIcon className="h-3.5 w-3.5" /></WorkspaceDashboardActionLink>}
+    >
       {loading ? <p role="status" className="ui-dashboard-note">{text("loadingActivity")}</p> : unavailableReason ? <p role="status" className="ui-dashboard-note">{unavailableReason}</p> : logs.length === 0 ? <p className="ui-dashboard-note">{text("noActivity")}</p> : (
         <ul className="ui-dashboard-activity">
-          {logs.slice(0, 5).map((log) => (
+          {logs.slice(0, 6).map((log) => (
             <li key={log.id}>
               <span className="ui-dashboard-note ui-dashboard-activity-text">{formatAuditAction(log, text)}</span>
               <span className="ui-dashboard-note" title={formatLocalDateTime(log.created_at)}>{formatRelativeTime(log.created_at, text)}</span>
@@ -380,9 +382,6 @@ function RecentActivityCard({ logs, loading, unavailableReason }: {
           ))}
         </ul>
       )}
-      <div className="ui-dashboard-panel-footer">
-        <WorkspaceDashboardActionLink to="/admin/audit">{text("auditLogs")}<OpenIcon className="h-3.5 w-3.5" /></WorkspaceDashboardActionLink>
-      </div>
     </WorkspaceDashboardCard>
   );
 }
@@ -509,7 +508,7 @@ export default function AdminDashboard() {
     let cancelled = false;
     setAuditLoading(true);
     setAuditError(null);
-    listAuditLogs({ limit: 5 })
+    listAuditLogs({ limit: 6 })
       .then((data) => {
         if (cancelled) return;
         setAuditLogs(data.logs ?? []);
@@ -728,17 +727,25 @@ export default function AdminDashboard() {
   }, [summary, text]);
 
   const mapMarkers = useMemo<AdminDashboardMapMarker[]>(() => {
-    const statusByEndpointId = new Map<number, HealthCheckStatus>();
+    const healthByEndpointId = new Map<number, WorkspaceEndpointHealthEntry>();
     workspaceHealth?.endpoints.forEach((endpoint) => {
-      statusByEndpointId.set(endpoint.endpoint_id, endpoint.status);
+      healthByEndpointId.set(endpoint.endpoint_id, endpoint);
     });
-    return mapEndpoints.map((endpoint) => ({
-      id: endpoint.id,
-      name: endpoint.name,
-      latitude: endpoint.latitude,
-      longitude: endpoint.longitude,
-      status: statusByEndpointId.get(endpoint.id) ?? "unknown",
-    }));
+    return mapEndpoints.map((endpoint) => {
+      const health = healthByEndpointId.get(endpoint.id);
+      return {
+        id: endpoint.id,
+        name: endpoint.name,
+        endpointUrl: endpoint.endpoint_url,
+        provider: endpoint.provider,
+        region: endpoint.region,
+        isDefault: endpoint.is_default,
+        latitude: endpoint.latitude,
+        longitude: endpoint.longitude,
+        status: health?.is_stale ? "unknown" : (health?.status ?? "unknown"),
+        latencyMs: health?.latency_ms,
+      };
+    });
   }, [mapEndpoints, workspaceHealth]);
 
   const endpointUnavailableReason = !generalSettings.endpoint_status_enabled

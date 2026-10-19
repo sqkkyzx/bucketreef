@@ -111,6 +111,7 @@ export async function getS3Account(accountId: number, options?: GetS3AccountOpti
 
 type CreateS3AccountPayload = {
   name: string;
+  rgw_tenant?: string | null;
   email?: string | null;
   quota_max_size_gb?: number | null;
   quota_max_size_unit?: string | null;
@@ -155,6 +156,7 @@ export async function deleteS3Account(accountId: number, options?: { deleteRgw?:
 
 type ImportS3AccountPayload = {
   rgw_account_id: string;
+  rgw_tenant?: string;
   root_uid?: string;
   name?: string | null;
   email?: string | null;

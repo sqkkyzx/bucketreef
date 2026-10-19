@@ -59,6 +59,7 @@ function buildGeneralSettings(overrides: Partial<GeneralSettings> = {}): General
     project_collection_policies: DEFAULT_PROJECT_COLLECTION_POLICIES,
     manager_feature_policies: DEFAULT_MANAGER_FEATURE_POLICIES,
     rgw_account_id_prefix: "80",
+    allow_managed_rgw_tenant_creation: false,
     documentation_base_url: "https://docs.bucketreef.ksperis.com",
     manager_enabled: true,
     ceph_admin_enabled: false,
@@ -98,7 +99,7 @@ async function renderDashboard(role: SessionUser["role"] = "ui_superadmin") {
     </MemoryRouter>
   );
 
-  await screen.findByText("Shared S3 Connections");
+  await screen.findByText("S3 Connections");
 }
 
 describe("AdminDashboard feature summary", () => {
@@ -454,7 +455,9 @@ describe("AdminDashboard feature summary", () => {
     expect(screen.getByRole("link", { name: "View all incidents" })).toHaveAttribute("href", "/admin/endpoint-status");
     const platformSummary = screen.getByRole("heading", { name: "Storage & traffic" }).closest("section");
     expect(platformSummary).not.toBeNull();
-    expect(screen.getByRole("heading", { name: "Recent activity" })).toBeInTheDocument();
+    const recentActivityHeading = screen.getByRole("heading", { name: "Recent activity" });
+    expect(recentActivityHeading).toBeInTheDocument();
+    expect(within(recentActivityHeading.parentElement!).getByRole("link", { name: "View audit logs" })).toHaveAttribute("href", "/admin/audit");
     expect(screen.getByText("INRAE-eprod-debug")).toBeInTheDocument();
     expect(screen.getAllByText("INRAE-eprod-idf").length).toBeGreaterThan(0);
     const infrastructureMap = await screen.findByRole("img", { name: "Infrastructure endpoint map" });
@@ -464,13 +467,25 @@ describe("AdminDashboard feature summary", () => {
     const geography = screen.getByTestId("admin-dashboard-map-geography");
     expect(geography).toHaveAttribute("data-basemap", "france");
     expect(geography).toHaveAttribute("data-x-scale", "0.69");
-    expect(screen.getAllByTestId("admin-dashboard-map-marker")).toHaveLength(2);
+    const mapMarkers = screen.getAllByTestId("admin-dashboard-map-marker");
+    expect(mapMarkers).toHaveLength(2);
+    expect(screen.queryByRole("tooltip", { name: "Endpoint: INRAE-eprod-debug" })).not.toBeInTheDocument();
+    fireEvent.mouseEnter(mapMarkers[0]);
+    const endpointTooltip = within(screen.getByRole("tooltip", { name: "Endpoint: INRAE-eprod-debug" }));
+    expect(endpointTooltip.getByText("INRAE-eprod-debug")).toBeInTheDocument();
+    expect(endpointTooltip.getByText("https://s3.example.test")).toBeInTheDocument();
+    expect(endpointTooltip.getByText("Ceph")).toBeInTheDocument();
+    expect(endpointTooltip.getByText("Up")).toBeInTheDocument();
+    expect(endpointTooltip.getByText("76 ms")).toBeInTheDocument();
+    expect(endpointTooltip.getByText("Default")).toBeInTheDocument();
+    fireEvent.mouseLeave(mapMarkers[0]);
+    expect(screen.queryByRole("tooltip", { name: "Endpoint: INRAE-eprod-debug" })).not.toBeInTheDocument();
     expect(infrastructureMap.querySelector("polyline")).toBeNull();
     expect(screen.getByText("Infrastructure map")).toBeInTheDocument();
     expect(screen.getByText("12.4M")).toBeInTheDocument();
     expect(within(platformSummary!).getByText("98%")).toBeInTheDocument();
     expect(screen.getByText("User admin@example.com logged in")).toBeInTheDocument();
-    expect(mocks.listAuditLogs).toHaveBeenCalledWith({ limit: 5 });
+    expect(mocks.listAuditLogs).toHaveBeenCalledWith({ limit: 6 });
     expect(mocks.fetchAdminDashboardTraffic).toHaveBeenCalledWith();
     expect(mocks.fetchHealthOverview).toHaveBeenCalledWith("week");
     expect(mocks.fetchHealthWorkspaceOverview).toHaveBeenCalledWith(undefined, 10080);
@@ -656,6 +671,9 @@ describe("AdminDashboard feature summary", () => {
     expect(staleEndpointRow).toHaveTextContent("Unknown");
     expect(staleEndpointRow).toHaveTextContent("Stale");
     expect(staleEndpointRow).not.toHaveTextContent(/\bUp\b/);
+    const staleMapMarkers = await screen.findAllByTestId("admin-dashboard-map-marker");
+    fireEvent.mouseEnter(staleMapMarkers[0]);
+    expect(within(screen.getByRole("tooltip", { name: "Endpoint: INRAE-eprod-debug" })).getByText("Unknown")).toBeInTheDocument();
     expect(within(endpointRegion).queryByRole("img", { name: "Infrastructure endpoint map" })).not.toBeInTheDocument();
   });
 

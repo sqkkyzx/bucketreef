@@ -65,7 +65,10 @@ from app.services.billing_statement_service import (
     BillingStatementService,
     BillingStatementStaleError,
 )
-from app.utils.http_errors import raise_http_error_from_value_error
+from app.utils.http_errors import (
+    raise_http_error_from_value_error,
+    raise_http_exception_from_exception,
+)
 from app.utils.http_headers import build_attachment_content_disposition
 
 router = APIRouter(prefix="/admin/billing", tags=["admin-billing"])
@@ -173,7 +176,7 @@ def _raise_billing_http_error(exc: ValueError) -> NoReturn:
 
 def _billing_statement_http_error(exc: ValueError) -> NoReturn:
     if isinstance(exc, (BillingStatementNotFoundError, BillingPeriodScopeNotFoundError)):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+        raise_http_exception_from_exception(status.HTTP_404_NOT_FOUND, exc)
     if isinstance(
         exc,
         (
@@ -182,7 +185,7 @@ def _billing_statement_http_error(exc: ValueError) -> NoReturn:
             BillingStatementStaleError,
         ),
     ):
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+        raise_http_exception_from_exception(status.HTTP_409_CONFLICT, exc)
     raise_http_error_from_value_error(exc)
 
 
@@ -261,6 +264,9 @@ def generate_billing_statements(
             month=payload.month,
             billing_entity_id=payload.billing_entity_id,
             regenerate=payload.regenerate,
+            estimation_mode=payload.estimation_mode,
+            estimation_reason=payload.estimation_reason,
+            estimation_requested_by_email=current_user.email,
         )
     except ValueError as exc:
         _billing_statement_http_error(exc)
@@ -277,6 +283,8 @@ def generate_billing_statements(
             "currencies": [item.currency for item in result.statements],
             "revisions": [item.revision for item in result.statements],
             "blockers": result.blockers,
+            "estimation_mode": payload.estimation_mode,
+            "estimation_reason": payload.estimation_reason,
         },
     )
     return result
@@ -378,6 +386,8 @@ def finalize_billing_statement(
             "currency": item.currency,
             "total": str(item.total),
             "revision": item.revision,
+            "estimation_mode": item.estimation_mode,
+            "estimation_reason": item.estimation_reason,
         },
     )
     return item
@@ -455,9 +465,9 @@ def billing_export_csv(
 
 def _rate_card_http_error(exc: ValueError) -> NoReturn:
     if isinstance(exc, BillingRateCardNotFoundError):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+        raise_http_exception_from_exception(status.HTTP_404_NOT_FOUND, exc)
     if isinstance(exc, (BillingRateCardConflictError, BillingRateCardImmutableError)):
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+        raise_http_exception_from_exception(status.HTTP_409_CONFLICT, exc)
     raise_http_error_from_value_error(exc)
 
 
@@ -482,9 +492,9 @@ def _rate_card_audit_metadata(item: BillingRateCardAdminItem) -> dict:
 
 def _billing_entity_http_error(exc: ValueError) -> NoReturn:
     if isinstance(exc, BillingEntityNotFoundError):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+        raise_http_exception_from_exception(status.HTTP_404_NOT_FOUND, exc)
     if isinstance(exc, BillingEntityConflictError):
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+        raise_http_exception_from_exception(status.HTTP_409_CONFLICT, exc)
     raise_http_error_from_value_error(exc)
 
 
@@ -512,9 +522,9 @@ def _billing_entity_audit_metadata(item: BillingEntityAdminItem) -> dict:
 
 def _billing_entity_group_http_error(exc: ValueError) -> NoReturn:
     if isinstance(exc, BillingEntityGroupNotFoundError):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+        raise_http_exception_from_exception(status.HTTP_404_NOT_FOUND, exc)
     if isinstance(exc, BillingEntityGroupConflictError):
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+        raise_http_exception_from_exception(status.HTTP_409_CONFLICT, exc)
     raise_http_error_from_value_error(exc)
 
 

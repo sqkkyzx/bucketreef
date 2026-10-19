@@ -73,6 +73,7 @@ class GeneralSettings(ApiModel):
     project_feature_policies: ProjectFeaturePolicies = Field(default_factory=ProjectFeaturePolicies)
     project_collection_policies: ProjectCollectionPolicies = Field(default_factory=ProjectCollectionPolicies)
     rgw_account_id_prefix: str = Field(default="80", pattern=r"^\d{1,3}$")
+    allow_managed_rgw_tenant_creation: bool = False
     documentation_base_url: str = DEFAULT_DOCUMENTATION_BASE_URL
     manager_enabled: bool = True
     ceph_admin_enabled: bool = False
@@ -262,6 +263,8 @@ class QuotaNotificationSettings(ApiModel):
 
 
 class BrowserSettings(ApiModel):
+    allow_direct_uploads: bool = True
+    allow_sts_uploads: bool = True
     allow_proxy_transfers: bool = True
     direct_upload_parallelism: int = Field(default=5, ge=1, le=20)
     proxy_upload_parallelism: int = Field(default=2, ge=1, le=20)
@@ -269,6 +272,16 @@ class BrowserSettings(ApiModel):
     proxy_download_parallelism: int = Field(default=2, ge=1, le=20)
     other_operations_parallelism: int = Field(default=3, ge=1, le=20)
     streaming_zip_threshold_mb: int = Field(default=200, ge=0, le=10240)
+
+    @model_validator(mode="after")
+    def require_upload_mode(self):
+        if not (
+            self.allow_direct_uploads
+            or self.allow_sts_uploads
+            or self.allow_proxy_transfers
+        ):
+            raise ValueError("At least one Browser upload mode must be enabled")
+        return self
 
 
 class OnboardingSettings(ApiModel):
