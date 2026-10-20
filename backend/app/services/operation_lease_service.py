@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any, Iterator, Optional
 
-from sqlalchemy import or_
+from sqlalchemy import or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -41,23 +41,16 @@ def bucket_usage_stats_bucket_operation_name(scope: str, bucket_name: str) -> st
     return f"bucket-usage-stats:bucket:{normalized_scope}:{normalized_bucket}"
 
 
-def billing_daily_operation_name(day_iso: str) -> str:
-    return f"billing:daily:{day_iso}"
-
-
-def billing_statement_monthly_operation_name(month: str) -> str:
-    normalized = str(month or "").strip()
-    if not normalized:
-        raise ValueError("Billing statement month is required")
-    return f"billing:statements:{normalized}"
+def cost_daily_operation_name(day_iso: str) -> str:
+    return f"cost:daily:{day_iso}"
 
 
 def default_operation_lease_ttl_seconds() -> int:
     return max(15, int(get_settings().operation_lease_ttl_seconds))
 
 
-def billing_operation_lease_ttl_seconds() -> int:
-    return max(60, int(get_settings().billing_operation_lease_ttl_seconds))
+def cost_operation_lease_ttl_seconds() -> int:
+    return max(60, int(get_settings().cost_operation_lease_ttl_seconds))
 
 
 def generate_operation_owner(prefix: str = "backend") -> str:
@@ -98,17 +91,18 @@ class OperationLeaseService:
             BackendOperationLease.metadata_json: metadata_json,
         }
 
-        updated = (
-            self.db.query(BackendOperationLease)
-            .filter(
+        updated = self.db.execute(
+            update(BackendOperationLease)
+            .where(
                 BackendOperationLease.operation_name == name,
                 or_(
                     BackendOperationLease.lease_until <= now,
                     BackendOperationLease.lease_owner == lease_owner,
                 ),
             )
-            .update(values, synchronize_session=False)
-        )
+            .values(values)
+            .execution_options(synchronize_session=False)
+        ).rowcount
         if updated == 1:
             self.db.commit()
             return OperationLeaseHandle(operation_name=name, owner=lease_owner, lease_until=lease_until)
@@ -132,19 +126,19 @@ class OperationLeaseService:
 
     def release(self, handle: OperationLeaseHandle) -> None:
         now = utcnow()
-        (
-            self.db.query(BackendOperationLease)
-            .filter(
+        self.db.execute(
+            update(BackendOperationLease)
+            .where(
                 BackendOperationLease.operation_name == handle.operation_name,
                 BackendOperationLease.lease_owner == handle.owner,
             )
-            .update(
+            .values(
                 {
                     BackendOperationLease.lease_until: now,
                     BackendOperationLease.updated_at: now,
-                },
-                synchronize_session=False,
+                }
             )
+            .execution_options(synchronize_session=False)
         )
         self.db.commit()
 
@@ -192,15 +186,15 @@ class OperationLeaseService:
     def current_owner(self, operation_name: str) -> Optional[str]:
         name = self._normalize_operation_name(operation_name)
         now = utcnow()
-        row = (
-            self.db.query(BackendOperationLease.lease_owner)
-            .filter(
+        owner = self.db.scalars(
+            select(BackendOperationLease.lease_owner)
+            .where(
                 BackendOperationLease.operation_name == name,
                 BackendOperationLease.lease_until > now,
             )
-            .first()
-        )
-        return str(row[0]) if row else None
+            .limit(1)
+        ).first()
+        return str(owner) if owner else None
 
     @staticmethod
     def _normalize_operation_name(operation_name: str) -> str:

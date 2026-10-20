@@ -19,11 +19,11 @@ type AdminNavText = (message: string, values?: AdminTextValues) => string;
 
 const ADMIN_SETTINGS_PATHS = [
   "/admin/general-settings",
+  "/admin/cost-settings",
   "/admin/authentication-settings",
   "/admin/manager-settings",
   "/admin/browser-settings",
   "/admin/portal-settings",
-  "/admin/billing-settings",
   "/admin/webhook-settings",
   "/admin/production-readiness",
   "/admin/key-rotation",
@@ -42,7 +42,7 @@ const identityText: AdminNavText = interpolateText;
 export const buildAdminNav = (
   portalEnabled: boolean,
   browserEnabled: boolean,
-  billingEnabled: boolean,
+  costEnabled: boolean,
   usageHistoryEnabled: boolean,
   endpointStatusEnabled: boolean,
   isSuperAdmin: boolean,
@@ -55,8 +55,14 @@ export const buildAdminNav = (
   const portalRequestCount = pendingRequestCounts?.portal_requests ?? 0;
   const settingsLinks = [
     pageLink(ADMIN_PAGE_CONTRACTS["general-settings"], text),
-    pageLink(ADMIN_PAGE_CONTRACTS["authentication-settings"], text),
-    pageLink(ADMIN_PAGE_CONTRACTS["manager-settings"], text),
+    {
+      ...pageLink(ADMIN_PAGE_CONTRACTS["authentication-settings"], text),
+      iconName: "shield" as const,
+    },
+    {
+      ...pageLink(ADMIN_PAGE_CONTRACTS["manager-settings"], text),
+      iconName: "tools" as const,
+    },
     {
       ...pageLink(ADMIN_PAGE_CONTRACTS["browser-settings"], text),
       disabled: !browserEnabled,
@@ -68,13 +74,15 @@ export const buildAdminNav = (
       disabledHint: !portalEnabled ? text("Portal feature is disabled in General settings.") : undefined,
     },
     {
-      ...pageLink(ADMIN_PAGE_CONTRACTS["billing-settings"], text),
-      disabled: !billingEnabled,
-      disabledHint: !billingEnabled
-        ? text("Billing is disabled. Enable it in General settings to use this page.")
-        : undefined,
+      ...pageLink(ADMIN_PAGE_CONTRACTS["cost-settings"], text),
+      iconName: "cost" as const,
+      disabled: !costEnabled,
+      disabledHint: !costEnabled ? text("Cost feature is disabled in General settings.") : undefined,
     },
-    pageLink(ADMIN_PAGE_CONTRACTS["webhook-settings"], text),
+    {
+      ...pageLink(ADMIN_PAGE_CONTRACTS["webhook-settings"], text),
+      iconName: "webhook" as const,
+    },
     {
       ...pageLink(ADMIN_PAGE_CONTRACTS["production-readiness"], text),
       iconName: "shield" as const,
@@ -161,10 +169,23 @@ export const buildAdminNav = (
               },
             ]
           : []),
-        ...(billingEnabled ? [pageLink(ADMIN_PAGE_CONTRACTS.billing, text)] : []),
+        ...(costEnabled
+          ? [
+              {
+                ...pageLink(ADMIN_PAGE_CONTRACTS.cost, text),
+                iconName: "cost" as const,
+              },
+            ]
+          : []),
         ...(usageHistoryEnabled ? [pageLink(ADMIN_PAGE_CONTRACTS["usage-history"], text)] : []),
-        pageLink(ADMIN_PAGE_CONTRACTS["access-audit"], text),
-        pageLink(ADMIN_PAGE_CONTRACTS.audit, text),
+        {
+          ...pageLink(ADMIN_PAGE_CONTRACTS["access-audit"], text),
+          iconName: "access-audit" as const,
+        },
+        {
+          ...pageLink(ADMIN_PAGE_CONTRACTS.audit, text),
+          iconName: "audit" as const,
+        },
       ],
     },
     ...(isSuperAdmin
@@ -192,7 +213,7 @@ export default function AdminLayout() {
   const adminNav = buildAdminNav(
     generalSettings.portal_enabled,
     generalSettings.browser_enabled,
-    generalSettings.billing_enabled,
+    generalSettings.cost_enabled,
     generalSettings.usage_history_enabled,
     generalSettings.endpoint_status_enabled,
     canConfigureApp,

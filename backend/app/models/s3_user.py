@@ -55,6 +55,8 @@ class S3User(ApiModel):
     allow_access_key_metadata: Optional[bool] = None
     allow_access_key_expiration: Optional[bool] = None
     allow_activity_history: Optional[bool] = None
+    allow_rgw_usage_metrics: Optional[bool] = None
+    allow_cost_estimation: Optional[bool] = None
     allow_managed_private_connection_provisioning: Optional[bool] = None
     tags: list[TagDefinitionSummary] = Field(default_factory=list)
 
@@ -104,6 +106,8 @@ class S3UserUpdate(ApiModel):
     allow_access_key_metadata: Optional[bool] = None
     allow_access_key_expiration: Optional[bool] = None
     allow_activity_history: Optional[bool] = None
+    allow_rgw_usage_metrics: Optional[bool] = None
+    allow_cost_estimation: Optional[bool] = None
     allow_managed_private_connection_provisioning: Optional[bool] = None
 
 class S3UserAccessKey(AccessKeyMetadata):
@@ -139,6 +143,8 @@ class S3UserSummary(ApiModel):
     allow_access_key_metadata: Optional[bool] = None
     allow_access_key_expiration: Optional[bool] = None
     allow_activity_history: Optional[bool] = None
+    allow_rgw_usage_metrics: Optional[bool] = None
+    allow_cost_estimation: Optional[bool] = None
     allow_managed_private_connection_provisioning: Optional[bool] = None
     tags: list[TagDefinitionSummary] = Field(default_factory=list)
 

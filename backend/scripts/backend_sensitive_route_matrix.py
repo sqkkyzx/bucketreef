@@ -26,25 +26,9 @@ def _entries(file_name: str, guard: str, *functions: str) -> dict[tuple[str, str
 # any drift between the expected guard and the route implementation.
 EXPECTED_GUARDS: dict[tuple[str, str], str] = {
     **_entries(
-        "billing.py",
+        "cost.py",
         ADMIN_AUTH,
-        "billing_collect_daily",
-        "create_billing_entity",
-        "create_billing_entity_group",
-        "create_billing_rate_card",
-        "create_billing_rate_card_version",
-        "deactivate_billing_entity",
-        "deactivate_billing_entity_group",
-        "delete_billing_rate_card",
-        "finalize_billing_statement",
-        "generate_billing_statements",
-        "preview_billing_entity",
-        "preview_billing_statement_pdf",
-        "update_billing_automation_settings",
-        "update_billing_entity",
-        "update_billing_entity_group",
-        "update_billing_rate_card",
-        "update_billing_statement_pdf_settings",
+        "cost_collect_daily",
     ),
     **_entries("groups.py", RECENT_WEBAUTHN, "create_group", "update_group"),
     **_entries(
@@ -132,7 +116,12 @@ EXPECTED_GUARDS: dict[tuple[str, str], str] = {
         "update_ldap_provider_settings",
         "delete_ldap_provider_settings",
     ),
-    **_entries("settings.py", INTERACTIVE_UI, "send_quota_notifications_test_email"),
+    **_entries(
+        "settings.py",
+        INTERACTIVE_UI,
+        "update_cost_settings",
+        "send_quota_notifications_test_email",
+    ),
     **_entries("storage_endpoints.py", INTERACTIVE_UI, "detect_storage_endpoint_features"),
     **_entries(
         "storage_endpoints.py",

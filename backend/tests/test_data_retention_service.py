@@ -8,10 +8,8 @@ from types import SimpleNamespace
 from app.utils.time import utcnow
 
 from app.db import (
-    BillingEntity,
-    BillingStatement,
-    BillingStorageDaily,
-    BillingUsageDaily,
+    CostStorageDaily,
+    CostUsageDaily,
     QuotaUsageDaily,
     QuotaUsageHourly,
     S3Account,
@@ -47,7 +45,7 @@ def _seed_endpoint_and_account(db_session) -> tuple[StorageEndpoint, S3Account]:
     return endpoint, account
 
 
-def test_purge_all_removes_old_quota_and_billing_rows(db_session):
+def test_purge_all_removes_old_quota_and_cost_rows(db_session):
     endpoint, account = _seed_endpoint_and_account(db_session)
     now = utcnow()
     current_hour = now.replace(minute=0, second=0, microsecond=0)
@@ -102,7 +100,7 @@ def test_purge_all_removes_old_quota_and_billing_rows(db_session):
                 samples_count=1,
                 updated_at=now,
             ),
-            BillingUsageDaily(
+            CostUsageDaily(
                 day=now.date() - timedelta(days=400),
                 storage_endpoint_id=endpoint.id,
                 s3_account_id=account.id,
@@ -112,7 +110,7 @@ def test_purge_all_removes_old_quota_and_billing_rows(db_session):
                 source="rgw_admin_usage",
                 collected_at=now,
             ),
-            BillingUsageDaily(
+            CostUsageDaily(
                 day=now.date(),
                 storage_endpoint_id=endpoint.id,
                 s3_account_id=account.id,
@@ -122,7 +120,7 @@ def test_purge_all_removes_old_quota_and_billing_rows(db_session):
                 source="rgw_admin_usage",
                 collected_at=now,
             ),
-            BillingStorageDaily(
+            CostStorageDaily(
                 day=now.date() - timedelta(days=400),
                 storage_endpoint_id=endpoint.id,
                 s3_account_id=account.id,
@@ -131,7 +129,7 @@ def test_purge_all_removes_old_quota_and_billing_rows(db_session):
                 source="rgw_admin_bucket_stats",
                 collected_at=now,
             ),
-            BillingStorageDaily(
+            CostStorageDaily(
                 day=now.date(),
                 storage_endpoint_id=endpoint.id,
                 s3_account_id=account.id,
@@ -144,75 +142,29 @@ def test_purge_all_removes_old_quota_and_billing_rows(db_session):
     )
     db_session.commit()
 
-    entity = BillingEntity(
-        name="Retention statement entity",
-        code="RET-STMT",
-        external_id="retention-statement",
-        subject_type="account",
-        active=False,
-        created_at=now,
-        updated_at=now,
-    )
-    db_session.add(entity)
-    db_session.flush()
-    finalized_statement = BillingStatement(
-        public_id="00000000-0000-0000-0000-000000000001",
-        billing_entity_id=entity.id,
-        billing_entity_name=entity.name,
-        billing_entity_code=entity.code,
-        billing_entity_external_id=entity.external_id,
-        subject_type="account",
-        period_start=now.date() - timedelta(days=400),
-        period_end=now.date() - timedelta(days=370),
-        currency="EUR",
-        status="finalized",
-        member_count=1,
-        coverage_json=(
-            '{"member_count":1,"expected_daily_observations":31,"storage_observations":31,'
-            '"usage_observations":31,"storage_coverage_ratio":"1.000000",'
-            '"usage_coverage_ratio":"1.000000","quota_observations_collected":0,'
-            '"quota_observations_expected":0,"quota_coverage_ratio":null}'
-        ),
-        blockers_json="[]",
-        storage_charge_bases_json='["actual_usage"]',
-        subtotal=1,
-        total=1,
-        source_fingerprint="a" * 64,
-        revision=1,
-        generated_at=now - timedelta(days=370),
-        finalized_at=now - timedelta(days=369),
-        finalized_by_user_email="admin@example.test",
-        created_at=now - timedelta(days=370),
-        updated_at=now - timedelta(days=369),
-    )
-    db_session.add(finalized_statement)
-    db_session.commit()
-
     service = DataRetentionService(db_session)
     service.settings = SimpleNamespace(
         quota_history_hourly_retention_days=30,
         quota_history_daily_retention_days=365,
-        billing_daily_retention_days=365,
+        cost_daily_retention_days=365,
     )
 
     first = service.purge_all()
     assert first["quota_history"]["deleted_hourly"] == 1
     assert first["quota_history"]["deleted_daily"] == 1
-    assert first["billing_history"]["deleted_usage_daily"] == 1
-    assert first["billing_history"]["deleted_storage_daily"] == 1
+    assert first["cost_history"]["deleted_usage_daily"] == 1
+    assert first["cost_history"]["deleted_storage_daily"] == 1
 
     assert db_session.query(QuotaUsageHourly).count() == 1
     assert db_session.query(QuotaUsageDaily).count() == 1
-    assert db_session.query(BillingUsageDaily).count() == 1
-    assert db_session.query(BillingStorageDaily).count() == 1
-    assert db_session.query(BillingStatement).count() == 1
-    assert db_session.query(BillingStatement).one().status == "finalized"
+    assert db_session.query(CostUsageDaily).count() == 1
+    assert db_session.query(CostStorageDaily).count() == 1
 
     second = service.purge_all()
     assert second["quota_history"]["deleted_hourly"] == 0
     assert second["quota_history"]["deleted_daily"] == 0
-    assert second["billing_history"]["deleted_usage_daily"] == 0
-    assert second["billing_history"]["deleted_storage_daily"] == 0
+    assert second["cost_history"]["deleted_usage_daily"] == 0
+    assert second["cost_history"]["deleted_storage_daily"] == 0
 
 
 def test_purge_all_with_zero_retention_disables_purge(db_session):
@@ -242,7 +194,7 @@ def test_purge_all_with_zero_retention_disables_purge(db_session):
                 samples_count=1,
                 updated_at=now,
             ),
-            BillingUsageDaily(
+            CostUsageDaily(
                 day=now.date() - timedelta(days=400),
                 storage_endpoint_id=endpoint.id,
                 s3_account_id=account.id,
@@ -252,7 +204,7 @@ def test_purge_all_with_zero_retention_disables_purge(db_session):
                 source="rgw_admin_usage",
                 collected_at=now,
             ),
-            BillingStorageDaily(
+            CostStorageDaily(
                 day=now.date() - timedelta(days=400),
                 storage_endpoint_id=endpoint.id,
                 s3_account_id=account.id,
@@ -269,19 +221,19 @@ def test_purge_all_with_zero_retention_disables_purge(db_session):
     service.settings = SimpleNamespace(
         quota_history_hourly_retention_days=0,
         quota_history_daily_retention_days=0,
-        billing_daily_retention_days=0,
+        cost_daily_retention_days=0,
     )
 
     result = service.purge_all()
     assert result["quota_history"]["deleted_hourly"] == 0
     assert result["quota_history"]["deleted_daily"] == 0
-    assert result["billing_history"]["deleted_usage_daily"] == 0
-    assert result["billing_history"]["deleted_storage_daily"] == 0
+    assert result["cost_history"]["deleted_usage_daily"] == 0
+    assert result["cost_history"]["deleted_storage_daily"] == 0
 
     assert db_session.query(QuotaUsageHourly).count() == 1
     assert db_session.query(QuotaUsageDaily).count() == 1
-    assert db_session.query(BillingUsageDaily).count() == 1
-    assert db_session.query(BillingStorageDaily).count() == 1
+    assert db_session.query(CostUsageDaily).count() == 1
+    assert db_session.query(CostStorageDaily).count() == 1
 
 
 def test_purge_user_notifications_removes_read_and_unread_rows_after_cutoff(

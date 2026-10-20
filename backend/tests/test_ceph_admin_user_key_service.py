@@ -10,12 +10,9 @@ from app.services.ceph_admin_user_access import serialize_access_keys
 from app.services.ceph_admin_user_key_service import CephAdminUserKeyService
 
 
-class _FakeQuery:
+class _FakeScalarResult:
     def __init__(self, rows):
         self.rows = rows
-
-    def filter(self, *args):
-        return self
 
     def all(self):
         return self.rows
@@ -25,8 +22,8 @@ class _FakeSession:
     def __init__(self, rows):
         self.rows = rows
 
-    def query(self, _model):
-        return _FakeQuery(self.rows)
+    def scalars(self, _statement):
+        return _FakeScalarResult(self.rows)
 
 
 class _FakeRgwAdmin:
@@ -104,7 +101,7 @@ def test_list_keys_marks_managed_private_access(monkeypatch):
     keys = CephAdminUserKeyService(
         _ctx(rgw_admin),
         _FakeSession([source]),
-    ).list_keys("billing-user")
+    ).list_keys("cost-user")
 
     assert keys[0].is_private_access_managed is True
     assert keys[0].managed_connection_id == 77
@@ -117,11 +114,11 @@ def test_create_key_preserves_one_time_secret_delivery():
     created = CephAdminUserKeyService(
         _ctx(rgw_admin),
         _FakeSession([]),
-    ).create_key("billing-user")
+    ).create_key("cost-user")
 
     assert created.access_key == "AKIA-CREATED"
     assert created.secret_key == "SECRET-CREATED"
-    assert rgw_admin.create_calls == [("billing-user", None)]
+    assert rgw_admin.create_calls == [("cost-user", None)]
 
 
 @pytest.mark.parametrize("operation", ["update", "delete"])
@@ -142,9 +139,9 @@ def test_managed_private_key_blocks_mutation_before_rgw_call(monkeypatch, operat
 
     with pytest.raises(HTTPException) as raised:
         if operation == "update":
-            service.update_status("billing-user", "AKIA-LISTED", active=False)
+            service.update_status("cost-user", "AKIA-LISTED", active=False)
         else:
-            service.delete_key("billing-user", "AKIA-LISTED")
+            service.delete_key("cost-user", "AKIA-LISTED")
 
     assert raised.value.status_code == 409
     assert rgw_admin.status_calls == []

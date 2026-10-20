@@ -254,7 +254,7 @@ const storageOpsEnabledGeneralSettingsRule: MockRule = {
     browser_portal_enabled: true,
     browser_ceph_admin_enabled: true,
     portal_enabled: true,
-    billing_enabled: false,
+    cost_enabled: false,
     endpoint_status_enabled: true,
     bucket_migration_enabled: true,
     bucket_compare_enabled: true,
@@ -267,8 +267,8 @@ const storageOpsEnabledGeneralSettingsRule: MockRule = {
   },
 };
 
-const billingEnabledGeneralSettingsRule: MockRule = {
-  id: "settings-general-billing-enabled",
+const costEnabledGeneralSettingsRule: MockRule = {
+  id: "settings-general-cost-enabled",
   path: /^\/settings\/general$/,
   body: {
     manager_enabled: true,
@@ -279,7 +279,7 @@ const billingEnabledGeneralSettingsRule: MockRule = {
     browser_portal_enabled: true,
     browser_ceph_admin_enabled: true,
     portal_enabled: true,
-    billing_enabled: true,
+    cost_enabled: true,
     endpoint_status_enabled: true,
     bucket_migration_enabled: true,
     bucket_compare_enabled: true,
@@ -303,7 +303,7 @@ const bucketPurgeEnabledGeneralSettingsRule: MockRule = {
     browser_portal_enabled: true,
     browser_ceph_admin_enabled: true,
     portal_enabled: true,
-    billing_enabled: false,
+    cost_enabled: false,
     endpoint_status_enabled: true,
     bucket_migration_enabled: true,
     bucket_compare_enabled: true,
@@ -445,30 +445,12 @@ const endpointStatusGlobalIncidentsRule: MockRule = {
   }),
 };
 
-const defaultBillingRateResolution = {
-  status: "resolved",
-  layer: "endpoint",
-  rate_plan_id: 4,
-  rate_plan_name: "Ops rate card",
-  rate_card_id: 9,
-  rate_card_effective_from: "2026-01-01",
-  rate_card_effective_to: null,
-  source_assignment_id: null,
-  billing_entity_id: null,
-  billing_entity_name: null,
-  conflicting_billing_entity_ids: [],
-  conflicting_billing_entity_names: [],
-  currency: "EUR",
-  storage_charge_basis: "actual_usage",
-  issues: [],
-} as const;
-
-const billingSummaryRule: MockRule = {
-  id: "admin-billing-summary",
-  path: /^\/admin\/billing\/summary$/,
+const costSummaryRule: MockRule = {
+  id: "admin-cost-summary",
+  path: /^\/admin\/cost\/summary$/,
   body: {
     month: "2026-03",
-    storage_endpoint_id: 11,
+    storage_endpoint_id: null,
     usage: {
       bytes_in: 912_000_000,
       bytes_out: 3_420_000_000,
@@ -493,18 +475,19 @@ const billingSummaryRule: MockRule = {
       ingress_cost: 5.3,
       requests_cost: 18.6,
       total_cost: 157.6,
-      rate_card_name: "Ops rate card",
+      pricing_source: "global",
     },
-    rate_resolution: defaultBillingRateResolution,
   },
 };
 
-const billingSubjectsRule: MockRule = {
-  id: "admin-billing-subjects",
-  path: /^\/admin\/billing\/subjects$/,
+const costSubjectsRule: MockRule = {
+  id: "admin-cost-subjects",
+  path: /^\/admin\/cost\/subjects$/,
   body: {
     items: [
       {
+        storage_endpoint_id: 11,
+        storage_endpoint_name: "Primary",
         subject_type: "account",
         subject_id: 101,
         name: "Helios Retail",
@@ -530,7 +513,6 @@ const billingSubjectsRule: MockRule = {
           currency: "EUR",
           total_cost: 96.4,
         },
-        rate_resolution: defaultBillingRateResolution,
       },
     ],
     total: 1,
@@ -540,421 +522,16 @@ const billingSubjectsRule: MockRule = {
   },
 };
 
-const billingAnalysisRule: MockRule = {
-  id: "admin-billing-analysis",
-  path: /^\/admin\/billing\/analysis$/,
-  body: {
-    month: "2026-03",
-    days_in_month: 31,
-    entities: [
-      {
-        billing_entity_id: 501,
-        billing_entity_name: "Research Labs",
-        billing_entity_code: "RESEARCH",
-        subject_type: "account",
-        member_count: 1,
-        conflict_count: 0,
-        currency_totals: [{ currency: "EUR", total_cost: 128.4, complete: true }],
-        storage_charge_bases: ["allocated_quota"],
-        coverage: {
-          member_count: 1,
-          expected_daily_observations: 31,
-          storage_observations: 31,
-          usage_observations: 31,
-          storage_coverage_ratio: 1,
-          usage_coverage_ratio: 1,
-          quota_observations_collected: 31,
-          quota_observations_expected: 31,
-          quota_coverage_ratio: 1,
-        },
-        complete: true,
-        issues: [],
-        lines: [
-          {
-            billing_entity_id: 501,
-            billing_entity_name: "Research Labs",
-            subject_type: "account",
-            subject_id: 101,
-            subject_name: "Helios Retail",
-            rgw_identifier: "RGW-HELIOS",
-            storage_endpoint_id: 11,
-            storage_endpoint_name: "Default",
-            membership_reasons: [{ kind: "tag", tag_definition_id: 7, label: "research" }],
-            membership_conflict: false,
-            included_in_total: true,
-            usage: {
-              bytes_in: 620_000_000,
-              bytes_out: 2_100_000_000,
-              ops_total: 12_450_000,
-            },
-            storage: {
-              avg_bytes: 2_350_000_000,
-              avg_gb_month: 72.8,
-              total_objects: 1_284_000,
-            },
-            coverage: {
-              days_collected: 31,
-              days_in_month: 31,
-              coverage_ratio: 1,
-              storage_days_collected: 31,
-              usage_days_collected: 31,
-            },
-            cost: {
-              currency: "EUR",
-              storage_cost: 100,
-              egress_cost: 12.4,
-              ingress_cost: 3,
-              requests_cost: 13,
-              total_cost: 128.4,
-              rate_card_name: "Research reserved capacity",
-              complete: true,
-              storage_quantity: {
-                basis: "allocated_quota",
-                quantity_gib_month: 100,
-                observations_collected: 31,
-                observations_expected: 31,
-                calendar_days: 31,
-                coverage_ratio: 1,
-                status: "complete",
-                issues: [],
-              },
-            },
-            rate_resolution: {
-              ...defaultBillingRateResolution,
-              layer: "billing_entity",
-              rate_plan_id: 12,
-              rate_plan_name: "Research reserved capacity",
-              rate_card_id: 21,
-              billing_entity_id: 501,
-              billing_entity_name: "Research Labs",
-              storage_charge_basis: "allocated_quota",
-            },
-            complete: true,
-            issues: [],
-          },
-        ],
-      },
-    ],
-    groups: [
-      {
-        billing_entity_group_id: 601,
-        billing_entity_group_name: "DSI",
-        billing_entity_group_code: "DSI",
-        active: true,
-        member_entity_ids: [501],
-        currency_totals: [
-          { currency: "EUR", total_cost: 128.4, billing_entity_ids: [501], complete: true },
-        ],
-        missing_entity_ids: [],
-        conflict_count: 0,
-        storage_charge_bases: ["allocated_quota"],
-        coverage: {
-          member_count: 1,
-          expected_daily_observations: 31,
-          storage_observations: 31,
-          usage_observations: 31,
-          storage_coverage_ratio: 1,
-          usage_coverage_ratio: 1,
-          quota_observations_collected: 31,
-          quota_observations_expected: 31,
-          quota_coverage_ratio: 1,
-        },
-        complete: true,
-        issues: [],
-      },
-    ],
-    unassigned: [],
-    conflicts: [],
-  },
-};
-
-const billingEntityScopesRule: MockRule = {
-  id: "admin-billing-entities",
-  path: /^\/admin\/billing\/entities$/,
-  body: [{
-    id: 501,
-    name: "Research Labs",
-    code: "RESEARCH",
-    external_id: "cost-center-research",
-    subject_type: "account",
-    active: true,
-    include_tags: [],
-    explicit_includes: [],
-    explicit_excludes: [],
-    rate_assignments: [],
-    member_count: 1,
-    conflict_count: 0,
-    created_at: "2026-01-01T00:00:00Z",
-    updated_at: "2026-01-01T00:00:00Z",
-  }],
-};
-
-const billingGroupScopesRule: MockRule = {
-  id: "admin-billing-groups",
-  path: /^\/admin\/billing\/groups$/,
-  body: [{
-    id: 601,
-    name: "DSI",
-    code: "DSI",
-    external_id: "cost-center-dsi",
-    description: "Information systems",
-    active: true,
-    memberships: [],
-    current_member_count: 1,
-    scheduled_membership_count: 0,
-    created_at: "2026-01-01T00:00:00Z",
-    updated_at: "2026-01-01T00:00:00Z",
-  }],
-};
-
-const billingRateCardsRule: MockRule = {
-  id: "admin-billing-rate-cards",
-  path: /^\/admin\/billing\/rate-cards$/,
-  body: [{
-    id: 9,
-    rate_plan_id: 4,
-    name: "Ops rate card",
-    currency: "EUR",
-    storage_charge_basis: "actual_usage",
-    storage_gb_month_price: "0.025",
-    egress_gb_price: "0.080",
-    ingress_gb_price: "0.000",
-    requests_per_1000_price: "0.004",
-    effective_from: "2026-01-01",
-    effective_to: null,
-    storage_endpoint_id: null,
-    storage_endpoint_name: null,
-    status: "active",
-    editable: false,
-    identity_editable: false,
-    deletable: false,
-    created_at: "2026-01-01T00:00:00Z",
-    updated_at: "2026-01-01T00:00:00Z",
-  }],
-};
-
-const billingAutomationSettingsRule: MockRule = {
-  id: "admin-billing-automation-settings",
-  path: /^\/admin\/billing\/automation\/settings$/,
-  body: {
-    mode: "automatic_finalize",
-    schedule_day: 5,
-    require_all_subjects_assigned: true,
-  },
-};
-
-const billingAutomationRunsRule: MockRule = {
-  id: "admin-billing-automation-runs",
-  path: /^\/admin\/billing\/automation\/runs$/,
-  body: [{
-    id: 801,
-    month: "2026-02",
-    mode: "automatic_finalize",
-    trigger_source: "scheduled",
-    status: "partial",
-    active_entity_count: 3,
-    generated_statement_count: 3,
-    finalized_statement_count: 2,
-    blocked_statement_count: 1,
-    failed_entity_count: 0,
-    unassigned_subject_count: 1,
-    diagnostics: [],
-    started_at: "2026-03-05T02:00:00Z",
-    completed_at: "2026-03-05T02:00:05Z",
-  }],
-};
-
-const billingStatementBody = {
-  id: 701,
-  public_id: "70111111-1111-1111-1111-111111111111",
-  billing_entity_id: 501,
-  billing_entity_name: "Research Labs",
-  billing_entity_code: "RESEARCH",
-  billing_entity_external_id: "cost-center-research",
-  subject_type: "account",
-  period_start: "2026-03-01",
-  period_end: "2026-03-31",
-  currency: "EUR",
-  status: "finalized",
-  member_count: 1,
-  coverage: {
-    member_count: 1,
-    expected_daily_observations: 31,
-    storage_observations: 31,
-    usage_observations: 31,
-    storage_coverage_ratio: 1,
-    usage_coverage_ratio: 1,
-    quota_observations_collected: 31,
-    quota_observations_expected: 31,
-    quota_coverage_ratio: 1,
-  },
-  blockers: [],
-  storage_charge_bases: ["allocated_quota"],
-  subtotal: 128.4,
-  total: 128.4,
-  revision: 1,
-  generated_at: "2026-04-01T07:30:00Z",
-  finalized_at: "2026-04-01T08:15:00Z",
-  finalized_by_user_id: 1,
-  finalized_by_user_email: "platform.admin@example.com",
-  lines: [{
-    id: 702,
-    line_index: 1,
-    currency: "EUR",
-    snapshot: {
-      subject_type: "account",
-      subject_id: 101,
-      subject_name: "Helios Retail",
-      rgw_identifier: "RGW-HELIOS",
-      membership_reasons: [{ kind: "tag", tag_definition_id: 7, label: "research" }],
-      membership_conflict: false,
-      included_in_total: true,
-      storage_endpoint_id: 11,
-      storage_endpoint_name: "Default",
-      usage: { bytes_in: 620_000_000, bytes_out: 2_100_000_000, ops_total: 12_450_000 },
-      storage: { avg_bytes: 2_350_000_000, avg_gb_month: 72.8, total_objects: 1_284_000 },
-      coverage: {
-        days_collected: 31,
-        days_in_month: 31,
-        coverage_ratio: 1,
-        storage_days_collected: 31,
-        usage_days_collected: 31,
-      },
-      storage_charge_basis: "allocated_quota",
-      priced_storage_quantity: {
-        basis: "allocated_quota",
-        quantity_gib_month: 100,
-        observations_collected: 31,
-        observations_expected: 31,
-        calendar_days: 31,
-        coverage_ratio: 1,
-        status: "complete",
-        issues: [],
-      },
-      rate_resolution: {
-        ...defaultBillingRateResolution,
-        layer: "billing_entity",
-        rate_plan_id: 12,
-        rate_plan_name: "Research reserved capacity",
-        rate_card_id: 21,
-        billing_entity_id: 501,
-        billing_entity_name: "Research Labs",
-        storage_charge_basis: "allocated_quota",
-      },
-      unit_prices: {
-        storage_gb_month_price: 1,
-        egress_gb_price: 0.01,
-        ingress_gb_price: 0,
-        requests_per_1000_price: 0.001,
-      },
-      amounts: {
-        storage_cost: 100,
-        egress_cost: 12.4,
-        ingress_cost: 3,
-        requests_cost: 13,
-        total_cost: 128.4,
-      },
-      complete: true,
-      issues: [],
-    },
-  }],
-};
-
-const billingStatementsRule: MockRule = {
-  id: "admin-billing-statements",
-  path: /^\/admin\/billing\/statements$/,
-  body: [billingStatementBody],
-};
-
-const billingStatementDetailRule: MockRule = {
-  id: "admin-billing-statement-detail",
-  path: /^\/admin\/billing\/statements\/\d+$/,
-  body: billingStatementBody,
-};
-
-const billingFinalizedPeriodRule: MockRule = {
-  id: "admin-billing-finalized-period",
-  path: /^\/admin\/billing\/finalized-period$/,
-  body: ({ url }) => {
-    const startMonth = url.searchParams.get("start_month") ?? "2026-03";
-    const endMonth = url.searchParams.get("end_month") ?? startMonth;
-    return {
-      scope_type: url.searchParams.get("scope_type") ?? "entity",
-      scope_id: Number(url.searchParams.get("scope_id") ?? 501),
-      scope_name: "Research Labs",
-      scope_code: "RESEARCH",
-      scope_external_id: "cost-center-research",
-      start_month: startMonth,
-      end_month: endMonth,
-      expected_months: [startMonth],
-      finalized_months: [startMonth],
-      missing_months: [],
-      unfinalized_months: [],
-      currency_totals: [{
-        currency: "EUR",
-        storage_cost: 100,
-        egress_cost: 12.4,
-        ingress_cost: 3,
-        requests_cost: 13,
-        total: 128.4,
-        statement_ids: [701],
-        statement_public_ids: [billingStatementBody.public_id],
-        statement_months: [startMonth],
-        storage_charge_bases: ["allocated_quota"],
-      }],
-      months: [{
-        month: startMonth,
-        member_entity_ids: [501],
-        finalized_entity_ids: [501],
-        missing_entity_ids: [],
-        unfinalized_entity_ids: [],
-        statement_ids: [701],
-        currency_totals: [{
-          currency: "EUR",
-          storage_cost: 100,
-          egress_cost: 12.4,
-          ingress_cost: 3,
-          requests_cost: 13,
-          total: 128.4,
-          statement_ids: [701],
-          statement_public_ids: [billingStatementBody.public_id],
-          statement_months: [startMonth],
-          storage_charge_bases: ["allocated_quota"],
-        }],
-        entity_contributions: [{
-          billing_entity_id: 501,
-          billing_entity_name: "Research Labs",
-          billing_entity_code: "RESEARCH",
-          billing_entity_external_id: "cost-center-research",
-          statement_ids: [701],
-          currency_totals: [{
-            currency: "EUR",
-            storage_cost: 100,
-            egress_cost: 12.4,
-            ingress_cost: 3,
-            requests_cost: 13,
-            total: 128.4,
-            statement_ids: [701],
-            statement_public_ids: [billingStatementBody.public_id],
-            statement_months: [startMonth],
-            storage_charge_bases: ["allocated_quota"],
-          }],
-        }],
-        complete: true,
-      }],
-      complete: true,
-    };
-  },
-};
-
-const billingSubjectDetailRule: MockRule = {
-  id: "admin-billing-subject-detail",
-  path: /^\/admin\/billing\/subject\/account\/\d+$/,
+const costSubjectDetailRule: MockRule = {
+  id: "admin-cost-subject-detail",
+  path: /^\/admin\/cost\/subject\/account\/\d+$/,
   body: ({ url }) => {
     const subjectId = Number(url.pathname.split("/").at(-1) ?? "101");
     const detailById = {
       101: {
         month: "2026-03",
+        storage_endpoint_id: 11,
+        storage_endpoint_name: "Primary",
         subject_type: "account",
         subject_id: 101,
         name: "Helios Retail",
@@ -988,9 +565,8 @@ const billingSubjectDetailRule: MockRule = {
         cost: {
           currency: "EUR",
           total_cost: 96.4,
-          rate_card_name: "Ops rate card",
+          pricing_source: "global",
         },
-        rate_resolution: defaultBillingRateResolution,
       },
       102: {
         month: "2026-03",
@@ -1024,9 +600,8 @@ const billingSubjectDetailRule: MockRule = {
         cost: {
           currency: "EUR",
           total_cost: 31.8,
-          rate_card_name: "Ops rate card",
+          pricing_source: "global",
         },
-        rate_resolution: defaultBillingRateResolution,
       },
       103: {
         month: "2026-03",
@@ -1060,18 +635,70 @@ const billingSubjectDetailRule: MockRule = {
         cost: {
           currency: "EUR",
           total_cost: 22.5,
-          rate_card_name: "Ops rate card",
+          pricing_source: "global",
         },
-        rate_resolution: defaultBillingRateResolution,
       },
     } as const;
-    return detailById[subjectId as keyof typeof detailById] ?? detailById[101];
+    const detail = detailById[subjectId as keyof typeof detailById] ?? detailById[101];
+    const totalCost = detail.cost.total_cost;
+    const history = Array.from({ length: 12 }, (_, index) => {
+      const month = index + 4;
+      const year = month > 12 ? 2026 : 2025;
+      const resolvedMonth = month > 12 ? month - 12 : month;
+      const factor = 0.72 + index * 0.025;
+      return {
+        month: `${year}-${String(resolvedMonth).padStart(2, "0")}`,
+        coverage: {
+          days_collected: 28,
+          days_in_month: 30,
+          coverage_ratio: 28 / 30,
+          storage_days_collected: 28,
+          usage_days_collected: 28,
+        },
+        cost: {
+          currency: "EUR",
+          storage_cost: totalCost * factor * 0.55,
+          egress_cost: totalCost * factor * 0.27,
+          ingress_cost: totalCost * factor * 0.03,
+          requests_cost: totalCost * factor * 0.15,
+          total_cost: totalCost * factor,
+          pricing_source: "global",
+        },
+      };
+    });
+    history[history.length - 1] = {
+      month: detail.month,
+      coverage: detail.coverage,
+      cost: {
+        currency: "EUR",
+        storage_cost: totalCost * 0.55,
+        egress_cost: totalCost * 0.27,
+        ingress_cost: totalCost * 0.03,
+        requests_cost: totalCost * 0.15,
+        total_cost: totalCost,
+        pricing_source: "global",
+      },
+    };
+    return {
+      ...detail,
+      usage: {
+        ...detail.usage,
+        ops_breakdown: {
+          get: Math.round(detail.usage.ops_total * 0.68),
+          put: Math.round(detail.usage.ops_total * 0.19),
+          list: Math.round(detail.usage.ops_total * 0.09),
+          delete: Math.round(detail.usage.ops_total * 0.04),
+        },
+      },
+      cost: history[history.length - 1].cost,
+      history,
+    };
   },
 };
 
-const portalBillingMeRule: MockRule = {
-  id: "portal-billing-me",
-  path: /^\/portal\/billing\/me$/,
+const portalCostMeRule: MockRule = {
+  id: "portal-cost-me",
+  path: /^\/portal\/cost\/me$/,
   body: {
     month: "2026-03",
     subject_type: "account",
@@ -1102,9 +729,8 @@ const portalBillingMeRule: MockRule = {
     cost: {
       currency: "EUR",
       total_cost: 96.4,
-      rate_card_name: "Ops rate card",
+      pricing_source: "global",
     },
-    rate_resolution: defaultBillingRateResolution,
   },
 };
 
@@ -1270,48 +896,24 @@ export const scenarios: DocScreenshotScenario[] = [
     ),
   },
   {
-    id: "feature-billing-admin",
-    docPage: "user/feature-billing-admin.md",
-    route: "/admin/billing",
-    outputBasename: "admin-billing",
-    waitFor: "h1:has-text('Billing')",
+    id: "feature-cost-admin",
+    docPage: "user/feature-cost-admin.md",
+    route: "/admin/cost",
+    outputBasename: "admin-cost",
+    waitFor: "h1:has-text('Cost')",
     user: superAdminUser,
     storage: { ...baseStorage(), selectedWorkspace: "admin" },
     actions: [
       { type: "wait", selector: "text=Estimated cost" },
+      { type: "wait", selector: "input[placeholder*='Search subjects']" },
       { type: "wait", selector: "tr:has-text('Helios Retail')" },
-      { type: "fill", selector: "input[type='month']", value: "2026-03" },
-      { type: "click", selector: "button[role='tab']:has-text('Billing Entities')" },
-      { type: "wait", selector: "tr:has-text('Research Labs')" },
-      { type: "click", selector: "tr:has-text('Research Labs') button:has-text('View')" },
-      { type: "wait", selector: "text=Billed quota: 100 GiB-month" },
+      { type: "wait", selector: "tr:has-text('Helios Retail') a:has-text('View')" },
     ],
     mockRules: withBaseRules(
-      billingEnabledGeneralSettingsRule,
-      billingSummaryRule,
-      billingSubjectsRule,
-      billingSubjectDetailRule,
-      billingAnalysisRule,
-      billingEntityScopesRule,
-      billingGroupScopesRule,
-      billingStatementsRule,
-      billingStatementDetailRule,
-      billingFinalizedPeriodRule,
-    ),
-  },
-  {
-    id: "feature-billing-settings-admin",
-    docPage: "user/feature-billing-admin.md",
-    route: "/admin/billing-settings",
-    outputBasename: "admin-billing-settings",
-    waitFor: "h1:has-text('Billing settings')",
-    user: superAdminUser,
-    storage: { ...baseStorage(), selectedWorkspace: "admin" },
-    mockRules: withBaseRules(
-      billingEnabledGeneralSettingsRule,
-      billingRateCardsRule,
-      billingAutomationSettingsRule,
-      billingAutomationRunsRule,
+      costEnabledGeneralSettingsRule,
+      costSummaryRule,
+      costSubjectsRule,
+      costSubjectDetailRule,
     ),
   },
   {
@@ -1428,8 +1030,8 @@ export const scenarios: DocScreenshotScenario[] = [
       { type: "wait", selector: "text=Spaces by files" },
     ],
     mockRules: withBaseRules(
-      billingEnabledGeneralSettingsRule,
-      portalBillingMeRule,
+      costEnabledGeneralSettingsRule,
+      portalCostMeRule,
     ),
   },
   {

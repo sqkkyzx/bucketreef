@@ -15,6 +15,7 @@ export type PortalConfiguration = {
 };
 
 export type PortalSettings = PortalConfiguration & {
+  cost_estimation_enabled: boolean;
   browser_access_enabled: boolean;
   allow_private_storage_space_create: boolean;
   allow_portal_named_bucket_create: boolean;
@@ -44,6 +45,7 @@ export type PortalBucketDefaultsOverride = {
 };
 
 export type PortalSettingsOverride = {
+  cost_estimation_enabled?: boolean | null;
   browser_access_enabled?: boolean | null;
   allow_private_storage_space_create?: boolean | null;
   allow_portal_named_bucket_create?: boolean | null;
@@ -75,7 +77,7 @@ export type GeneralConfiguration = {
   browser_portal_enabled: boolean;
   browser_ceph_admin_enabled: boolean;
   portal_enabled: boolean;
-  billing_enabled: boolean;
+  cost_enabled: boolean;
   endpoint_status_enabled: boolean;
   quota_alerts_enabled: boolean;
   usage_history_enabled: boolean;
@@ -122,7 +124,7 @@ export type GeneralFeatureLocks = {
   storage_ops_enabled: GeneralFeatureLock;
   browser_enabled: GeneralFeatureLock;
   portal_enabled: GeneralFeatureLock;
-  billing_enabled: GeneralFeatureLock;
+  cost_enabled: GeneralFeatureLock;
   endpoint_status_enabled: GeneralFeatureLock;
 };
 
@@ -166,29 +168,12 @@ export type OnboardingSettings = {
   dismissed: boolean;
 };
 
-export type BillingAutomationSettings = {
-  mode: "manual" | "automatic_draft" | "automatic_finalize";
-  schedule_day: number;
-  require_all_subjects_assigned: boolean;
-};
-
-export type BillingStatementPdfSettings = {
-  organization_name: string;
-  organization_details: string | null;
-  accent_color: string;
-  logo_data_url: string | null;
-  statement_note: string | null;
-  footer_text: string | null;
-};
-
 export type AppSettings = {
   general: GeneralConfiguration;
   portal: PortalConfiguration;
   manager: ManagerSettings;
   quota_notifications: QuotaNotificationSettings;
   browser: BrowserSettings;
-  billing_automation: BillingAutomationSettings;
-  billing_statement_pdf: BillingStatementPdfSettings;
   onboarding: OnboardingSettings;
   branding: BrandingSettings;
 };

@@ -34,7 +34,7 @@ from app.routers.admin import s3_accounts as admin_s3_accounts
 from app.routers.admin import audit as admin_audit
 from app.routers.admin import access_audit as admin_access_audit
 from app.routers.admin import stats as admin_stats
-from app.routers.admin import billing as admin_billing
+from app.routers.admin import cost as admin_cost
 from app.routers.admin import usage_history as admin_usage_history
 from app.routers.admin import usage_stats as admin_usage_stats
 from app.routers.admin import users as admin_users
@@ -70,17 +70,17 @@ from app.routers.storage_ops import bucket_ui_tags as storage_ops_bucket_ui_tags
 from app.routers.storage_ops import integrity as storage_ops_integrity
 from app.routers.storage_ops import purge as storage_ops_purge
 from app.routers.storage_ops import usage_stats as storage_ops_usage_stats
-from app.routers.internal import billing_collect as internal_billing
+from app.routers.internal import cost_collect as internal_cost
 from app.routers.internal import bucket_usage_stats as internal_bucket_usage_stats
 from app.routers.internal import healthchecks as internal_healthchecks
 from app.routers.internal import quota_monitor as internal_quota_monitor
 from app.routers.internal import usage_history as internal_usage_history
 from app.routers.internal import user_notifications as internal_user_notifications
-from app.routers.integrations import billing_v1 as billing_integration_v1
 from app.routers.internal import access_key_expirations as internal_access_key_expirations
 from app.routers.manager import activity as manager_activity
 from app.routers.manager import buckets as manager_buckets
 from app.routers.manager import context as manager_context
+from app.routers.manager import cost as manager_cost
 from app.routers.manager import ceph_keys as manager_ceph_keys
 from app.routers.manager import private_access as manager_private_access
 from app.routers.manager import feature_rules as manager_feature_rules
@@ -256,7 +256,6 @@ if any(
     app.include_router(execution_contexts.router, prefix=settings.api_v1_prefix)
     app.include_router(user_connections.router, prefix=settings.api_v1_prefix)
 if runtime_surface_enabled(settings, "admin"):
-    app.include_router(billing_integration_v1.router, prefix=settings.api_v1_prefix)
     app.include_router(admin_access_audit.router, prefix=settings.api_v1_prefix)
     app.include_router(admin_s3_accounts.router, prefix=settings.api_v1_prefix)
     app.include_router(admin_s3_users.router, prefix=settings.api_v1_prefix)
@@ -264,7 +263,7 @@ if runtime_surface_enabled(settings, "admin"):
     app.include_router(admin_tag_definitions.router, prefix=settings.api_v1_prefix)
     app.include_router(admin_audit.router, prefix=settings.api_v1_prefix)
     app.include_router(admin_stats.router, prefix=settings.api_v1_prefix)
-    app.include_router(admin_billing.router, prefix=settings.api_v1_prefix)
+    app.include_router(admin_cost.router, prefix=settings.api_v1_prefix)
     app.include_router(admin_usage_history.router, prefix=settings.api_v1_prefix)
     app.include_router(admin_usage_stats.router, prefix=settings.api_v1_prefix)
     app.include_router(admin_users.router, prefix=settings.api_v1_prefix)
@@ -314,7 +313,7 @@ if runtime_surface_enabled(settings, "storage_ops"):
     app.include_router(storage_ops_usage_stats.router, prefix=settings.api_v1_prefix, dependencies=[Depends(require_storage_ops_enabled)])
 if settings.scheduled_jobs_enabled:
     app.include_router(internal_access_key_expirations.router, prefix=settings.api_v1_prefix)
-    app.include_router(internal_billing.router, prefix=settings.api_v1_prefix)
+    app.include_router(internal_cost.router, prefix=settings.api_v1_prefix)
     app.include_router(internal_bucket_usage_stats.router, prefix=settings.api_v1_prefix)
     app.include_router(internal_healthchecks.router, prefix=settings.api_v1_prefix)
     app.include_router(internal_quota_monitor.router, prefix=settings.api_v1_prefix)
@@ -340,6 +339,7 @@ if runtime_surface_enabled(settings, "manager"):
         manager_iam_policies.router,
         manager_topics.router,
         manager_stats.router,
+        manager_cost.router,
         manager_migrations.router,
         manager_integrity.router,
         manager_purge.router,

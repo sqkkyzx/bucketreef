@@ -15,8 +15,8 @@ permissions, workspace activation and numeric limits remain independent.
 | Required | `DATABASE_URL`, JWT secrets, credential encryption key, `CORS_ORIGINS`, frontend API routing | The app must persist data, protect sessions and stored credentials, and accept requests only from the intended UI origin. |
 | Required | `INTERNAL_CRON_TOKEN` when scheduler or CronJobs are enabled | Internal automation endpoints must not be callable without the shared token. |
 | Recommended | OIDC or LDAP provider settings | Enterprise identity is safer and easier to operate than local-only users. |
-| Recommended | Feature flags for Manager, Portal, Browser, Ceph Admin, Storage Ops, billing, endpoint status, usage history, and quota alerts | Users should see only the surfaces that are intentionally launched. |
-| Recommended | Healthcheck, billing, quota, usage-history, and notification-retention schedules | Operational data should be fresh enough to support troubleshooting and notification history should remain bounded. |
+| Recommended | Feature flags for Manager, Portal, Browser, Ceph Admin, Storage Ops, cost, endpoint status, usage history, and quota alerts | Users should see only the surfaces that are intentionally launched. |
+| Recommended | Healthcheck, cost, quota, usage-history, and notification-retention schedules | Operational data should be fresh enough to support troubleshooting and notification history should remain bounded. |
 | Recommended | SMTP settings when quota alerts are enabled | Quota alerts need a deliverable notification path. |
 | Optional | Documentation base URL | Lets an organization host the BucketReef guides on its own domain or under its own application path. |
 | Optional | Branding color and login logo | Useful for tenant or lab identity, but not required for safe operation. |
@@ -27,8 +27,8 @@ permissions, workspace activation and numeric limits remain independent.
 |---|---|---|
 | Login sessions, stored credentials, trusted origins | Backend environment and secret manager | `APP_ENV`, `PUBLIC_ORIGIN`, `CORS_ORIGINS`, `ALLOWED_HOSTS`, UI/API JWT rings, credential encryption, WebAuthn, trusted proxies, and secure cookies. |
 | Which workspaces users can see | Admin app settings and feature force-locks | `FEATURE_*` env locks, user roles, UI groups, account links, Manager tool access. |
-| Schedulers and internal automation | Runtime env, Compose scheduler, or Helm CronJobs | `INTERNAL_CRON_TOKEN`, `healthcheckCronJob`, `billingCronJob`, `quotaMonitorCronJob`, `usageHistoryCronJob`, `notificationRetentionCronJob`. |
-| Health, metrics, billing, quota, and usage history freshness | App settings plus job schedules | Endpoint capability, retention env vars, latest collection logs. |
+| Schedulers and internal automation | Runtime env, Compose scheduler, or Helm CronJobs | `INTERNAL_CRON_TOKEN`, `healthcheckCronJob`, `costCronJob`, `quotaMonitorCronJob`, `usageHistoryCronJob`, `notificationRetentionCronJob`. |
+| Health, metrics, cost, quota, and usage history freshness | App settings plus job schedules | Endpoint capability, retention env vars, latest collection logs. |
 | Enterprise authentication | Admin **Settings > Authentication** or env-managed OIDC/LDAP providers | TLS verification, provider priority, write-only secrets, startup warnings. |
 | Portal self-service behavior | Admin Portal settings | Portal account links, Storage Space defaults, access-key policy, IAM group projections. |
 | Browser exposure | Browser app settings and sub-flags | Root Browser, Manager Browser, Portal Browser, Ceph Admin Browser, endpoint capability. |
@@ -71,7 +71,7 @@ Key areas:
   signing, retries, and runtime configuration.
 - Database: `DATABASE_URL` (SQLite defaults to `backend/app.db`; relative SQLite paths are normalized against `backend/`). Multi-backend deployments require PostgreSQL.
 - CORS: `CORS_ORIGINS`.
-- Feature force-locks: `FEATURE_ADMIN_ENABLED`, `FEATURE_MANAGER_ENABLED`, `FEATURE_PORTAL_ENABLED`, `FEATURE_BROWSER_ENABLED`, `FEATURE_CEPH_ADMIN_ENABLED`, `FEATURE_STORAGE_OPS_ENABLED`, `FEATURE_BILLING_ENABLED`, `FEATURE_ENDPOINT_STATUS_ENABLED`.
+- Feature force-locks: `FEATURE_ADMIN_ENABLED`, `FEATURE_MANAGER_ENABLED`, `FEATURE_PORTAL_ENABLED`, `FEATURE_BROWSER_ENABLED`, `FEATURE_CEPH_ADMIN_ENABLED`, `FEATURE_STORAGE_OPS_ENABLED`, `FEATURE_COST_ENABLED`, `FEATURE_ENDPOINT_STATUS_ENABLED`.
 - Runtime job ownership: `SCHEDULED_JOBS_ENABLED`. A split deployment enables it
   only on the `admin` instance. A dedicated Ceph Admin instance disables it.
 - Internal scheduler auth: `INTERNAL_CRON_TOKEN`.
@@ -81,9 +81,9 @@ Key areas:
   `user` enables user surfaces and disables administrative surfaces and jobs.
   See [Dedicated Ceph Admin instance](../security/ceph-admin.md) for an isolated
   `full` configuration and migration from removed profiles.
-- Billing, quota monitoring, usage history collection, and healthcheck behavior.
-- Backend replica and lease coordination: `BACKEND_REPLICAS`, `OPERATION_LEASE_TTL_SECONDS`, and `BILLING_OPERATION_LEASE_TTL_SECONDS`.
-- Shared history retention: `BILLING_DAILY_RETENTION_DAYS`, `QUOTA_HISTORY_HOURLY_RETENTION_DAYS`, `QUOTA_HISTORY_DAILY_RETENTION_DAYS`.
+- Cost, quota monitoring, usage history collection, and healthcheck behavior.
+- Backend replica and lease coordination: `BACKEND_REPLICAS`, `OPERATION_LEASE_TTL_SECONDS`, and `COST_OPERATION_LEASE_TTL_SECONDS`.
+- Shared history retention: `COST_DAILY_RETENTION_DAYS`, `QUOTA_HISTORY_HOURLY_RETENTION_DAYS`, `QUOTA_HISTORY_DAILY_RETENTION_DAYS`.
 - User notification retention: `USER_NOTIFICATIONS_RETENTION_DAYS` (default `90`; `0` disables purge) and the daily `NOTIFICATION_RETENTION_CRON_SCHEDULE` Compose job or `notificationRetentionCronJob` Helm job.
 - Durable webhook delivery: `WEBHOOK_WORKER_ENABLED`,
   `WEBHOOK_POLL_INTERVAL_SECONDS`, `WEBHOOK_WORKER_LEASE_SECONDS`,
@@ -273,7 +273,7 @@ the persisted setting.
 
 Managed from Admin UI:
 
-- General feature toggles (`manager_enabled`, `portal_enabled`, `browser_enabled`, `ceph_admin_enabled`, `storage_ops_enabled`, `billing_enabled`, `endpoint_status_enabled`).
+- General feature toggles (`manager_enabled`, `portal_enabled`, `browser_enabled`, `ceph_admin_enabled`, `storage_ops_enabled`, `cost_enabled`, `endpoint_status_enabled`).
 - RGW Account ID prefix (`rgw_account_id_prefix`): 1 to 3 digits, `80` by default. BucketReef keeps the Ceph RGW `RGW` + 17 digits format by shortening the random suffix accordingly. The setting applies to automatically generated IDs in Admin, guided onboarding, and Ceph Admin; explicitly supplied Ceph Admin IDs are preserved.
 - Managed RGW tenant creation (`allow_managed_rgw_tenant_creation`): disabled by default. When enabled, Admin-managed RGW Account and RGW User creation and import may target an explicit Ceph tenant. Ceph Admin creation remains tenant-capable regardless of this setting.
 - Authentication settings (`allow_login_access_keys`, endpoint selection for access-key login, custom login endpoints, `require_passkey_for_admins`, `require_passkey_for_users`, `allow_user_profile_name_edit`, and `allow_user_external_identity_unlink`). Fresh installations leave both passkey requirements disabled to simplify onboarding and keep both self-service permissions disabled. Before production, enroll an administrator passkey from **Profile > Security** and enable `require_passkey_for_admins`; Production readiness treats the disabled policy as a Critical publication finding, not a startup blocker. Persisted settings from older releases keep the historical Admin requirement when this field is absent.
@@ -287,12 +287,16 @@ Managed from Admin UI:
   it refreshes only missing snapshots or snapshots at least 24 hours old, with at most two bucket scans in
   parallel.
 - Browser sub-flags (`browser_root_enabled`, `browser_manager_enabled`, `browser_portal_enabled`, `browser_ceph_admin_enabled`).
-- Portal settings (`portal`): standalone Browser access (`browser_access_enabled`, enabled by default), IAM key availability, private Storage Space creation, portal user access-key creation, Portal User external sharing (`allow_portal_user_external_sharing`, disabled by default), server access log retention for newly created technical log buckets, max portal user keys, and bucket defaults. When external sharing is enabled, a `portal_user` may create public links and external S3 credentials only for an owned Storage Space; disabling it blocks new creation while existing links and credentials remain manageable. Portal Managers keep their existing behavior independently of this flag. Portal settings can be overridden per account by a super-admin. The per-account `portal_settings_delegated` flag is disabled by default; when enabled, project Portal Managers can edit the same shared override from `/portal/settings`. Disabling delegation keeps the stored override effective but read-only in Portal. `bucket_defaults.noncurrent_version_expiration_days` is the internal key for **Version history retention**; it is a positive integer (90 by default) and applies only when provisioning a new Storage Space with the default lifecycle enabled. Existing buckets are not reconciled automatically.
+- Portal settings (`portal`): standalone Browser access (`browser_access_enabled`, enabled by default), Cost estimation (`portal.feature_policies.cost_estimation`, targeted by default), IAM key availability, private Storage Space creation, portal user access-key creation, Portal User external sharing (`allow_portal_user_external_sharing`, disabled by default), server access log retention for newly created technical log buckets, max portal user keys, and bucket defaults. Cost estimation requires the global `cost_enabled` switch plus an effective per-project `cost_estimation_enabled` override before Portal shows the **Costs** tab. When external sharing is enabled, a `portal_user` may create public links and external S3 credentials only for an owned Storage Space; disabling it blocks new creation while existing links and credentials remain manageable. Portal Managers keep their existing behavior independently of this flag. Portal settings can be overridden per account by a super-admin. The per-account `portal_settings_delegated` flag is disabled by default; when enabled, project Portal Managers can edit the same shared override from `/portal/settings`. Disabling delegation keeps the stored override effective but read-only in Portal. `bucket_defaults.noncurrent_version_expiration_days` is the internal key for **Version history retention**; it is a positive integer (90 by default) and applies only when provisioning a new Storage Space with the default lifecycle enabled. Existing buckets are not reconciled automatically.
 - Manager feature policies and behavior: bucket migration, compare, integrity
-  check, purge, usage metrics, Ceph S3 User key management, optional access-key
+  check, purge, usage metrics, Cost estimation, Ceph S3 User key management, optional access-key
   names and notes (`manager.feature_policies.access_key_metadata`), optional
   access-key expiration (`manager.feature_policies.access_key_expiration`), and
   migration parallelism.
+  Cost estimation defaults to `targeted` and requires `allow_cost_estimation=true`
+  on an eligible persisted RGW Account or RGW User before Manager shows the
+  **Costs** tab in **Usage & Metrics**. S3 Connection contexts are not Cost
+  subjects and therefore do not expose that tab.
   Access-key names and notes are enabled globally by default on new deployments and require a separate
   resource opt-in: `allow_access_key_metadata=true` on each RGW Account or S3
   User where Manager should expose the BucketReef-only metadata.
@@ -421,7 +425,7 @@ Deploy the matching backend and frontend together for this transfer contract.
 | Menu or workspace is missing | App settings feature flags, user role, account links, and entitlements. |
 | Browser or Portal files do not open | Browser sub-flags, selected context access, and endpoint capability. |
 | `AccessDenied` during an S3 action | IAM/S3 policy and selected execution identity before changing UI flags. |
-| Metrics, billing, quota, or history are stale | Scheduler/CronJob settings, `INTERNAL_CRON_TOKEN`, retention, and endpoint capabilities. |
+| Metrics, cost, quota, or history are stale | Scheduler/CronJob settings, `INTERNAL_CRON_TOKEN`, retention, and endpoint capabilities. |
 | Quota emails do not arrive | Quota notification policy, SMTP non-secret fields, `SMTP_PASSWORD`, and user opt-in. |
 
 ## Branding

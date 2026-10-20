@@ -50,20 +50,36 @@ describe("buildAdminNav", () => {
     expect(portalLink?.disabledHint).toBe("Portal feature is disabled in General settings.");
   });
 
-  it("disables Billing settings when Billing is globally disabled", () => {
-    const billingLink = getSettingsLink("Billing", [true, true, false, false, false, true]);
+  it("disables Cost settings when the Cost feature is inactive", () => {
+    const costLink = getSettingsLink("Cost", [true, true, false, false, false, true]);
 
-    expect(billingLink?.disabled).toBe(true);
-    expect(billingLink?.disabledHint).toBe(
-      "Billing is disabled. Enable it in General settings to use this page.",
-    );
+    expect(costLink?.disabled).toBe(true);
+    expect(costLink?.disabledHint).toBe("Cost feature is disabled in General settings.");
+    expect(costLink?.to).toBe("/admin/cost-settings");
+    expect(costLink?.iconName).toBe("cost");
   });
 
-  it("keeps Billing settings enabled when Billing is globally enabled", () => {
-    const billingLink = getSettingsLink("Billing", [true, true, true, false, false, true]);
+  it("enables Cost settings when the Cost feature is active", () => {
+    const costLink = getSettingsLink("Cost", [true, true, true, false, false, true]);
 
-    expect(billingLink?.disabled).toBe(false);
-    expect(billingLink?.disabledHint).toBeUndefined();
+    expect(costLink?.disabled).toBe(false);
+    expect(costLink?.disabledHint).toBeUndefined();
+  });
+
+  it("uses the same dedicated Cost icon for reporting and Cost settings", () => {
+    const reportingLink = getAuditReportingLink("Cost", [true, true, true, false, false, true]);
+    const settingsLink = getSettingsLink("Cost", [true, true, true, false, false, true]);
+
+    expect(reportingLink?.iconName).toBe("cost");
+    expect(settingsLink?.iconName).toBe("cost");
+  });
+
+  it("uses distinct icons for Webhooks, Access audit, and Audit trail", () => {
+    const options: Parameters<typeof buildAdminNav> = [true, true, true, false, false, true];
+
+    expect(getSettingsLink("Webhooks", options)?.iconName).toBe("webhook");
+    expect(getAuditReportingLink("Access audit", options)?.iconName).toBe("access-audit");
+    expect(getAuditReportingLink("Audit trail", options)?.iconName).toBe("audit");
   });
 
   it("does not expose API Tokens in settings navigation", () => {
@@ -76,6 +92,14 @@ describe("buildAdminNav", () => {
     const authenticationLink = getSettingsLink("Authentication", [true, true, false, false, false, true]);
 
     expect(authenticationLink?.to).toBe("/admin/authentication-settings");
+    expect(authenticationLink?.iconName).toBe("shield");
+  });
+
+  it("uses the Manager tools icon in settings navigation", () => {
+    const managerLink = getSettingsLink("Manager", [true, true, false, false, false, true]);
+
+    expect(managerLink?.to).toBe("/admin/manager-settings");
+    expect(managerLink?.iconName).toBe("tools");
   });
 
   it("places Production readiness with the deployment settings", () => {
@@ -89,7 +113,7 @@ describe("buildAdminNav", () => {
       "Manager",
       "Browser",
       "Portal",
-      "Billing",
+      "Cost",
       "Webhooks",
       "Production readiness",
       "Key Rotation",
@@ -204,7 +228,7 @@ describe("buildAdminNav", () => {
     expect(disabledLink).toBeUndefined();
   });
 
-  it("groups metrics after managed tenant links and billing with audit reporting", () => {
+  it("groups metrics after managed tenant links and cost with audit reporting", () => {
     const adminNav = buildAdminNav(true, true, true, true, false, true);
     const dashboard = adminNav[0];
     const setup = adminNav.find((section) => section.label === "Setup");
@@ -221,7 +245,7 @@ describe("buildAdminNav", () => {
     ]);
     expect(auditReporting?.links.map((link) => link.label)).toEqual([
       "Portal Requests",
-      "Billing",
+      "Cost",
       "Usage History",
       "Access audit",
       "Audit trail",

@@ -11,11 +11,8 @@ from app.core.domain_errors import S3AccountNotFoundError
 from app.services.rgw_account_root_service import RgwAccountRootService
 from app.services.s3_accounts_service import S3AccountsService
 from app.db import (
-    BillingAssignment,
-    BillingRateCard,
-    BillingRatePlan,
-    BillingStorageDaily,
-    BillingUsageDaily,
+    CostStorageDaily,
+    CostUsageDaily,
     BrowserFavorite,
     BucketMigration,
     BucketUsageStatsSnapshot,
@@ -1158,32 +1155,15 @@ class FakeRGWDeleteAdmin:
 
 
 def _seed_account_derived_rows(db_session, *, endpoint: StorageEndpoint, account: S3Account) -> None:
-    rate_plan = BillingRatePlan(
-        name=f"account-delete-rate-{account.id}",
-        storage_endpoint_id=endpoint.id,
-    )
-    rate_card = BillingRateCard(
-        rate_plan=rate_plan,
-        currency="EUR",
-        effective_from=date(2026, 1, 1),
-    )
-    db_session.add(rate_card)
-    db_session.flush()
     db_session.add_all(
         [
-            BillingAssignment(
-                storage_endpoint_id=endpoint.id,
-                s3_account_id=account.id,
-                rate_plan_id=rate_plan.id,
-                effective_from=date(2026, 1, 1),
-            ),
-            BillingUsageDaily(
+            CostUsageDaily(
                 day=date(2026, 1, 1),
                 storage_endpoint_id=endpoint.id,
                 s3_account_id=account.id,
                 source="rgw_admin_usage",
             ),
-            BillingStorageDaily(
+            CostStorageDaily(
                 day=date(2026, 1, 1),
                 storage_endpoint_id=endpoint.id,
                 s3_account_id=account.id,
@@ -1285,10 +1265,9 @@ def test_delete_account_purges_derived_database_rows(db_session, monkeypatch):
     svc = _build_service(db_session, monkeypatch, fake_admin)
     svc.delete_account(account.id, delete_rgw=False)
 
-    assert db_session.query(BillingAssignment).filter(BillingAssignment.s3_account_id == account.id).count() == 0
-    assert db_session.query(BillingUsageDaily).filter(BillingUsageDaily.s3_account_id == account.id).count() == 0
+    assert db_session.query(CostUsageDaily).filter(CostUsageDaily.s3_account_id == account.id).count() == 0
     assert (
-        db_session.query(BillingStorageDaily).filter(BillingStorageDaily.s3_account_id == account.id).count() == 0
+        db_session.query(CostStorageDaily).filter(CostStorageDaily.s3_account_id == account.id).count() == 0
     )
     assert db_session.query(QuotaUsageHourly).filter(QuotaUsageHourly.s3_account_id == account.id).count() == 0
     assert db_session.query(QuotaUsageDaily).filter(QuotaUsageDaily.s3_account_id == account.id).count() == 0

@@ -23,7 +23,7 @@ export function createAppSettings(
       browser_portal_enabled: true,
       browser_ceph_admin_enabled: false,
       portal_enabled: true,
-      billing_enabled: false,
+      cost_enabled: false,
       endpoint_status_enabled: false,
       quota_alerts_enabled: false,
       usage_history_enabled: false,
@@ -71,19 +71,6 @@ export function createAppSettings(
       proxy_download_parallelism: 2,
       other_operations_parallelism: 3,
       streaming_zip_threshold_mb: 200,
-    },
-    billing_automation: {
-      mode: "manual",
-      schedule_day: 5,
-      require_all_subjects_assigned: true,
-    },
-    billing_statement_pdf: {
-      organization_name: "BucketReef",
-      organization_details: null,
-      accent_color: "#0569f8",
-      logo_data_url: null,
-      statement_note: null,
-      footer_text: null,
     },
     onboarding: { dismissed: false },
     branding: {
