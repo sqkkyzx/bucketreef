@@ -2,46 +2,14 @@
  * Copyright (c) 2026 Laurent Barbe
  * Licensed under the Apache License, Version 2.0
  */
-import ListPageSection from "../../components/list/ListPageSection";
-import TableSortControls from "../../components/list/TableSortControls";
-import { ListActions, ListActionLink } from "../../components/list/ListControls";
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type Dispatch,
-  type FormEvent,
-  type ReactNode,
-  type SetStateAction,
-} from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
-import {
-  createPortalStorageSpace,
-  importPortalStorageSpace,
-  type PortalStorageSpaceAccountMemberRole,
-  type PortalStorageSpaceGrantRole,
-  type PortalStorageSpaceRole,
-} from "../../api/portal";
-import {
-  listPortalShareCandidates,
-  type PortalStorageSpaceShareCandidate,
-} from "../../api/portalSharing";
-import DataTableShell, {
-  dataTableDefaultActionProps,
-  type DataTableColumn,
-} from "../../components/list/DataTableShell";
-import { flushSync } from "react-dom";
+import { useEffect, useState, type ReactNode } from "react";
 import SettingsFormDialog from "../../components/settings/SettingsFormDialog";
 import PageShell from "../../components/PageShell";
-import StorageSpaceIcon from "../../components/StorageSpaceIcon";
 
 import UiBadge from "../../components/ui/UiBadge";
 import UiButton, { UiButtonLink } from "../../components/ui/UiButton";
 import UiInput from "../../components/ui/UiInput";
 import UiSelect from "../../components/ui/UiSelect";
-import { UserAvatarStack } from "../../components/UserAvatar";
 import {
   cx,
   uiMutedTextClass,
@@ -49,46 +17,22 @@ import {
   uiTitleTextClass,
 } from "../../components/ui/styles";
 import { useI18n } from "../../i18n";
-import { extractApiError } from "../../utils/apiError";
-import { focusFirstInvalidField } from "../../utils/focusFirstInvalidField";
-import { isValidS3BucketName } from "../../utils/s3BucketName";
 import {
   readClientStorageKey,
   writeClientStorageKey,
 } from "../../utils/clientStorage";
-import { formatBytes, formatCompactNumber } from "../../utils/format";
-import { stableSignature } from "../../utils/stableSignature";
 import {
   PortalAccessModeFields,
   PortalShareCandidatePicker,
-  portalAccessPayloadFromMode,
   portalAccessModeDescription,
   portalAccessModeSummary,
-  selectedPortalShares,
-  type PortalAccessMode,
 } from "./PortalAccessControls";
 import { portalBreadcrumbs } from "./portalBreadcrumbs";
-import PortalPageTabs, { PortalTabPanel } from "./PortalPageTabs";
 import { storageSpacePath } from "./portalWorkspaceModel";
-import {
-  portalStorageSpaceStatusTone,
-  portalVisibilityTone,
-  resolvePortalWorkspacePageState,
-} from "./portalUi";
-import type { PortalWorkspaceSpace } from "./portalWorkspaceModel";
-import {
-  portalRoleLabel,
-  portalShareScopeLabel,
-  portalStatusLabel,
-} from "./portalI18n";
+import { resolvePortalWorkspacePageState } from "./portalUi";
+import PortalStorageSpacesList from "./PortalStorageSpacesList";
+import { usePortalStorageSpaceProvisioning } from "./usePortalStorageSpaceProvisioning";
 import { usePortalWorkspaceData } from "./usePortalWorkspaceData";
-
-type SpacesTab = "active" | "archived";
-
-function visibleStatus(space: { status: string }) {
-  if (space.status === "Active") return null;
-  return space.status;
-}
 
 function StartStep({
   step,
@@ -139,221 +83,7 @@ export default function PortalStorageSpacesPage() {
     includeArchived: true,
     includeUsage: true,
   });
-  const navigate = useNavigate();
-  const [searchParams, setSearchParams] = useSearchParams();
-  const [query, setQuery] = useState("");
-  const [roleFilter, setRoleFilter] = useState<PortalStorageSpaceRole | "all">(
-    "all",
-  );
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [sort, setSort] = useState("name");
-  const [activeTab, setActiveTab] = useState<SpacesTab>("active");
-  const [mobileListControlsOpen, setMobileListControlsOpen] = useState(false);
-  const [showCreate, setShowCreate] = useState(false);
-  const [showImport, setShowImport] = useState(false);
   const [startGuideDismissed, setStartGuideDismissed] = useState(false);
-  const [newName, setNewName] = useState("");
-  const [newDescription, setNewDescription] = useState("");
-  const [newAccessMode, setNewAccessMode] =
-    useState<PortalAccessMode>("private");
-  const [newAccountMemberRole, setNewAccountMemberRole] =
-    useState<PortalStorageSpaceAccountMemberRole>("Editor");
-  const [shareCandidates, setShareCandidates] = useState<
-    PortalStorageSpaceShareCandidate[]
-  >([]);
-  const [shareCandidateQuery, setShareCandidateQuery] = useState("");
-  const [shareCandidatesLoading, setShareCandidatesLoading] = useState(false);
-  const [shareCandidatesError, setShareCandidatesError] = useState<
-    string | null
-  >(null);
-  const [restrictedRolesByUserId, setRestrictedRolesByUserId] = useState<
-    Record<number, PortalStorageSpaceGrantRole>
-  >({});
-  const [importShareCandidateQuery, setImportShareCandidateQuery] =
-    useState("");
-  const [importRestrictedRolesByUserId, setImportRestrictedRolesByUserId] =
-    useState<Record<number, PortalStorageSpaceGrantRole>>({});
-  const [newNamingMode, setNewNamingMode] = useState<
-    "generic_uuid" | "named_bucket"
-  >("generic_uuid");
-  const [createBusy, setCreateBusy] = useState(false);
-  const [createError, setCreateError] = useState<string | null>(null);
-  const [createValidationAttempted, setCreateValidationAttempted] = useState(false);
-  const [importBucketName, setImportBucketName] = useState("");
-  const [importDescription, setImportDescription] = useState("");
-  const [importAccessMode, setImportAccessMode] =
-    useState<PortalAccessMode>("private");
-  const [importAccountMemberRole, setImportAccountMemberRole] =
-    useState<PortalStorageSpaceAccountMemberRole>("Editor");
-  const [importBusy, setImportBusy] = useState(false);
-  const [importError, setImportError] = useState<string | null>(null);
-  const createFocusReturnRef = useRef<HTMLElement | null>(null);
-  const importFocusReturnRef = useRef<HTMLElement | null>(null);
-  const activeSpaces = useMemo(
-    () => workspace.spaces.filter((space) => space.status !== "Archived"),
-    [workspace.spaces],
-  );
-  const archivedSpaces = useMemo(
-    () => workspace.spaces.filter((space) => space.status === "Archived"),
-    [workspace.spaces],
-  );
-  const visibleSpaces = activeTab === "archived" ? archivedSpaces : activeSpaces;
-  const normalizedQuery = query.trim().toLowerCase();
-  const filteredSpaces = useMemo(() => {
-    const filtered = visibleSpaces.filter((space) => {
-      if (roleFilter !== "all" && space.role !== roleFilter) return false;
-      if (statusFilter !== "all" && space.status !== statusFilter) return false;
-      if (!normalizedQuery) return true;
-      return [
-        space.name,
-        space.description,
-        space.ownerLabel,
-        space.visibility,
-        portalShareScopeLabel(space.visibility, space.shareScope, t),
-        space.projectKey,
-        space.datasetLabel,
-      ]
-        .filter(Boolean)
-        .some((value) => String(value).toLowerCase().includes(normalizedQuery));
-    });
-    return [...filtered].sort((a, b) => {
-      if (sort === "created_at")
-        return (a.createdAt ?? "").localeCompare(b.createdAt ?? "");
-      if (sort === "-created_at")
-        return (b.createdAt ?? "").localeCompare(a.createdAt ?? "");
-      if (sort === "used_bytes")
-        return (a.usedBytes ?? -1) - (b.usedBytes ?? -1);
-      if (sort === "-used_bytes")
-        return (b.usedBytes ?? -1) - (a.usedBytes ?? -1);
-      if (sort === "object_count")
-        return (a.objectCount ?? -1) - (b.objectCount ?? -1);
-      if (sort === "-object_count")
-        return (b.objectCount ?? -1) - (a.objectCount ?? -1);
-      return sort === "-name" ? b.name.localeCompare(a.name) : a.name.localeCompare(b.name);
-    });
-  }, [normalizedQuery, roleFilter, sort, statusFilter, t, visibleSpaces]);
-  const tableSort = {
-    field: sort.replace(/^-/, ""),
-    direction: sort.startsWith("-") ? "desc" as const : "asc" as const,
-    onSort: (field: string) => setSort((current) => current === field ? `-${field}` : field),
-  };
-  const tableStatus = filteredSpaces.length === 0 ? "empty" : "ready";
-  const storageSpaceColumns = useMemo<DataTableColumn<PortalWorkspaceSpace>[]>(
-    () => [
-      {
-        id: "name",
-        field: "name",
-        label: t({ en: "Space", fr: "Espace", de: "Bereich", zh: "空间" }),
-        mobileLabel: t({ en: "Space", fr: "Espace", de: "Bereich", zh: "空间" }),
-        primary: true,
-        render: (space) => (
-          <div className="flex min-w-0 items-start gap-2">
-            <StorageSpaceIcon
-              icon={space.icon}
-              name={space.name}
-              size="sm"
-              className="mt-0.5"
-              decorative
-            />
-            <div className="min-w-0">
-              <span className="block truncate">{space.name}</span>
-              <div className={cx("text-[11px] font-medium", uiMutedTextClass)}>
-                {space.description}
-              </div>
-            </div>
-          </div>
-        ),
-      },
-      {
-        id: "access",
-        label: t({
-          en: "Collaborators",
-          fr: "Collaborateurs",
-          de: "Mitwirkende",
-          zh: "协作者",
-        }),
-        render: (space) => {
-          const status = visibleStatus(space);
-          const collaborators = space.collaborators ?? [];
-          const isWholeTeam =
-            space.visibility === "shared" && space.shareScope === "account";
-          return (
-            <div className="flex min-w-[132px] flex-col items-start gap-2">
-              {space.visibility === "private" ? (
-                <UiBadge tone={portalVisibilityTone(space.visibility)}>
-                  {portalShareScopeLabel(space.visibility, space.shareScope, t)}
-                </UiBadge>
-              ) : isWholeTeam ? (
-                <UiBadge tone={portalVisibilityTone(space.visibility)}>
-                  {portalShareScopeLabel(space.visibility, space.shareScope, t)}
-                </UiBadge>
-              ) : collaborators.length > 0 ? (
-                <UserAvatarStack
-                  people={collaborators}
-                  totalCount={space.collaboratorCount ?? collaborators.length}
-                  maxVisible={5}
-                  size="sm"
-                />
-              ) : (
-                <span className={cx("text-xs", uiMutedTextClass)}>
-                  {t({ en: "No collaborators", fr: "Aucun collaborateur", de: "Keine Mitwirkenden", zh: "没有协作者" })}
-                </span>
-              )}
-              {status ? (
-                <UiBadge tone={portalStorageSpaceStatusTone(space)}>
-                  {portalStatusLabel(
-                    status as "Active" | "Attention" | "Archived",
-                    t,
-                  )}
-                </UiBadge>
-              ) : null}
-            </div>
-          );
-        },
-      },
-      {
-        id: "files",
-        field: "object_count",
-        label: t({ en: "Files", fr: "Fichiers", de: "Dateien", zh: "文件" }),
-        render: (space) => formatCompactNumber(space.objectCount),
-      },
-      {
-        id: "size",
-        field: "used_bytes",
-        label: t({ en: "Size", fr: "Taille", de: "Größe", zh: "大小" }),
-        render: (space) => formatBytes(space.usedBytes),
-      },
-      {
-        id: "created",
-        field: "created_at",
-        label: t({ en: "Created", fr: "Créé", de: "Erstellt", zh: "创建时间" }),
-        render: (space) => space.createdLabel,
-      },
-      {
-        id: "region",
-        label: t({ en: "Region", fr: "Région", de: "Region", zh: "区域" }),
-        render: (space) => space.region,
-      },
-      {
-        id: "action",
-        label: t({ en: "Action", fr: "Action", de: "Aktion", zh: "操作" }),
-        align: "right",
-        mobileRole: "actions",
-        render: (space) => (
-          <ListActions>
-            <ListActionLink
-              to={storageSpacePath(space)}
-
-              {...dataTableDefaultActionProps}
-            >
-              {t({ en: "Open", fr: "Ouvrir", de: "Öffnen", zh: "打开" })}
-            </ListActionLink>
-          </ListActions>
-        ),
-      },
-    ],
-    [t],
-  );
 
   const canCreatePrivate = Boolean(state?.can_create_private_storage_spaces);
   const canCreateTeam = Boolean(state?.can_create_team_storage_spaces);
@@ -362,332 +92,95 @@ export default function PortalStorageSpacesPage() {
     state?.portal_role === "portal_manager" &&
     Boolean(state?.can_manage_buckets);
   const canUseNamedBucket = Boolean(state?.allow_named_bucket_create);
-  const createAccessModes = useMemo<PortalAccessMode[]>(
-    () => [
-      ...(canCreatePrivate ? (["private"] as PortalAccessMode[]) : []),
-      ...(canCreateTeam ? (["account", "restricted"] as PortalAccessMode[]) : []),
-    ],
-    [canCreatePrivate, canCreateTeam],
-  );
-  const importAccessModes = useMemo<PortalAccessMode[]>(
-    () => [
-      ...(canCreatePrivate ? (["private"] as PortalAccessMode[]) : []),
-      "account",
-      "restricted",
-    ],
-    [canCreatePrivate],
-  );
-  const firstWritableSpace =
-    activeSpaces.find(
-      (space) => space.role === "Manager" || space.role === "Owner" || space.role === "Editor",
-    ) ??
-    activeSpaces[0] ??
-    null;
-  const firstManagedTeamSpace =
-    activeSpaces.find((space) => space.role === "Manager" && space.visibility === "shared") ?? null;
-  const effectiveNamingMode = canUseNamedBucket
-    ? newNamingMode
-    : "generic_uuid";
-  const newNameError = effectiveNamingMode === "named_bucket" && newName && !isValidS3BucketName(newName)
-    ? t({
-        en: "Invalid name. 3-63 characters, lowercase letters, numbers, dots or hyphens.",
-        fr: "Nom invalide. 3 à 63 caractères : lettres minuscules, chiffres, points ou tirets.",
-        de: "Ungültiger Name. 3–63 Zeichen: Kleinbuchstaben, Ziffern, Punkte oder Bindestriche.",
-        zh: "名称无效。长度为 3–63 个字符，只能包含小写字母、数字、点或连字符。",
-      })
-    : createValidationAttempted && !newName.trim()
-      ? t({ en: "Space name is required.", fr: "Le nom de l'espace est obligatoire.", de: "Ein Bereichsname ist erforderlich.", zh: "空间名称为必填项。" })
-      : undefined;
-  const effectiveNewAccessMode: PortalAccessMode = createAccessModes.includes(newAccessMode)
-    ? newAccessMode
-    : createAccessModes[0] ?? "private";
-  const effectiveNewAccessPayload = portalAccessPayloadFromMode(
-    effectiveNewAccessMode,
-    newAccountMemberRole,
-  );
-  const effectiveImportAccessPayload = portalAccessPayloadFromMode(
-    importAccessMode,
-    importAccountMemberRole,
-  );
-  const selectedRestrictedEntries = selectedPortalShares(
-    restrictedRolesByUserId,
-  );
-  const selectedImportRestrictedEntries = selectedPortalShares(
-    importRestrictedRolesByUserId,
-  );
-  const portalMemberCount = shareCandidates.length + 1;
-  const createRequested = searchParams.get("create") === "1";
-  const startGuideStorageKey = `portal.storage-spaces.start-guide.dismissed.${accountIdForApi ?? "default"}`;
-
-  const createFormSignature = useMemo(
-    () =>
-      stableSignature({
-        name: newName,
-        description: newDescription,
-        namingMode: newNamingMode,
-        accessMode: effectiveNewAccessMode,
-        accountMemberRole: newAccountMemberRole,
-        restrictedRolesByUserId,
-      }),
-    [
-      effectiveNewAccessMode,
-      newAccountMemberRole,
-      newDescription,
-      newName,
-      newNamingMode,
+  const {
+    candidates: {
+      items: shareCandidates,
+      loading: shareCandidatesLoading,
+      error: shareCandidatesError,
+      portalMemberCount,
+    },
+    create: {
+      open: showCreate,
+      openDialog: openCreate,
+      closeDialog: closeCreate,
+      accessModes: createAccessModes,
+      name: newName,
+      setName: setNewName,
+      description: newDescription,
+      setDescription: setNewDescription,
+      accessMode: newAccessMode,
+      setAccessMode: setNewAccessMode,
+      effectiveAccessMode: effectiveNewAccessMode,
+      accountMemberRole: newAccountMemberRole,
+      setAccountMemberRole: setNewAccountMemberRole,
+      namingMode: newNamingMode,
+      setNamingMode: setNewNamingMode,
+      effectiveNamingMode,
       restrictedRolesByUserId,
-    ],
-  );
-  const importFormSignature = useMemo(
-    () =>
-      stableSignature({
-        bucketName: importBucketName,
-        description: importDescription,
-        accessMode: importAccessMode,
-        accountMemberRole: importAccountMemberRole,
-        restrictedRolesByUserId: importRestrictedRolesByUserId,
-      }),
-    [
-      importAccessMode,
-      importAccountMemberRole,
-      importBucketName,
-      importDescription,
-      importRestrictedRolesByUserId,
-    ],
-  );
-
-  const closeCreate = useCallback((reason?: "navigation") => {
-    const focusTarget = createFocusReturnRef.current;
-    createFocusReturnRef.current = null;
-    setShowCreate(false);
-    setCreateError(null);
-    if (reason !== "navigation" && searchParams.get("create") === "1") {
-      const next = new URLSearchParams(searchParams);
-      next.delete("create");
-      setSearchParams(next, { replace: true });
-    }
-    window.requestAnimationFrame(() => {
-      if (focusTarget?.isConnected) focusTarget.focus();
-    });
-  }, [searchParams, setSearchParams]);
-
-  const openCreate = useCallback(() => {
-    createFocusReturnRef.current =
-      document.activeElement instanceof HTMLElement && document.activeElement !== document.body
-        ? document.activeElement
-        : null;
-    const initialAccessMode = createAccessModes[0] ?? "private";
-    setNewName("");
-    setNewDescription("");
-    setNewNamingMode("generic_uuid");
-    setNewAccessMode(initialAccessMode);
-    setNewAccountMemberRole("Editor");
-    setRestrictedRolesByUserId({});
-    setShareCandidateQuery("");
-    setCreateError(null);
-    setCreateValidationAttempted(false);
-    setShowCreate(true);
-  }, [createAccessModes]);
-
-  const closeImport = useCallback(() => {
-    const focusTarget = importFocusReturnRef.current;
-    importFocusReturnRef.current = null;
-    setShowImport(false);
-    setImportError(null);
-    window.requestAnimationFrame(() => {
-      if (focusTarget?.isConnected) focusTarget.focus();
-    });
-  }, []);
-
-  const openImport = useCallback(() => {
-    importFocusReturnRef.current =
-      document.activeElement instanceof HTMLElement && document.activeElement !== document.body
-        ? document.activeElement
-        : null;
-    const initialAccessMode = importAccessModes[0] ?? "private";
-    setImportBucketName("");
-    setImportDescription("");
-    setImportAccessMode(initialAccessMode);
-    setImportAccountMemberRole("Editor");
-    setImportRestrictedRolesByUserId({});
-    setImportShareCandidateQuery("");
-    setImportError(null);
-    setShowImport(true);
-  }, [importAccessModes]);
-
-  useEffect(() => {
-    if (canCreate && createRequested) {
-      openCreate();
-    }
-  }, [canCreate, createRequested, openCreate]);
-
-  useEffect(() => {
-    if (!createAccessModes.includes(newAccessMode) && createAccessModes[0]) {
-      setNewAccessMode(createAccessModes[0]);
-    }
-  }, [createAccessModes, newAccessMode]);
-
-  useEffect(() => {
-    if (!importAccessModes.includes(importAccessMode) && importAccessModes[0]) {
-      setImportAccessMode(importAccessModes[0]);
-    }
-  }, [importAccessMode, importAccessModes]);
+      setRestrictedRole: setCreateRestrictedRole,
+      candidateQuery: shareCandidateQuery,
+      setCandidateQuery: setShareCandidateQuery,
+      selectedRestrictedEntries,
+      formSignature: createFormSignature,
+      busy: createBusy,
+      error: createError,
+      nameError: newNameError,
+      submit: handleCreate,
+    },
+    importFlow: {
+      open: showImport,
+      openDialog: openImport,
+      closeDialog: closeImport,
+      accessModes: importAccessModes,
+      bucketName: importBucketName,
+      setBucketName: setImportBucketName,
+      description: importDescription,
+      setDescription: setImportDescription,
+      accessMode: importAccessMode,
+      setAccessMode: setImportAccessMode,
+      accountMemberRole: importAccountMemberRole,
+      setAccountMemberRole: setImportAccountMemberRole,
+      restrictedRolesByUserId: importRestrictedRolesByUserId,
+      setRestrictedRole: setImportRestrictedRole,
+      candidateQuery: importShareCandidateQuery,
+      setCandidateQuery: setImportShareCandidateQuery,
+      selectedRestrictedEntries: selectedImportRestrictedEntries,
+      formSignature: importFormSignature,
+      busy: importBusy,
+      error: importError,
+      submit: handleImport,
+    },
+  } = usePortalStorageSpaceProvisioning({
+    accountId: accountIdForApi,
+    canCreatePrivate,
+    canCreateTeam,
+    canImport,
+    canUseNamedBucket,
+  });
+  const firstActiveSpace =
+    workspace.spaces.find((space) => space.status !== "Archived") ?? null;
+  const firstWritableSpace =
+    workspace.spaces.find(
+      (space) =>
+        space.status !== "Archived" &&
+        (space.role === "Manager" ||
+          space.role === "Owner" ||
+          space.role === "Editor"),
+    ) ?? firstActiveSpace;
+  const firstManagedTeamSpace =
+    workspace.spaces.find(
+      (space) =>
+        space.status !== "Archived" &&
+        space.role === "Manager" &&
+        space.visibility === "shared",
+    ) ?? null;
+  const startGuideStorageKey = `portal.storage-spaces.start-guide.dismissed.${accountIdForApi ?? "default"}`;
 
   useEffect(() => {
     setStartGuideDismissed(
       readClientStorageKey(startGuideStorageKey) === "1",
     );
   }, [startGuideStorageKey]);
-
-  useEffect(() => {
-    setStatusFilter("all");
-  }, [activeTab]);
-
-  useEffect(() => {
-    let cancelled = false;
-    const needsCandidates =
-      (showCreate && effectiveNewAccessMode !== "private") ||
-      (showImport && importAccessMode !== "private" && canImport);
-    if (!needsCandidates || !accountIdForApi) {
-      setShareCandidates([]);
-      setShareCandidatesLoading(false);
-      setShareCandidatesError(null);
-      return () => {
-        cancelled = true;
-      };
-    }
-    setShareCandidatesLoading(true);
-    setShareCandidatesError(null);
-    listPortalShareCandidates(accountIdForApi)
-      .then((candidates) => {
-        if (!cancelled) setShareCandidates(candidates);
-      })
-      .catch((err) => {
-        console.error(err);
-        if (!cancelled) {
-          setShareCandidates([]);
-          setShareCandidatesError(
-            extractApiError(
-              err,
-              t({
-                en: "Unable to load people.",
-                fr: "Impossible de charger les personnes.",
-                de: "Personen können nicht geladen werden.",
-                zh: "无法加载人员。",
-              }),
-            ),
-          );
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setShareCandidatesLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    accountIdForApi,
-    canImport,
-    effectiveNewAccessMode,
-    importAccessMode,
-    newAccessMode,
-    showCreate,
-    showImport,
-    t,
-  ]);
-
-  const updateRestrictedRoles = (
-    setter: Dispatch<SetStateAction<Record<number, PortalStorageSpaceGrantRole>>>,
-    userId: number,
-    role: PortalStorageSpaceGrantRole | null,
-  ) => {
-    setter((current) => {
-      const next = { ...current };
-      if (!role) {
-        delete next[userId];
-      } else {
-        next[userId] = role;
-      }
-      return next;
-    });
-  };
-
-  const handleCreate = async (event: FormEvent<HTMLFormElement>) => {
-    setCreateValidationAttempted(true);
-    if (!accountIdForApi || !canCreate || !newName.trim() || newNameError) {
-      focusFirstInvalidField(event.currentTarget);
-      return;
-    }
-    setCreateBusy(true);
-    setCreateError(null);
-    try {
-      const created = await createPortalStorageSpace(accountIdForApi, {
-        name: effectiveNamingMode === "named_bucket" ? newName : newName.trim(),
-        naming_mode: effectiveNamingMode,
-        description: newDescription.trim() || null,
-        ...effectiveNewAccessPayload,
-        initial_shares:
-          effectiveNewAccessPayload.share_scope === "restricted"
-            ? selectedRestrictedEntries
-            : [],
-      });
-      flushSync(() => setShowCreate(false));
-      navigate(storageSpacePath({ id: created.id }), {
-        state: { portalSpaceCreated: true },
-      });
-    } catch (err) {
-      console.error(err);
-      setCreateError(
-        extractApiError(
-          err,
-          t({
-            en: "Unable to create this space.",
-            fr: "Impossible de créer cet espace.",
-            de: "Dieser Bereich kann nicht erstellt werden.",
-            zh: "无法创建此空间。",
-          }),
-        ),
-      );
-    } finally {
-      setCreateBusy(false);
-    }
-  };
-
-  const handleImport = async () => {
-    if (!accountIdForApi || !importBucketName.trim()) return;
-    setImportBusy(true);
-    setImportError(null);
-    try {
-      const imported = await importPortalStorageSpace(accountIdForApi, {
-        bucket_name: importBucketName.trim(),
-        description: importDescription.trim() || null,
-        ...effectiveImportAccessPayload,
-        initial_shares:
-          effectiveImportAccessPayload.share_scope === "restricted"
-            ? selectedImportRestrictedEntries
-            : [],
-      });
-      flushSync(() => setShowImport(false));
-      navigate(storageSpacePath({ id: imported.id }), {
-        state: { portalSpaceImported: true },
-      });
-    } catch (err) {
-      console.error(err);
-      setImportError(
-        extractApiError(
-          err,
-          t({
-            en: "Unable to add existing storage.",
-            fr: "Impossible d'ajouter le stockage existant.",
-            de: "Vorhandener Speicher kann nicht hinzugefügt werden.",
-            zh: "无法添加现有存储。",
-          }),
-        ),
-      );
-    } finally {
-      setImportBusy(false);
-    }
-  };
 
   const dismissStartGuide = () => {
     writeClientStorageKey(startGuideStorageKey, "1");
@@ -744,11 +237,6 @@ export default function PortalStorageSpacesPage() {
       : []),
   ];
   const showStartGuide = workspace.spaces.length === 0 && !startGuideDismissed;
-  const statusOptions = [
-    { value: "Active", label: portalStatusLabel("Active", t) },
-    { value: "Attention", label: portalStatusLabel("Attention", t) },
-  ];
-
   return (
     <PageShell actionPresentation="listing"
       title={t({ en: "Spaces", fr: "Espaces", de: "Bereiche", zh: "空间" })}
@@ -847,7 +335,7 @@ export default function PortalStorageSpacesPage() {
                 canCreate ? (
                   <UiButton
                     size="sm"
-                    onClick={() => setShowCreate(true)}
+                    onClick={openCreate}
                   >
                     {t({
                       en: "Start a new space",
@@ -1165,13 +653,7 @@ export default function PortalStorageSpacesPage() {
               loading={shareCandidatesLoading}
               error={shareCandidatesError}
               onQueryChange={setShareCandidateQuery}
-              onRoleChange={(userId, role) =>
-                updateRestrictedRoles(
-                  setRestrictedRolesByUserId,
-                  userId,
-                  role,
-                )
-              }
+              onRoleChange={setCreateRestrictedRole}
             />
           ) : null}
         </SettingsFormDialog>
@@ -1278,216 +760,13 @@ export default function PortalStorageSpacesPage() {
               loading={shareCandidatesLoading}
               error={shareCandidatesError}
               onQueryChange={setImportShareCandidateQuery}
-              onRoleChange={(userId, role) =>
-                updateRestrictedRoles(
-                  setImportRestrictedRolesByUserId,
-                  userId,
-                  role,
-                )
-              }
+              onRoleChange={setImportRestrictedRole}
             />
           ) : null}
         </SettingsFormDialog>
       ) : null}
 
-      <PortalPageTabs
-        tabs={[
-          {
-            id: "active",
-            label: t({
-              en: `Active spaces (${activeSpaces.length})`,
-              fr: `Espaces actifs (${activeSpaces.length})`,
-              de: `Aktive Bereiche (${activeSpaces.length})`,
-              zh: `活跃空间（${activeSpaces.length}）`,
-            }),
-          },
-          {
-            id: "archived",
-            label: t({
-              en: `Archived (${archivedSpaces.length})`,
-              fr: `Archivés (${archivedSpaces.length})`,
-              de: `Archiviert (${archivedSpaces.length})`,
-              zh: `已归档（${archivedSpaces.length}）`,
-            }),
-          },
-        ]}
-        activeTab={activeTab}
-        onChange={(tabId) => setActiveTab(tabId as SpacesTab)}
-        ariaLabel={t({
-          en: "Storage space views",
-          fr: "Vues des espaces de stockage",
-          de: "Speicherbereichsansichten",
-          zh: "存储空间视图",
-        })}
-        idPrefix="portal-storage-spaces"
-      />
-
-      <PortalTabPanel idPrefix="portal-storage-spaces" tabId={activeTab}>
-        <ListPageSection variant="page"
-          title={t({ en: "Storage spaces", fr: "Espaces de stockage", de: "Speicherbereiche", zh: "存储空间" })}
-          countLabel={t({
-            en: `${filteredSpaces.length} of ${visibleSpaces.length} spaces`,
-            fr: `${filteredSpaces.length} sur ${visibleSpaces.length} espaces`,
-            de: `${filteredSpaces.length} von ${visibleSpaces.length} Bereichen`,
-            zh: `共 ${visibleSpaces.length} 个空间，显示 ${filteredSpaces.length} 个`,
-          })}
-          search={<UiInput
-            label={t({ en: "Search", fr: "Recherche", de: "Suche", zh: "搜索" })}
-            type="search"
-            size="compact"
-            className="ui-list-control"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder={t({
-              en: "Search spaces...",
-              fr: "Rechercher des espaces...",
-              de: "Bereiche suchen...",
-              zh: "搜索空间…",
-            })}
-          />}
-          filters={<>
-            <UiSelect
-              label={t({ en: "My role", fr: "Mon rôle", de: "Meine Rolle", zh: "我的角色" })}
-              size="compact"
-              className="ui-list-control"
-              value={roleFilter}
-              onChange={(event) =>
-                setRoleFilter(
-                  event.target.value as PortalStorageSpaceRole | "all",
-                )
-              }
-            >
-              <option value="all">
-                {t({ en: "All roles", fr: "Tous les rôles", de: "Alle Rollen", zh: "所有角色" })}
-              </option>
-              <option value="Manager">{portalRoleLabel("Manager", t)}</option>
-              <option value="Owner">{portalRoleLabel("Owner", t)}</option>
-              <option value="Editor">{portalRoleLabel("Editor", t)}</option>
-              <option value="Viewer">{portalRoleLabel("Viewer", t)}</option>
-            </UiSelect>
-            {activeTab === "active" ? (
-              <div className="hidden md:block">
-                <UiSelect
-                  label={t({ en: "Status", fr: "Statut", de: "Status", zh: "状态" })}
-                  size="compact"
-                  className="ui-list-control"
-                  value={statusFilter}
-                  onChange={(event) => setStatusFilter(event.target.value)}
-                >
-                  <option value="all">
-                    {t({ en: "All states", fr: "Tous les états", de: "Alle Status", zh: "所有状态" })}
-                  </option>
-                  {statusOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </UiSelect>
-              </div>
-            ) : null}
-          </>}
-          mobileSort={
-            <div className="flex w-full flex-wrap gap-2 md:hidden">
-              <UiButton
-                variant="secondary"
-                size="xs"
-                className="min-h-11"
-                aria-expanded={mobileListControlsOpen}
-                aria-controls="portal-storage-spaces-mobile-controls"
-                onClick={() => setMobileListControlsOpen((open) => !open)}
-              >
-                {mobileListControlsOpen
-                  ? t({
-                      en: "Hide filters & sort",
-                      fr: "Masquer les filtres et le tri",
-                      de: "Filter und Sortierung ausblenden",
-                      zh: "隐藏筛选和排序",
-                    })
-                  : t({
-                      en: "Filters & sort",
-                      fr: "Filtres et tri",
-                      de: "Filter und Sortierung",
-                      zh: "筛选和排序",
-                    })}
-              </UiButton>
-              {mobileListControlsOpen ? (
-                <div
-                  id="portal-storage-spaces-mobile-controls"
-                  className="flex w-full flex-wrap items-center gap-2"
-                >
-                  {activeTab === "active" ? (
-                    <UiSelect
-                      label={t({ en: "Status", fr: "Statut", de: "Status", zh: "状态" })}
-                      size="compact"
-                      className="ui-list-control"
-                      value={statusFilter}
-                      onChange={(event) => setStatusFilter(event.target.value)}
-                    >
-                      <option value="all">
-                        {t({ en: "All states", fr: "Tous les états", de: "Alle Status", zh: "所有状态" })}
-                      </option>
-                      {statusOptions.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </UiSelect>
-                  ) : null}
-                  <TableSortControls columns={storageSpaceColumns} sort={tableSort} labels={{
-                    sortBy: t({ en: "Sort by", fr: "Trier par", de: "Sortieren nach", zh: "排序依据" }),
-                    direction: t({ en: "Direction", fr: "Ordre", de: "Reihenfolge", zh: "排序方向" }),
-                    ascending: t({ en: "Ascending", fr: "Croissant", de: "Aufsteigend", zh: "升序" }),
-                    descending: t({ en: "Descending", fr: "Décroissant", de: "Absteigend", zh: "降序" }),
-                  }} />
-                </div>
-              ) : null}
-            </div>
-          }
-        >
-          <DataTableShell
-            columns={storageSpaceColumns}
-            sort={tableSort}
-            rows={filteredSpaces}
-            rowKey={(space) => space.id}
-            status={tableStatus}
-            loadingMessage={t({
-              en: "Loading spaces...",
-              fr: "Chargement des espaces...",
-              de: "Bereiche werden geladen...",
-              zh: "正在加载空间…",
-            })}
-            errorMessage={t({
-              en: "Unable to load spaces.",
-              fr: "Impossible de charger les espaces.",
-              de: "Bereiche können nicht geladen werden.",
-              zh: "无法加载空间。",
-            })}
-            emptyMessage={
-              activeTab === "archived"
-                ? t({
-                    en: "No archived spaces.",
-                    fr: "Aucun espace archivé.",
-                    de: "Keine archivierten Bereiche.",
-                    zh: "没有已归档空间。",
-                  })
-                : canCreate
-                ? t({
-                    en: "No spaces yet. Create one to start storing files.",
-                    fr: "Aucun espace pour l'instant. Créez-en un pour commencer à stocker des fichiers.",
-                    de: "Noch keine Bereiche. Erstellen Sie einen, um Dateien zu speichern.",
-                    zh: "暂无空间。创建一个即可开始存储文件。",
-                  })
-                : t({
-                    en: "No spaces are available. Ask an administrator to add you to a space or enable creation for your account.",
-                    fr: "Aucun espace n'est disponible. Demandez à un administrateur de vous ajouter à un espace ou d'activer la création pour votre compte.",
-                    de: "Es sind keine Bereiche verfügbar. Bitten Sie einen Administrator, Sie zu einem Bereich hinzuzufügen oder die Erstellung für Ihr Konto zu aktivieren.",
-                    zh: "没有可用空间。请让管理员将你添加到空间，或为你的账户启用创建功能。",
-                  })
-            }
-            responsiveCards
-          />
-        </ListPageSection>
-      </PortalTabPanel>
+      <PortalStorageSpacesList spaces={workspace.spaces} canCreate={canCreate} />
     </PageShell>
   );
 }

@@ -218,7 +218,7 @@ export default function ManagerMigrationDetailPage() {
   const problems = (entries: api.BucketMigrationPrecheckEntry[] = []) =>
     entries.filter(
       (entry) =>
-        entry.blocking || (entry.severity ?? entry.level) === "warning",
+        entry.blocking || entry.severity === "warning",
     );
   const otherBlockers = report?.items?.some((item) =>
     item.checks?.some(
@@ -585,10 +585,7 @@ export default function ManagerMigrationDetailPage() {
                 <Diagnostics
                   entries={
                     draft
-                      ? problems(
-                          reports.get(item.id)?.checks ??
-                            reports.get(item.id)?.messages,
-                        )
+                      ? problems(reports.get(item.id)?.checks)
                       : []
                   }
                 />
@@ -638,8 +635,8 @@ export default function ManagerMigrationDetailPage() {
                   <pre className="mt-2 whitespace-pre-wrap break-all ui-caption">
                     {JSON.stringify(
                       {
-                        source_identity: migration.source_context_id,
-                        destination_identity: migration.target_context_id,
+                        source_context: migration.source_context_id,
+                        target_context: migration.target_context_id,
                         phase: item.step,
                         checks: reports.get(item.id)?.checks,
                       },

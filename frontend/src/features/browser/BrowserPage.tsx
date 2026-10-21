@@ -1,4 +1,3 @@
-import type { BrowserFavorite } from "../../api/browserFavorites";
 /*
  * Copyright (c) 2025 Laurent Barbe
  * Licensed under the Apache License, Version 2.0
@@ -15,32 +14,25 @@ import {
 } from "react";
 import {
   useLocation,
-  useNavigate,
   useSearchParams,
 } from "react-router-dom";
-import { useDismissibleLayer } from "../../components/ui/useDismissibleLayer";
-import {
-  CLIENT_STORAGE_KEYS,
-  writeClientStorage,
-} from "../../utils/clientStorage";
 import { readStoredUser } from "../../utils/workspaces";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import type { BrowserRequestOptions } from "../../api/browserWorkspace";
 import { useBrowserContext } from "./BrowserContext";
-import { useBrowserSidebarSlot } from "./BrowserLayout";
 import BrowserBulkAttributesModal from "./BrowserBulkAttributesModal";
-import { hasOpenModal } from "../../components/ui/modalStack";
 import BrowserObjectExplorer from "./BrowserObjectExplorer";
 import BrowserObjectSearchHeader from "./BrowserObjectSearchHeader";
 import BrowserFoldersPanel from "./BrowserFoldersPanel";
 import BrowserToolbar from "./BrowserToolbar";
 import BrowserNoticesPanel from "./BrowserNoticesPanel";
 import BrowserObjectsIssueDescription from "./BrowserObjectsIssueDescription";
-import { useBrowserBucketCors } from "./useBrowserBucketCors";
 import { useBrowserBulkAttributes } from "./useBrowserBulkAttributes";
 import { useBrowserBulkRestore } from "./useBrowserBulkRestore";
 import { useBrowserBucketPanelViewport } from "./useBrowserBucketPanelViewport";
 import { useBrowserBucketCatalog } from "./useBrowserBucketCatalog";
+import { useBrowserBucketInteractions } from "./useBrowserBucketInteractions";
+import { useBrowserBucketMenu } from "./useBrowserBucketMenu";
 import { useBrowserClipboard } from "./useBrowserClipboard";
 import { useBrowserConfirmDialog } from "./useBrowserConfirmDialog";
 import { useBrowserContextMenu } from "./useBrowserContextMenu";
@@ -58,12 +50,8 @@ import { useBrowserListingRefresh } from "./useBrowserListingRefresh";
 import { useBrowserListingVisibility } from "./useBrowserListingVisibility";
 import { useBrowserLeaveGuard } from "./useBrowserLeaveGuard";
 import { useBrowserMultipartUploads } from "./useBrowserMultipartUploads";
-import {
-  buildBrowserLocationPath,
-  useBrowserNavigationHistory,
-} from "./useBrowserNavigationHistory";
 import { useBrowserNotices } from "./useBrowserNotices";
-import { browserFavoriteDefaultName, useBrowserFavorites } from "./useBrowserFavorites";
+import { useBrowserFavoritesRuntime } from "./useBrowserFavoritesRuntime";
 import { useBrowserObjectColumns } from "./useBrowserObjectColumns";
 import { useBrowserDetailsDrawerState } from "./useBrowserDetailsDrawerState";
 import { useBrowserObjectListing } from "./useBrowserObjectListing";
@@ -71,20 +59,19 @@ import { useBrowserObjectSort } from "./useBrowserObjectSort";
 import { useBrowserOperationOverview } from "./useBrowserOperationOverview";
 import { useBrowserOperationRegistry } from "./useBrowserOperationRegistry";
 import { useBrowserPanelLayout } from "./useBrowserPanelLayout";
-import { useBrowserPathEditor } from "./useBrowserPathEditor";
-import { useBrowserPathHistory } from "./useBrowserPathHistory";
-import { useBrowserPresignRequests } from "./useBrowserPresignRequests";
+import { useBrowserPathRuntime } from "./useBrowserPathRuntime";
 import { useBrowserPrefixVersions } from "./useBrowserPrefixVersions";
 import { useBrowserQueuedUpload } from "./useBrowserQueuedUpload";
 import { useBrowserRuntimeData } from "./useBrowserRuntimeData";
 import { useBrowserRecursiveObjectListing } from "./useBrowserRecursiveObjectListing";
 import { useBrowserSearch } from "./useBrowserSearch";
 import { useBrowserSelection } from "./useBrowserSelection";
-import { useBrowserSseCustomerKeys } from "./useBrowserSseCustomerKeys";
-import { useBrowserStsSession } from "./useBrowserStsSession";
+import { useBrowserObjectNavigation } from "./useBrowserObjectNavigation";
+import { useBrowserTransferRuntime } from "./useBrowserTransferRuntime";
 import { useBrowserUploadQueue } from "./useBrowserUploadQueue";
 import { useBrowserVersionCleanup } from "./useBrowserVersionCleanup";
 import { useBrowserVersionActions } from "./useBrowserVersionActions";
+import { useBrowserWorkspaceAccountAction } from "./useBrowserWorkspaceAccountAction";
 import { useBrowserWorkspaceSidebarBody } from "./useBrowserWorkspaceSidebarBody";
 import BrowserBulkRestoreModal from "./BrowserBulkRestoreModal";
 import BrowserArchivePreparationDialog from "./BrowserArchivePreparationDialog";
@@ -95,7 +82,6 @@ import {
   type BrowserCapabilityFacts,
   type BrowserFunctionalProfile,
   runBrowserAction,
-  resolveItemPrimaryAction,
 } from "./browserActions";
 import { useBrowserActionStates } from "./useBrowserActionStates";
 import {
@@ -110,10 +96,6 @@ import {
 } from "./BrowserBucketDialogModals";
 import BrowserContextMenu from "./BrowserContextMenu";
 import BrowserObjectDetailsDrawer from "./BrowserObjectDetailsDrawer";
-import {
-  resolveBrowserObjectDetailsTab,
-  resolveRoutedObjectDetailsTab,
-} from "./browserObjectDetailsModel";
 import { resolveStorageSpaceObjectDetailsView } from "../shared/objectDetailsContract";
 import BrowserPathDetailsDrawer from "./BrowserPathDetailsDrawer";
 import BrowserStorageSpaceObjectDetailsDrawer from "./BrowserStorageSpaceObjectDetailsDrawer";
@@ -128,53 +110,30 @@ import {
   MIN_FOLDERS_PANEL_WIDTH_PX,
   readStoredBrowserRootUiState,
 } from "./browserRootUiState";
-import {
-  resolveBrowserUploadMode,
-  shouldUseStsPresigner,
-} from "./sseBrowserLogic";
-import { VERSIONS_LIST_HARD_LIMIT, storageClassOptions } from "./browserConstants";
+import { storageClassOptions } from "./browserConstants";
 import type { BrowserPageProps } from "./browserPageContract";
-import {
-  buildPrefixBreadcrumbs,
-  formatDateTime,
-  getSelectionInfo,
-  normalizePrefix,
-} from "./browserUtils";
-import {
-  CORS_DIRECT_TRANSFER_WARNING,
-  buildBrowserTransferWarnings,
-  resolveBrowserCorsAvailability,
-  resolveBrowserTransferAccessBadge,
-  resolveBrowserTransferParallelism,
-  resolveDirectCredentialStsTooltip,
-} from "./browserTransferPresentation";
+import { getSelectionInfo, normalizePrefix } from "./browserUtils";
 import {
   PANEL_LAYOUT_GAP_PX,
   PANEL_RESIZER_HITBOX_WIDTH_PX,
 } from "./browserPanelLayout";
 import {
   COLUMN_DEFINITIONS,
-  COMFORTABLE_ROW_ACTION_TARGET_SIZE_PX,
-  COMPACT_ROW_ACTION_TARGET_SIZE_PX,
   DEFAULT_VISIBLE_COLUMN_IDS,
-  MIN_ACTIONS_COLUMN_WIDTH_PX,
-  ROW_ACTION_CELL_HORIZONTAL_PADDING_PX,
-  ROW_ACTION_GAP_PX,
   SELECTION_COLUMN_WIDTH_PX,
+  buildBrowserObjectTableLayout,
   buildBrowserItems,
   collectAvailableStorageClasses,
-  resolveColumnWidthPx,
   type BrowserColumnId,
 } from "./browserObjectTableModel";
 import {
-  resolveBucketAccessEntry,
-  splitBucketPanelBuckets,
-  type BucketAccessEntry,
-} from "./browserBucketsPanelHelpers";
-import { resolveBrowserWorkspaceContext } from "./browserPageContextModel";
+  buildBrowserBucketPresentation,
+} from "./browserBucketModel";
+import {
+  resolveBrowserWorkspaceContext,
+} from "./browserPageContextModel";
 import type {
   BrowserItem,
-  ObjectDetailsTabId,
   UploadQueueItem,
 } from "./browserTypes";
 import { useBrowserI18n } from "./browserI18n";
@@ -208,10 +167,8 @@ export default function BrowserPage({
 }: BrowserPageProps = {}) {
   const { text, intlLocale } = useBrowserI18n();
   const browserContext = useBrowserContext();
-  const { setSidebarBody } = useBrowserSidebarSlot();
   const selectedContext = browserContext.selectedContext;
   const location = useLocation();
-  const navigate = useNavigate();
   const workspaceSurface =
     workspaceSurfaceOverride ??
     (selectedContext?.kind === "portal_account" ? "portal" : "browser");
@@ -280,9 +237,13 @@ export default function BrowserPage({
     ? portalAccountId
     : null;
   const isCephAdminContext = executionContextKind === "ceph_admin";
-  const isS3UserContext = executionContextKind === "s3_user";
-  const isConnectionContext = executionContextKind === "connection";
-  const [showBucketMenu, setShowBucketMenu] = useState(false);
+  const {
+    close: closeBucketMenu,
+    filterInputRef: bucketMenuFilterRef,
+    open: showBucketMenu,
+    rootRef: bucketMenuRef,
+    toggle: toggleBucketMenu,
+  } = useBrowserBucketMenu();
   const {
     settings: browserSettings,
     usageError: usageSummaryError,
@@ -342,6 +303,47 @@ export default function BrowserPage({
     usePortalWorkspaceLabels,
   });
   const {
+    buttonActionLabel: bucketButtonActionLabel,
+    buttonLabel: bucketButtonLabel,
+    currentBucket: currentBucketPanelItem,
+    currentBucketAccess,
+    currentBucketUnavailable,
+    detailsByName: bucketDetailsByName,
+    displayNameByName: bucketDisplayNameByName,
+    selectorNeedsAttention: bucketSelectorNeedsAttention,
+    sidebarRows: workspaceSidebarRows,
+  } = useMemo(
+    () =>
+      buildBrowserBucketPresentation({
+        accessByName: bucketAccessByName,
+        activeBucketName: bucketName,
+        bucketItems: bucketMenuItems,
+        bucketTotalCount,
+        hasExecutionContext,
+        loadingBuckets,
+        lockedBucketLabel,
+        lockedBucketName: resolvedLockedBucketName,
+        selectorWorkspaceNoun,
+        selectorWorkspaceNounPlural,
+        text,
+        usePortalWorkspaceLabels,
+      }),
+    [
+      bucketAccessByName,
+      bucketMenuItems,
+      bucketName,
+      bucketTotalCount,
+      hasExecutionContext,
+      loadingBuckets,
+      lockedBucketLabel,
+      resolvedLockedBucketName,
+      selectorWorkspaceNoun,
+      selectorWorkspaceNounPlural,
+      text,
+      usePortalWorkspaceLabels,
+    ],
+  );
+  const {
     adjustFoldersPanelWidth,
     canUseFoldersPanel,
     foldersPanelResizeActive,
@@ -400,9 +402,6 @@ export default function BrowserPage({
   });
   const canConfigureRootBrowserColumns =
     isMainBrowserPath && resolvedFunctionalProfile === "advanced";
-  const rowActionTargetSizePx = compactMode
-    ? COMPACT_ROW_ACTION_TARGET_SIZE_PX
-    : COMFORTABLE_ROW_ACTION_TARGET_SIZE_PX;
   const maximumDirectItemActionCount =
     1 +
     Number(resolvedCapabilityFacts.canDeleteObjects) +
@@ -411,13 +410,6 @@ export default function BrowserPage({
         resolvedCapabilityFacts.canCreatePublicLinks &&
         canOpenExternalObjectDetails,
     );
-  const actionsColumnButtonCount = 1 + maximumDirectItemActionCount;
-  const actionsColumnWidthPx = Math.max(
-    MIN_ACTIONS_COLUMN_WIDTH_PX,
-    ROW_ACTION_CELL_HORIZONTAL_PADDING_PX +
-      actionsColumnButtonCount * rowActionTargetSizePx +
-      (actionsColumnButtonCount - 1) * ROW_ACTION_GAP_PX,
-  );
   const {
     setStatusMessage,
     setWarningMessage,
@@ -437,20 +429,23 @@ export default function BrowserPage({
     activeSearchStatusChips,
     changeSearchScope,
     clearSearchFilters,
+    closeSearchOptionsMenu,
     filter,
     hasActiveSearchFilters,
     hasAdvancedSearchOptionsActive,
     hasSearchQuery,
     isSearchingInWholeBucket,
     searchCaseSensitive,
+    searchControlRef,
     searchExactMatch,
+    searchOptionsButtonRef,
+    searchOptionsMenuRef,
     searchRecursive,
     searchScope,
     setFilter,
     setSearchCaseSensitive,
     setSearchExactMatch,
     setSearchRecursive,
-    setShowSearchOptionsMenu,
     setStorageFilter,
     setTypeFilter,
     showSearchOptionsMenu,
@@ -471,17 +466,18 @@ export default function BrowserPage({
     deletedObjectsOptions,
   });
   const {
+    canLoadMore: canLoadMoreObjectResults,
     deletedObjects,
     deletedObjectsIsTruncated,
     deletedPrefixes,
     isVersioningEnabled,
+    loadMore: handleLoadMoreObjectResults,
     loadObjects,
     objects,
     objectsIsTruncated,
     objectsIssue,
     objectsLoading,
     objectsLoadingMore,
-    objectsNextToken,
     prefixes,
     setShowObjectsIssueTechnicalDetails,
     showObjectsIssueTechnicalDetails,
@@ -558,7 +554,7 @@ export default function BrowserPage({
     downloadDetails,
     isOperationAborted,
     operations,
-    recordCompletedActivity,
+    recordCompletedActivity: recordRegisteredActivity,
     setCopyDetails,
     setDeleteDetails,
     setDownloadDetails,
@@ -590,6 +586,7 @@ export default function BrowserPage({
     operationSortFallback,
     operationSortIndexById,
     queuedOperationsCount,
+    recordCompletedActivity,
     showActiveOperations,
     showCompletedOperations,
     showFailedOperations,
@@ -598,6 +595,7 @@ export default function BrowserPage({
     showOperationsDetailsModal,
     showOperationsPanel,
     showQueuedOperations,
+    startOperation,
     toggleGroupExpanded,
     toggleOperationFilter,
     toggleOperationsPanel,
@@ -618,49 +616,15 @@ export default function BrowserPage({
     setDeleteDetails,
     copyDetails,
     setCopyDetails,
+    startOperation: startRegisteredOperation,
+    recordCompletedActivity: recordRegisteredActivity,
     setStatusMessage,
   });
-  const startOperation = useCallback(
-    (...args: Parameters<typeof startRegisteredOperation>) => {
-      showOperationsBar();
-      return startRegisteredOperation(...args);
-    },
-    [showOperationsBar, startRegisteredOperation],
-  );
-  const { history: pathHistory, record: recordPathHistory } =
-    useBrowserPathHistory({ bucketName });
-  const {
-    closeContextMenu,
-    contextMenu,
-    contextMenuRef,
-    openContextMenu,
-  } = useBrowserContextMenu();
-  const bucketMenuRef = useRef<HTMLDivElement | null>(null);
-  const searchOptionsMenuRef = useRef<HTMLDivElement | null>(null);
-  const searchControlRef = useRef<HTMLDivElement | null>(null);
-  const searchOptionsButtonRef = useRef<HTMLButtonElement | null>(null);
   const objectsListViewportRef = useRef<HTMLDivElement | null>(null);
-  const bucketMenuFilterRef = useRef<HTMLInputElement | null>(null);
   const contextIdForApiRef = useRef(contextIdForApi);
-  const operationIdsRef = useRef(new Set<string>());
-  const storageEndpointCaps = useMemo(() => {
-    if (selectedContext?.storage_endpoint_capabilities) {
-      return selectedContext.storage_endpoint_capabilities;
-    }
-    const raw = (selectedContext as { raw?: unknown } | null)?.raw;
-    if (!raw || typeof raw !== "object") return null;
-    if (!("storage_endpoint_capabilities" in raw)) return null;
-    return (
-      (
-        raw as {
-          storage_endpoint_capabilities?: Record<string, boolean> | null;
-        }
-      ).storage_endpoint_capabilities ?? null
-    );
-  }, [selectedContext]);
   const effectiveCaps =
     storageEndpointCapabilities === undefined
-      ? storageEndpointCaps
+      ? (selectedContext?.storage_endpoint_capabilities ?? null)
       : storageEndpointCapabilities;
   const bucketManagementEnabled =
     normalizedPath.endsWith("/browser") &&
@@ -668,130 +632,61 @@ export default function BrowserPage({
     resolvedFunctionalProfile === "advanced";
   const bucketConfigurationEnabled =
     resolvedFunctionalProfile === "advanced";
-  const directCredentialContextKind = isConnectionContext
-    ? "connection"
-    : isS3UserContext
-      ? "s3_user"
-      : null;
-  const stsEnabled =
-    Boolean(effectiveCaps?.sts) &&
-    directCredentialContextKind === null &&
-    !isPortalProfile;
   const {
-    available: stsAvailable,
-    credentials: stsCredentials,
-    credentialsError: stsCredentialsError,
-    ensureCredentials: ensureStsCredentials,
-  } = useBrowserStsSession({
-    contextIdForApi,
-    enabled: stsEnabled,
-    hasContext: hasExecutionContext,
-    requestOptions: browserRequestOptions,
-  });
-  const sseFeatureEnabled =
-    Boolean(effectiveCaps?.sse) && resolvedFunctionalProfile === "advanced";
-  const {
-    keyBase64: sseCustomerKeyBase64,
-    active: sseActive,
-    getKeyForScope: getSseCustomerKeyForScope,
-    showModal: showSseCustomerModal,
-    input: sseCustomerKeyInput,
-    visible: sseCustomerKeyVisible,
-    error: sseCustomerKeyError,
-    notice: sseCustomerKeyNotice,
-    canGenerate: canGenerateSseCustomerKey,
-    open: openSseCustomerModal,
-    updateInput: updateSseCustomerKeyInput,
-    toggleVisibility: toggleSseCustomerKeyVisibility,
-    generate: generateSseCustomerKey,
-    clear: clearSseCustomerKey,
-    activate: activateSseCustomerKey,
-    close: closeSseCustomerModal,
-    dirty: sseCustomerDraftDirty,
-  } = useBrowserSseCustomerKeys({
-    contextIdForApi,
-    bucketName,
-    enabled: sseFeatureEnabled,
-    onManualCopyRequired: openSseCustomerKeyCopyDialog,
-    setStatusMessage,
-  });
-  const showSseControls = Boolean(
-    sseFeatureEnabled && hasExecutionContext && bucketName,
-  );
-  const normalizedPrefix = useMemo(() => normalizePrefix(prefix), [prefix]);
-  const uiOrigin = useMemo(
-    () => (typeof window === "undefined" ? undefined : window.location.origin),
-    [],
-  );
-  const {
-    status: corsStatus,
-    error: corsFixError,
-    fixing: corsFixing,
-    actionAvailable: hasCorsAction,
-    popoverOpen: showCorsActionPopover,
-    triggerRef: corsActionTriggerRef,
-    popoverRef: corsActionPopoverRef,
-    togglePopover: toggleCorsActionPopover,
-    ensureCors: handleEnsureCors,
-    setStatus: setCorsStatus,
-    setError: setCorsFixError,
-  } = useBrowserBucketCors({
-    contextIdForApi,
-    allowAction: !isPortalProfile,
-    bucketName,
-    enabled:
-      !contextSwitchInFlight && Boolean(bucketName) && hasExecutionContext,
-    origin: uiOrigin,
-    requestOptions: browserRequestOptions,
-    setStatusMessage,
-  });
-  const directUploadAllowed = browserSettings?.allow_direct_uploads ?? false;
-  const stsUploadAllowed = browserSettings?.allow_sts_uploads ?? false;
-  const proxyAllowed = browserSettings?.allow_proxy_transfers ?? false;
-  const corsAvailability = resolveBrowserCorsAvailability(corsStatus);
-  const corsEnabled =
-    corsAvailability === "unknown" ? null : corsAvailability === "enabled";
-  const corsInformation =
-    corsEnabled === false ? text(CORS_DIRECT_TRANSFER_WARNING) : null;
-  const uploadMode = resolveBrowserUploadMode({
-    settingsLoaded: browserSettings !== null,
-    hasContext: hasExecutionContext,
-    hasBucket: Boolean(bucketName),
-    corsEnabled,
-    directAllowed: directUploadAllowed,
-    stsAllowed: stsUploadAllowed,
-    stsAvailable,
-    sseActive,
+    accessBadge,
+    activateSseCustomerKey,
+    canGenerateSseCustomerKey,
+    clearSseCustomerKey,
+    closeSseCustomerModal,
+    corsActionPopoverRef,
+    corsActionTriggerRef,
+    corsFixing,
+    corsInformation,
+    downloadParallelism,
+    generateSseCustomerKey,
+    getSseCustomerKeyForScope,
+    handleEnsureCors,
+    hasCorsAction,
+    openSseCustomerModal,
+    otherOperationsParallelism,
+    presignObjectRequest,
+    presignPartRequest,
     proxyAllowed,
+    setCorsFixError,
+    setCorsStatus,
+    showCorsActionPopover,
+    showSseControls,
+    showSseCustomerModal,
+    sseActive,
+    sseCustomerDraftDirty,
+    sseCustomerKeyBase64,
+    sseCustomerKeyError,
+    sseCustomerKeyInput,
+    sseCustomerKeyNotice,
+    sseCustomerKeyVisible,
+    toggleCorsActionPopover,
+    toggleSseCustomerKeyVisibility,
+    uiOrigin,
+    updateSseCustomerKeyInput,
+    uploadMode,
+    uploadParallelism,
+    useProxyTransfers,
+    warnings,
+  } = useBrowserTransferRuntime({
+    browserSettings,
+    bucketName,
+    contextIdForApi,
+    contextSwitchInFlight,
+    executionContextKind,
+    functionalProfile: resolvedFunctionalProfile,
+    hasExecutionContext,
+    onManualSseKeyCopyRequired: openSseCustomerKeyCopyDialog,
+    requestOptions: browserRequestOptions,
+    setStatusMessage,
+    storageEndpointCapabilities: effectiveCaps,
+    warningMessage,
   });
-  const useProxyTransfers = Boolean(
-    bucketName &&
-      hasExecutionContext &&
-      proxyAllowed &&
-      corsAvailability === "disabled",
-  );
-  const uploadTransferParallelism = useMemo(
-    () =>
-      resolveBrowserTransferParallelism(browserSettings, uploadMode === "proxy"),
-    [browserSettings, uploadMode],
-  );
-  const downloadTransferParallelism = useMemo(
-    () => resolveBrowserTransferParallelism(browserSettings, useProxyTransfers),
-    [browserSettings, useProxyTransfers],
-  );
-  const uploadParallelism = uploadTransferParallelism.upload;
-  const downloadParallelism = downloadTransferParallelism.download;
-  const otherOperationsParallelism = downloadTransferParallelism.otherOperations;
-  const useStsPresigner = shouldUseStsPresigner({ stsAvailable, sseActive });
-  const { presignObjectRequest, presignPartRequest } =
-    useBrowserPresignRequests({
-      contextId: contextIdForApi,
-      ensureStsCredentials,
-      requestOptions: browserRequestOptions,
-      sseCustomerKeyBase64,
-      uploadMode,
-      useStsPresigner,
-    });
+  const normalizedPrefix = useMemo(() => normalizePrefix(prefix), [prefix]);
   const { copyPath: handleCopyPath, copyUrl: handleCopyUrl } =
     useBrowserCopyActions({
       bucketName,
@@ -802,113 +697,11 @@ export default function BrowserPage({
       presignObject: presignObjectRequest,
       sseActive,
     });
-  const warnings = useMemo(
-    () =>
-      buildBrowserTransferWarnings({
-        warningMessage,
-        corsFixError,
-        stsCredentialsError,
-        corsEnabled,
-        proxyAllowed,
-        uploadUnavailable: Boolean(
-          browserSettings &&
-            bucketName &&
-            hasExecutionContext &&
-            uploadMode === "unavailable",
-        ),
-      }, text),
-    [
-      browserSettings,
-      bucketName,
-      corsFixError,
-      corsEnabled,
-      hasExecutionContext,
-      proxyAllowed,
-      stsCredentialsError,
-      uploadMode,
-      warningMessage,
-    text,
-    ],
-  );
-  const stsExpirationLabel = useMemo(() => {
-    if (!stsCredentials?.expiration) return "";
-    const formatted = formatDateTime(stsCredentials.expiration, intlLocale);
-    return formatted === "-" ? "" : formatted;
-  }, [stsCredentials?.expiration, intlLocale]);
-  const directCredentialStsTooltip = useMemo(
-    () => resolveDirectCredentialStsTooltip(directCredentialContextKind, text),
-    [directCredentialContextKind, text],
-  );
-  const accessBadge = useMemo(
-    () =>
-      resolveBrowserTransferAccessBadge({
-        hasContext: hasExecutionContext && Boolean(bucketName),
-        uploadMode,
-        sseActive,
-        hasStsCredentials: Boolean(stsCredentials),
-        stsExpirationLabel,
-        directCredentialStsTooltip,
-        text,
-      }),
-    [
-      bucketName,
-      hasExecutionContext,
-      directCredentialStsTooltip,
-      sseActive,
-      stsCredentials,
-      stsExpirationLabel,
-      text,
-      uploadMode,
-    ],
-  );
-  useDismissibleLayer({
-    open: showBucketMenu,
-    insideRefs: [bucketMenuRef],
-    onDismiss: () => setShowBucketMenu(false),
-  });
-
-  useEffect(() => {
-    if (showBucketMenu) {
-      bucketMenuFilterRef.current?.focus();
-    }
-  }, [showBucketMenu]);
-
-  useDismissibleLayer({
-    open: showSearchOptionsMenu,
-    insideRefs: [searchControlRef, searchOptionsMenuRef],
-    onDismiss: reason => { setShowSearchOptionsMenu(false); if (reason === "escape") searchOptionsButtonRef.current?.focus(); },
-  });
-
-  useEffect(() => {
-    if (operations.length === 0) return;
-    const knownIds = operationIdsRef.current;
-    const newOps = operations.filter((op) => !knownIds.has(op.id));
-    if (newOps.length === 0) return;
-    newOps.forEach((op) => knownIds.add(op.id));
-    const primaryOps = newOps.filter((op) => op.kind !== "upload");
-    if (primaryOps.length === 0) return;
-    const latest = primaryOps[0];
-    setStatusMessage(text("Queued: {label}.", { label: text(latest.label) }));
-  }, [operations, setStatusMessage, text]);
-
   useEffect(() => {
     if (isVersioningEnabled) return;
     hideDeletedObjects();
   }, [bucketName, hideDeletedObjects, isVersioningEnabled]);
 
-  const currentBucketAccess = useMemo<BucketAccessEntry>(
-    () =>
-      bucketName
-        ? resolveBucketAccessEntry(bucketName, bucketAccessByName)
-        : {
-            status: "unknown",
-            detail: null,
-          },
-    [bucketAccessByName, bucketName],
-  );
-  const currentBucketUnavailable = bucketName
-    ? currentBucketAccess.status === "unavailable"
-    : false;
   const {
     loadTreeChildren,
     toggleTreeNode: handleToggleTreeNode,
@@ -954,16 +747,6 @@ export default function BrowserPage({
         : items.filter((item) => item.type !== "folder"),
     [items, showFolderItems],
   );
-  const previewFiles = useMemo(() => listItems.filter(item => item.type === "file" && !item.isDeleted), [listItems]);
-  useEffect(() => {
-    onLoadedFilesChange?.(previewFiles.map(item => item.key));
-  }, [previewFiles, onLoadedFilesChange]);
-  const previewIndex = previewFiles.findIndex(item => item.key === objectDetailsTarget?.item.key);
-  const previewNavigation = previewIndex < 0 ? undefined : {
-    previous: previewIndex > 0 ? () => requestDetailsDrawerTransition(() => openObjectDetailsTarget(previewFiles[previewIndex - 1], "preview")) : undefined,
-    next: previewIndex + 1 < previewFiles.length ? () => requestDetailsDrawerTransition(() => openObjectDetailsTarget(previewFiles[previewIndex + 1], "preview")) : undefined,
-    position: (previewIndex + 1) + " / " + previewFiles.length,
-  };
   const {
     activateItem,
     allSelected,
@@ -986,194 +769,128 @@ export default function BrowserPage({
     listItems,
     scopeKey: JSON.stringify([contextIdForApi, bucketName, prefix]),
   });
+  const {
+    closeContextMenu,
+    contextMenu,
+    contextMenuRef,
+    handleHeaderContextMenu,
+    handleItemActionsButtonClick,
+    handleItemContextMenu,
+    handlePathContextMenu,
+  } = useBrowserContextMenu({
+    headerConfigurationEnabled: isMainBrowserPath,
+    prepareItemActionsMenu,
+    prepareItemContextMenu,
+  });
+
+  const {
+    breadcrumbs,
+    canGoUp,
+    currentPath,
+    editor: {
+      activeSuggestionIndex: pathSuggestionIndex,
+      applySuggestion: applyPathSuggestion,
+      commit: commitPathDraft,
+      editing: isEditingPath,
+      handleKeyDown: handlePathKeyDown,
+      inputRef: pathInputRef,
+      setActiveSuggestionIndex: setPathSuggestionIndex,
+      setValue: setPathDraft,
+      startEditing: startEditingPath,
+      suggestions: pathSuggestions,
+      suggestionsLoading: pathSuggestionsLoading,
+      value: pathDraft,
+    },
+    goUp: handleGoUp,
+    selectPrefix: handleSelectPrefix,
+  } = useBrowserPathRuntime({
+    contextId: contextIdForApi,
+    bucketName,
+    prefix,
+    localPrefixes: prefixes,
+    enabled: hasExecutionContext,
+    requestOptions: browserRequestOptions,
+    requestTransition: requestDetailsDrawerTransition,
+    setPrefix,
+    clearActiveItem,
+    selectionReady,
+    contextSwitchInFlight,
+    normalizedPath,
+    accessContextKey: bucketAccessContextKey,
+    lockedBucketName: resolvedLockedBucketName,
+  });
+  const {
+    createPublicLinkForItem,
+    openItemDetails,
+    openItemPrimaryAction,
+    openObjectDetails,
+    openPropertiesForItem,
+    previewItem: handlePreviewItem,
+    previewNavigation,
+  } = useBrowserObjectNavigation({
+    bucketName,
+    functionalProfile: resolvedFunctionalProfile,
+    isStorageSpaceContext,
+    listItems,
+    objectDetailsTarget,
+    onActivateItem: activateItem,
+    onLoadedFilesChange,
+    onOpenFolder: handleSelectPrefix,
+    onOpenObjectDetails,
+    openObjectDetailsTarget,
+    requestDetailsDrawerTransition,
+    setWarningMessage,
+    versioningEnabled: isVersioningEnabled,
+  });
 
   useLayoutEffect(() => {
     if (!contextSwitchInFlight) return;
     clearActiveItem();
   }, [contextSwitchInFlight, clearActiveItem]);
 
-  const visibleColumnDefinitions = useMemo(
+  const tableLayout = useMemo(
     () =>
-      COLUMN_DEFINITIONS.filter((definition) =>
-        visibleColumnSet.has(definition.id),
-      ),
-    [visibleColumnSet],
-  );
-  const nameColumnWidthPx = useMemo(
-    () => resolveColumnWidthPx("name", columnWidths),
-    [columnWidths],
-  );
-  const visibleColumnWidthsPx = useMemo(
-    () =>
-      visibleColumnDefinitions.reduce<
-        Record<BrowserColumnId, number>
-      >((acc, definition) => {
-        acc[definition.id] = resolveColumnWidthPx(definition.id, columnWidths);
-        return acc;
-      }, {} as Record<BrowserColumnId, number>),
-    [columnWidths, visibleColumnDefinitions],
-  );
-  const objectTableMinWidthPx = useMemo(
-    () =>
-      Math.max(
-        720,
-        SELECTION_COLUMN_WIDTH_PX +
-          nameColumnWidthPx +
-          actionsColumnWidthPx +
-          visibleColumnDefinitions.reduce(
-            (sum, definition) => sum + visibleColumnWidthsPx[definition.id],
-            0,
-          ),
-      ),
+      buildBrowserObjectTableLayout({
+        visibleColumns: visibleColumnSet,
+        columnWidths,
+        compactMode,
+        directItemActionCount: maximumDirectItemActionCount,
+      }),
     [
-      actionsColumnWidthPx,
-      nameColumnWidthPx,
-      visibleColumnDefinitions,
-      visibleColumnWidthsPx,
+      columnWidths,
+      compactMode,
+      maximumDirectItemActionCount,
+      visibleColumnSet,
     ],
   );
-  const lazyMetadataColumnsVisible =
-    visibleColumnSet.has("contentType") ||
-    visibleColumnSet.has("metadataCount") ||
-    visibleColumnSet.has("cacheControl") ||
-    visibleColumnSet.has("expires") ||
-    visibleColumnSet.has("restoreStatus");
-  const lazyTagsColumnsVisible = visibleColumnSet.has("tagsCount");
   const lazyColumnCache = useBrowserLazyColumns({
     contextId: contextIdForApi,
     bucketName,
     enabled: hasExecutionContext,
     items: listItems,
-    metadataColumnsVisible: lazyMetadataColumnsVisible,
+    metadataColumnsVisible: tableLayout.lazyMetadataColumnsVisible,
     prefix,
     requestOptions: browserRequestOptions,
     sseCustomerKeyBase64,
-    tagsColumnVisible: lazyTagsColumnsVisible,
+    tagsColumnVisible: tableLayout.lazyTagsColumnsVisible,
     viewportRef: objectsListViewportRef,
   });
-  const bucketDisplayNameByName = useMemo(() => {
-    const next = new Map<string, string>();
-    bucketMenuItems.forEach((bucket) => {
-      const displayName =
-        usePortalWorkspaceLabels
-          ? bucket.display_name?.trim() || bucket.workspace_label?.trim() || bucket.name
-          : bucket.display_name?.trim() || bucket.name;
-      next.set(bucket.name, displayName);
-    });
-    if (resolvedLockedBucketName && lockedBucketLabel?.trim()) {
-      next.set(resolvedLockedBucketName, lockedBucketLabel.trim());
-    }
-    return next;
-  }, [bucketMenuItems, lockedBucketLabel, resolvedLockedBucketName, usePortalWorkspaceLabels]);
-  const bucketDetailsByName = useMemo(
-    () => new Map(bucketMenuItems.map((bucket) => [bucket.name, bucket] as const)),
-    [bucketMenuItems],
-  );
-  const bucketButtonLabel = useMemo(() => {
-    if (resolvedLockedBucketName) {
-      return lockedBucketLabel?.trim() || resolvedLockedBucketName;
-    }
-    if (bucketName) return bucketDisplayNameByName.get(bucketName) ?? bucketName;
-    if (loadingBuckets) return text("Loading {workspace}...", { workspace: text(selectorWorkspaceNounPlural) });
-    if (bucketTotalCount === 0) return text("No {workspace}", { workspace: text(selectorWorkspaceNounPlural) });
-    return text("Select {workspace}", { workspace: text(selectorWorkspaceNoun) });
-  }, [
-    bucketDisplayNameByName,
-    bucketName,
-    bucketTotalCount,
-    loadingBuckets,
-    lockedBucketLabel,
-    resolvedLockedBucketName,
-    selectorWorkspaceNoun,
-    selectorWorkspaceNounPlural,
-    text,
-  ]);
-  const bucketSelectorNeedsAttention =
-    hasExecutionContext && !bucketName && bucketTotalCount > 0;
-  const bucketButtonActionLabel = resolvedLockedBucketName
-    ? text("Selected {workspace}", { workspace: text(selectorWorkspaceNoun) })
-    : text("Select {workspace}", { workspace: text(selectorWorkspaceNoun) });
-  const useBucketsPanel = showWorkspaceSidebar;
-  const { currentBucket: currentBucketPanelItem } = useMemo(
-    () => splitBucketPanelBuckets(bucketName, bucketMenuItems),
-    [bucketMenuItems, bucketName],
-  );
-  const workspaceSidebarRows = useMemo(
-    () =>
-      bucketMenuItems.map((bucket) => ({
-        bucket,
-        access: resolveBucketAccessEntry(bucket.name, bucketAccessByName),
-      })),
-    [bucketAccessByName, bucketMenuItems],
-  );
   const {
     loadMoreSentinelRef: bucketPanelLoadMoreSentinelRef,
     panelViewportRef: bucketPanelViewportRef,
   } = useBrowserBucketPanelViewport({
     activeBucketName: bucketName,
     canLoadMore: canLoadMoreBucketResults,
-    enabled: useBucketsPanel,
+    enabled: showWorkspaceSidebar,
     onLoadMore: handleBucketMenuLoadMore,
     rows: workspaceSidebarRows,
     scheduleAccessProbe: scheduleBucketAccessProbe,
   });
-  const handleBucketChange = useCallback(
-    (value: string) => {
-      setShowBucketMenu(false);
-      requestDetailsDrawerTransition(() => {
-        if (selectBucket(value)) clearActiveItem();
-      });
-    },
-    [clearActiveItem, requestDetailsDrawerTransition, selectBucket],
-  );
-  const workspaceAccountActionTarget = useMemo<"manager" | "portal" | null>(() => {
-    if (selectedContext?.kind === "portal_account" || isPortalBrowserSurface) {
-      return contextIdForApi != null ? "portal" : null;
-    }
-    if (
-      selectedContext?.manager_role === "account_administrator" ||
-      selectedContext?.kind === "s3_user"
-    ) {
-      return "manager";
-    }
-    return null;
-  }, [contextIdForApi, isPortalBrowserSurface, selectedContext]);
-  const handleOpenWorkspaceAccount = useCallback(() => {
-    if (!workspaceAccountActionTarget) return;
-    if (workspaceAccountActionTarget === "manager") {
-      const contextId = selectedContext?.id ?? (typeof contextIdForApi === "string" ? contextIdForApi : null);
-      if (!contextId) return;
-      writeClientStorage(CLIENT_STORAGE_KEYS.selectedManagerExecutionContext, contextId);
-      writeClientStorage(CLIENT_STORAGE_KEYS.selectedWorkspace, "manager");
-      navigate(`/manager?ctx=${encodeURIComponent(contextId)}`);
-      return;
-    }
-    if (contextIdForApi == null) return;
-    writeClientStorage(CLIENT_STORAGE_KEYS.selectedPortalAccount, String(contextIdForApi));
-    writeClientStorage(CLIENT_STORAGE_KEYS.selectedWorkspace, "portal");
-    navigate(`/portal?project=${encodeURIComponent(String(contextIdForApi))}`);
-  }, [contextIdForApi, navigate, selectedContext, workspaceAccountActionTarget]);
-  const workspaceAccountAction = useMemo(() => {
-    if (workspaceAccountActionTarget === "manager") {
-      return {
-        label: text("Open in Manager"),
-        title: text("Open this account in Manager"),
-        onClick: handleOpenWorkspaceAccount,
-      };
-    }
-    if (workspaceAccountActionTarget === "portal") {
-      return {
-        label: text("Open in Portal"),
-        title: text("Open this account in Portal"),
-        onClick: handleOpenWorkspaceAccount,
-      };
-    }
-    return undefined;
-  }, [handleOpenWorkspaceAccount, workspaceAccountActionTarget, text]);
-
-  const breadcrumbs = useMemo(() => buildPrefixBreadcrumbs(prefix), [prefix]);
-  const parentPrefix = breadcrumbs.at(-2)?.prefix ?? "";
-  const canGoUp = breadcrumbs.length > 0;
+  const workspaceAccountAction = useBrowserWorkspaceAccountAction({
+    selectedContext,
+    contextIdForApi,
+    isPortalBrowserSurface,
+  });
 
   const availableStorageClasses = useMemo(
     () => collectAvailableStorageClasses(items),
@@ -1188,13 +905,6 @@ export default function BrowserPage({
     return [...ordered, ...unknown];
   }, [availableStorageClasses]);
 
-  const handleVersionsHardLimit = useCallback(() => {
-    setWarningMessage(
-      text("Versions listing is limited to {count} entries. Narrow your path to continue.", {
-        count: VERSIONS_LIST_HARD_LIMIT.toLocaleString(intlLocale),
-      }),
-    );
-  }, [intlLocale, setWarningMessage, text]);
   const {
     canLoadMore: canLoadMorePrefixVersions,
     close: closePrefixVersions,
@@ -1210,7 +920,7 @@ export default function BrowserPage({
     contextId: contextIdForApi,
     bucketName,
     contextEnabled: hasExecutionContext,
-    onHardLimit: handleVersionsHardLimit,
+    onWarning: setWarningMessage,
     prefix: normalizedPrefix,
     requestOptions: browserRequestOptions,
     versioningEnabled: isVersioningEnabled,
@@ -1228,15 +938,9 @@ export default function BrowserPage({
   const iconBoxClasses = compactMode ? "h-6 w-6" : "h-9 w-9";
   const nameGapClasses = compactMode ? "gap-1.5" : "gap-3";
   const primaryItemButtonHeightClasses = compactMode ? "" : "min-h-11";
-  const currentPath = useMemo(() => {
-    if (!bucketName) return "";
-    if (!prefix) return bucketName;
-    const trimmed = prefix.endsWith("/") ? prefix.slice(0, -1) : prefix;
-    return `${bucketName}/${trimmed}`;
-  }, [bucketName, prefix]);
-
   const {
     refreshAfterUpload: refreshUploadedListing,
+    refreshCurrentListing,
     refreshNow: refreshObjectsNow,
     reload: reloadObjects,
     requestRefresh: requestObjectsRefresh,
@@ -1247,6 +951,7 @@ export default function BrowserPage({
     loadObjects,
     loadTreeChildren,
     prefix,
+    refreshVisibleVersions: refreshPrefixVersionsIfVisible,
     refreshToken,
   });
 
@@ -1328,61 +1033,6 @@ export default function BrowserPage({
       isPortalProfile && deletedObjectsOptions?.showToggle,
     ),
   });
-  const openObjectDetails = (
-    item: BrowserItem,
-    requestedTab: ObjectDetailsTabId,
-    intent?: "create-public-link",
-  ) => {
-    if (item.type !== "file") return;
-    if (onOpenObjectDetails) {
-      onOpenObjectDetails({
-        bucketName,
-        key: item.key,
-        name: item.name || item.key,
-        initialTab: resolveRoutedObjectDetailsTab({
-          isDeleted: Boolean(item.isDeleted),
-          requestedTab,
-        }),
-        isDeleted: Boolean(item.isDeleted),
-        intent,
-      });
-      return;
-    }
-    const resolution = resolveBrowserObjectDetailsTab({
-      isDeleted: Boolean(item.isDeleted),
-      isStorageSpace: isStorageSpaceContext,
-      profile:
-        resolvedFunctionalProfile === "advanced" ? "advanced" : "standard",
-      requestedTab,
-      versioningEnabled: isVersioningEnabled,
-    });
-    if (resolution.warning) setWarningMessage(text(resolution.warning));
-    if (!resolution.initialTab) return;
-    const initialTab = resolution.initialTab;
-    requestDetailsDrawerTransition(() => {
-      activateItem(item);
-      openObjectDetailsTarget(item, initialTab, intent);
-    });
-  };
-
-  const openItemPrimaryAction = (item: BrowserItem) => {
-    const primaryAction = resolveItemPrimaryAction(item, {
-      versioningEnabled: isVersioningEnabled,
-    });
-    if (primaryAction.kind === "open-folder") {
-      handleOpenItem(item);
-    } else if (primaryAction.kind === "open-versions") {
-      openObjectDetails(item, "versions");
-    } else if (primaryAction.kind === "open-file") {
-      openObjectDetails(item, primaryAction.initialTab);
-    }
-  };
-
-  const createPublicLinkForItem = (item: BrowserItem) => {
-    if (item.type !== "file" || item.isDeleted) return;
-    openObjectDetails(item, "details", "create-public-link");
-  };
-
   const restoreDeletedItem = (item: BrowserItem) => {
     if (!item.isDeleted || !deletedObjectsOptions?.onRestoreObject) return;
     deletedObjectsOptions.onRestoreObject({
@@ -1395,100 +1045,10 @@ export default function BrowserPage({
     });
   };
 
-  const openItemDetails = (item: BrowserItem) => {
-    if (item.type === "folder") {
-      if (resolvedFunctionalProfile !== "advanced") return;
-      requestDetailsDrawerTransition(() => {
-        activateItem(item);
-        openObjectDetailsTarget(item, "details");
-      });
-      return;
-    }
-    openObjectDetails(
-      item,
-      item.isDeleted
-        ? "versions"
-        : resolvedFunctionalProfile === "advanced"
-          ? "properties"
-          : "details",
-    );
-  };
-
-  const openAdvancedForItem = (item: BrowserItem) => {
-    openObjectDetails(item, "properties");
-  };
-
-  const openPropertiesForItem = (item: BrowserItem) => {
-    openObjectDetails(item, "properties");
-  };
-
-  const handlePreviewItem = (item: BrowserItem) => {
-    openObjectDetails(item, "preview");
-  };
-
   const handleOpenItem = (item: BrowserItem) => {
     if (item.type !== "folder") return;
     handleSelectPrefix(item.key);
   };
-
-  const handleSelectPrefix = useCallback(
-    (nextPrefix: string) => {
-      requestDetailsDrawerTransition(() => {
-        setPrefix(nextPrefix);
-        clearActiveItem();
-        recordPathHistory(nextPrefix);
-      });
-    },
-    [
-      clearActiveItem,
-      recordPathHistory,
-      requestDetailsDrawerTransition,
-      setPrefix,
-    ],
-  );
-  const {
-    activeSuggestionIndex: pathSuggestionIndex,
-    applySuggestion: applyPathSuggestion,
-    cancel: cancelPathEdit,
-    commit: commitPathDraft,
-    editing: isEditingPath,
-    handleKeyDown: handlePathKeyDown,
-    inputRef: pathInputRef,
-    setActiveSuggestionIndex: setPathSuggestionIndex,
-    setValue: setPathDraft,
-    startEditing: startEditingPath,
-    suggestions: pathSuggestions,
-    suggestionsLoading: pathSuggestionsLoading,
-    value: pathDraft,
-  } = useBrowserPathEditor({
-    contextId: contextIdForApi,
-    bucketName,
-    enabled: hasExecutionContext,
-    history: pathHistory,
-    localPrefixes: prefixes,
-    onCommit: handleSelectPrefix,
-    prefix,
-    requestOptions: browserRequestOptions,
-  });
-  useBrowserNavigationHistory({
-    bucketName,
-    prefix,
-    lockedBucketName: resolvedLockedBucketName,
-    ready:
-      hasExecutionContext && selectionReady && !contextSwitchInFlight,
-    scopeKey: `${normalizedPath}:${bucketAccessContextKey ?? "none"}:${resolvedLockedBucketName}`,
-    onNavigate: ({ bucketName: nextBucket, prefix: nextPrefix }) => {
-      if (hasOpenModal()) return false;
-      return requestDetailsDrawerTransition(() => {
-        // Bucket changes are validated by the catalogue from the URL before
-        // they replace the current selection. Prefix-only history is local.
-        if (nextBucket === bucketName) setPrefix(nextPrefix);
-        clearActiveItem();
-        cancelPathEdit();
-      });
-    },
-  });
-
   useEffect(() => {
     contextIdForApiRef.current = contextIdForApi;
   }, [contextIdForApi]);
@@ -1510,81 +1070,10 @@ export default function BrowserPage({
     openItemPrimaryAction(item);
   };
 
-  const handleItemContextMenu = (
-    event: ReactMouseEvent<HTMLElement>,
-    item: BrowserItem,
-  ) => {
-    event.preventDefault();
-    event.stopPropagation();
-    const menuSelection = prepareItemContextMenu(item);
-    openContextMenu(
-      menuSelection,
-      { x: event.clientX, y: event.clientY },
-    );
-  };
-
-  const handleItemActionsButtonClick = (
-    event: ReactMouseEvent<HTMLButtonElement>,
-    item: BrowserItem,
-  ) => {
-    event.preventDefault();
-    event.stopPropagation();
-    prepareItemActionsMenu(item);
-    const rect = event.currentTarget.getBoundingClientRect();
-    openContextMenu(
-      { kind: "item", item, items: [item] },
-      {
-        x: rect.right,
-        y: rect.bottom + 6,
-        horizontalAlignment: "end",
-      },
-    );
-  };
-
-  const handlePathContextMenu = (event: ReactMouseEvent<HTMLElement>) => {
-    const target = event.target as HTMLElement;
-    if (target.closest("button, a, input, textarea, select, label")) {
-      return;
-    }
-    event.preventDefault();
-    event.stopPropagation();
-    openContextMenu(
-      { kind: "path" },
-      { x: event.clientX, y: event.clientY },
-    );
-  };
-
-  const handleHeaderContextMenu = (event: ReactMouseEvent<HTMLElement>) => {
-    if (!isMainBrowserPath) return;
-    event.preventDefault();
-    event.stopPropagation();
-    openContextMenu(
-      { kind: "headerConfig" },
-      { x: event.clientX, y: event.clientY },
-    );
-  };
-
   const handleListKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     handleSelectionKeyDown(event, openItemPrimaryAction);
   };
 
-  const openBucketConfigurationDrawer = (targetBucket: string) => {
-    if (!bucketConfigurationEnabled) return;
-    const normalized = targetBucket.trim();
-    if (!normalized) return;
-    setShowBucketMenu(false);
-    setBucketFilter("");
-    requestDetailsDrawerTransition(() =>
-      openBucketConfigurationTarget(normalized),
-    );
-  };
-
-  const handleBrowserBucketCreated = useCallback(
-    async (createdBucketName: string) => {
-      await refreshBucketList({ preferredBucket: createdBucketName });
-    },
-    [refreshBucketList],
-  );
   const {
     showModal: showCreateBucketModal,
     name: createBucketNameValue,
@@ -1605,116 +1094,64 @@ export default function BrowserPage({
     hasContext: hasExecutionContext,
     requestOptions: browserRequestOptions,
     uiOrigin,
-    onCreated: handleBrowserBucketCreated,
+    onCreated: async (createdBucketName) => {
+      await refreshBucketList({ preferredBucket: createdBucketName });
+    },
     setCorsError: setCorsFixError,
     setCorsStatus,
     setStatusMessage,
   });
-  const openCreateBucketDialog = useCallback(() => {
-    if (!bucketManagementEnabled) return;
-    setShowBucketMenu(false);
-    setBucketFilter("");
-    openCreateBucketForm();
-  }, [bucketManagementEnabled, openCreateBucketForm, setBucketFilter]);
-
-  const accountUser = Boolean(storedUser && storedUser.authType !== "s3_session");
-  const currentFavoriteName = useMemo(
-    () =>
-      browserFavoriteDefaultName({
-        bucketName,
-        bucketLabel: isStorageSpaceContext
-          ? bucketDisplayNameByName.get(bucketName)
-          : undefined,
-        prefix: normalizedPrefix,
-      }),
-    [bucketDisplayNameByName, bucketName, isStorageSpaceContext, normalizedPrefix],
-  );
-  const currentFavorite = useMemo(
-    () => ({
-      name: currentFavoriteName,
-      surface: isMainBrowserPath ? ("browser" as const) : workspaceSurface,
-      workspace: workspaceSurface,
-      context: String(contextIdForApi ?? ""),
-      bucket: bucketName,
-      prefix: normalizedPrefix,
-    }),
-    [
-      contextIdForApi,
-      bucketName,
-      currentFavoriteName,
-      isMainBrowserPath,
-      normalizedPrefix,
-      workspaceSurface,
-    ],
-  );
-  const favoriteContextLabels = useMemo(
-    () =>
-      Object.fromEntries(
-        browserContext.contexts.map((context) => [context.id, context.display_name]),
-      ),
-    [browserContext.contexts],
-  );
-  const favoriteAvailableContexts = useMemo(
-    () =>
-      isMainBrowserPath
-        ? browserContext.contexts.map((context) => context.id)
-        : [],
-    [browserContext.contexts, isMainBrowserPath],
-  );
-  const handleApplyFavorite = useCallback(
-    (favorite: BrowserFavorite) =>
-      requestDetailsDrawerTransition(() => {
-        if (favorite.context !== String(contextIdForApi ?? "")) {
-          const nextParams = new URLSearchParams(searchParams);
-          nextParams.set("ctx", favorite.context);
-          navigate(
-            buildBrowserLocationPath(
-              location.pathname,
-              nextParams.toString(),
-              location.hash,
-              { bucketName: favorite.bucket, prefix: favorite.prefix },
-            ),
-          );
-        } else {
-          setBucketName(favorite.bucket);
-          setPrefix(favorite.prefix);
-        }
-        clearActiveItem();
-      }),
-    [
-      contextIdForApi,
-      clearActiveItem,
-      location.hash,
-      location.pathname,
-      navigate,
-      requestDetailsDrawerTransition,
-      searchParams,
-      setBucketName,
-      setPrefix,
-    ],
-  );
   const {
+    openBucketConfiguration: openBucketConfigurationDrawer,
+    openCreateBucket: openCreateBucketDialog,
+    selectBucketFromMenu: handleBucketChange,
+  } = useBrowserBucketInteractions({
+    bucketConfigurationEnabled,
+    bucketManagementEnabled,
+    clearActiveItem,
+    closeBucketMenu,
+    openBucketConfigurationTarget,
+    openCreateBucketForm,
+    requestDetailsDrawerTransition,
+    selectBucket,
+    setBucketFilter,
+  });
+
+  const {
+    accountUser,
     apply: applyBrowserFavorite,
     busy: browserFavoritesBusy,
     canToggleCurrent: canToggleCurrentFavorite,
+    contextLabels: favoriteContextLabels,
+    current: currentFavorite,
     error: browserFavoritesError,
     favorites: browserFavoriteItems,
     isCurrentFavorite,
     removeLocation: removeBrowserFavoriteLocation,
     toggleCurrent: toggleCurrentFavorite,
     unavailable: unavailableBrowserFavorites,
-  } = useBrowserFavorites({
-    accountUser,
-    availableContexts: favoriteAvailableContexts,
-    current: currentFavorite,
-    enabled: isMainBrowserPath,
+  } = useBrowserFavoritesRuntime({
+    storedUser,
+    contexts: browserContext.contexts,
+    bucketName,
+    bucketLabel: isStorageSpaceContext
+      ? bucketDisplayNameByName.get(bucketName)
+      : undefined,
+    prefix: normalizedPrefix,
+    isMainBrowserPath,
+    workspaceSurface,
+    contextId: contextIdForApi,
     lockedBucket: resolvedLockedBucketName,
-    onApply: handleApplyFavorite,
+    requestTransition: requestDetailsDrawerTransition,
+    setBucketName,
+    setPrefix,
+    clearActiveItem,
     onStatus: setStatusMessage,
     onWarning: setWarningMessage,
   });
 
-  const renderWorkspaceSidebarBody = useBrowserWorkspaceSidebarBody({
+  useBrowserWorkspaceSidebarBody({
+    enabled: showWorkspaceSidebar,
     favorites: {
       accountUser,
       bucketDetailsByName: isStorageSpaceContext ? bucketDetailsByName : undefined,
@@ -1754,50 +1191,13 @@ export default function BrowserPage({
     loadMoreSentinelRef: bucketPanelLoadMoreSentinelRef,
   });
 
-  useLayoutEffect(() => {
-    if (!showWorkspaceSidebar) {
-      setSidebarBody(null);
-      return;
-    }
-    setSidebarBody(renderWorkspaceSidebarBody);
-    return () => {
-      setSidebarBody(null);
-    };
-  }, [renderWorkspaceSidebarBody, setSidebarBody, showWorkspaceSidebar]);
-
   const handleRefresh = () => {
     if (!hasExecutionContext) return;
     if (!bucketName) {
       void refreshBucketList();
       return;
     }
-    loadObjects({ prefixOverride: prefix, forceRefresh: true });
-    void refreshPrefixVersionsIfVisible();
-  };
-
-  const canLoadMoreObjectResults = Boolean(
-    (objectsIsTruncated && objectsNextToken) || deletedObjectsIsTruncated,
-  );
-
-  const handleLoadMoreObjectResults = () => {
-    if (objectsLoadingMore) return;
-    if (objectsIsTruncated && objectsNextToken) {
-      void loadObjects({ append: true, continuationToken: objectsNextToken });
-      return;
-    }
-    if (deletedObjectsIsTruncated) {
-      void loadObjects({ append: true, loadDeletedOnly: true });
-    }
-  };
-
-  const handleGoUp = () => {
-    if (!canGoUp) return;
-    handleSelectPrefix(parentPrefix);
-  };
-
-  const addActivity = (action: string, path: string) => {
-    showOperationsBar();
-    recordCompletedActivity(action, path);
+    void refreshCurrentListing();
   };
 
   const handleBrowserFolderCreated = async ({
@@ -1807,7 +1207,7 @@ export default function BrowserPage({
     name: string;
     prefix: string;
   }) => {
-    addActivity("Created", `${bucketName}/${createdFolderPrefix}`);
+    recordCompletedActivity("Created", `${bucketName}/${createdFolderPrefix}`);
     setStatusMessage(text("Folder {name} created", { name }));
     await loadObjects({ prefixOverride: prefix });
     loadTreeChildren(prefix);
@@ -2039,6 +1439,7 @@ export default function BrowserPage({
     downloadFolder: handleDownloadFolder,
     downloadArchive,
     downloadItems: handleDownloadItems,
+    downloadTarget: handleDownloadTarget,
     downloadVersion: handleDownloadVersion,
     savePreparedArchive,
   } = useBrowserDownloads({
@@ -2051,6 +1452,7 @@ export default function BrowserPage({
     currentPath,
     enabled: hasExecutionContext,
     listAllObjectsForPrefix,
+    onOpenDeletedItemVersions: (item) => openObjectDetails(item, "versions"),
     onStatus: setStatusMessage,
     onWarning: setWarningMessage,
     parallelism: downloadParallelism,
@@ -2067,24 +1469,8 @@ export default function BrowserPage({
     transferReporter,
     updateOperation,
     useProxyTransfers,
+    versioningEnabled: isVersioningEnabled,
   });
-
-  const handleDownloadTarget = (item: BrowserItem) => {
-    if (item.isDeleted) {
-      setWarningMessage(
-        text("This item is deleted. Open it or use versions to restore content before downloading."),
-      );
-      if (item.type === "file" && isVersioningEnabled) {
-        openObjectDetails(item, "versions");
-      }
-      return;
-    }
-    if (item.type === "folder") {
-      void handleDownloadFolder(item);
-      return;
-    }
-    void handleDownloadItems([item]);
-  };
 
   const keyboardShortcutsBlocked =
     Boolean(objectDetailsTarget) ||
@@ -2115,11 +1501,6 @@ export default function BrowserPage({
     selectedItems,
   });
 
-  const refreshObjectListing = async (_targetKey: string) => {
-    await loadObjects({ prefixOverride: prefix, forceRefresh: true });
-    await refreshPrefixVersionsIfVisible();
-  };
-
   const {
     remove: handleDeleteVersion,
     restore: handleRestoreVersion,
@@ -2132,7 +1513,7 @@ export default function BrowserPage({
     enabled: hasExecutionContext,
     isOperationAborted,
     onConfirm: openConfirmDialog,
-    onRefreshListing: refreshObjectListing,
+    onRefreshListing: refreshCurrentListing,
     onRefreshVersions: async () => undefined,
     onStatus: setStatusMessage,
     onWarning: setWarningMessage,
@@ -2207,7 +1588,7 @@ export default function BrowserPage({
       bulkAttributes: () => openBulkAttributesModal(selectionItems),
       advanced: () => {
         if (selectionPrimary) {
-          openAdvancedForItem(selectionPrimary);
+          openPropertiesForItem(selectionPrimary);
         }
       },
       restoreToDate: () => openBulkRestoreModal(selectionItems),
@@ -2232,7 +1613,7 @@ export default function BrowserPage({
       cut: () => handleCutItems([item]),
       bulkAttributes: () => openBulkAttributesModal([item]),
       restoreToDate: () => openBulkRestoreModal([item]),
-      advanced: () => openAdvancedForItem(item),
+      advanced: () => openPropertiesForItem(item),
       delete: () => handleDeleteItems([item]),
     });
     if (!result.executed) {
@@ -2321,7 +1702,7 @@ export default function BrowserPage({
       onTypeFilterChange={setTypeFilter}
       onStorageFilterChange={setStorageFilter}
       onClear={clearSearchFilters}
-      onClose={() => setShowSearchOptionsMenu(false)}
+      onClose={closeSearchOptionsMenu}
     />
   );
 
@@ -2361,7 +1742,7 @@ export default function BrowserPage({
               displayNameByBucket: bucketDisplayNameByName,
               canLoadMore: canLoadMoreBucketResults,
               loadingMore: bucketMenuLoadingMore,
-              onToggle: () => setShowBucketMenu((current) => !current),
+              onToggle: toggleBucketMenu,
               onCreateBucket: openCreateBucketDialog,
               onFilterChange: setBucketFilter,
               onRetry: () => void refreshBucketList(),
@@ -2474,11 +1855,7 @@ export default function BrowserPage({
               selectionOverflow: isActionBarVisible,
               sse: showSseControls
                 ? {
-                    enabled: Boolean(
-                      bucketName &&
-                        hasExecutionContext &&
-                        sseFeatureEnabled,
-                    ),
+                    enabled: true,
                     active: sseActive,
                     onOpen: openSseCustomerModal,
                   }
@@ -2572,12 +1949,12 @@ export default function BrowserPage({
                 isPortalProfile={isPortalProfile}
                 table={{
                   scaffold: {
-                    minWidthPx: objectTableMinWidthPx,
+                    minWidthPx: tableLayout.minWidthPx,
                     selectionColumnWidthPx: SELECTION_COLUMN_WIDTH_PX,
-                    nameColumnWidthPx,
-                    actionsColumnWidthPx,
-                    columns: visibleColumnDefinitions,
-                    columnWidthsPx: visibleColumnWidthsPx,
+                    nameColumnWidthPx: tableLayout.nameColumnWidthPx,
+                    actionsColumnWidthPx: tableLayout.actionsColumnWidthPx,
+                    columns: tableLayout.visibleColumnDefinitions,
+                    columnWidthsPx: tableLayout.columnWidthsPx,
                     headerPaddingClasses: headerPadding,
                     allSelected,
                     selectionDisabled: selectableListItems.length === 0,
@@ -2713,7 +2090,7 @@ export default function BrowserPage({
         onCutItems={handleCutItems}
         onOpenBulkAttributes={openBulkAttributesModal}
         onOpenBulkRestore={openBulkRestoreModal}
-        onOpenAdvanced={openAdvancedForItem}
+        onOpenAdvanced={openPropertiesForItem}
         onDeleteItems={handleDeleteItems}
         onDownloadFolder={handleDownloadFolder}
         onDownloadItems={handleDownloadItems}
@@ -2761,7 +2138,7 @@ export default function BrowserPage({
           item={objectDetailsTarget.item}
           onClose={closeObjectDetailsDrawer}
           onMessage={setStatusMessage}
-          onRefreshObjects={refreshObjectListing}
+          onRefreshObjects={refreshCurrentListing}
         />
       ) : objectDetailsTarget && objectDetailsTarget.item.type === "file" ? (
         <BrowserObjectDetailsDrawer
@@ -2783,7 +2160,7 @@ export default function BrowserPage({
           onDownload={handleDownloadTarget}
           onCopyUrl={(item) => handleCopyUrl(item)}
           onDelete={(item) => handleDeleteItems([item])}
-          onRefreshBrowserObjects={refreshObjectListing}
+          onRefreshBrowserObjects={refreshCurrentListing}
           onDownloadVersion={handleDownloadVersion}
           onRestoreVersion={handleRestoreVersion}
           onDeleteVersion={handleDeleteVersion}

@@ -13,7 +13,6 @@ from .precheck_inspection import BucketMigrationInspector
 from .precheck_rules import BucketMigrationPrecheckRules, PrecheckItemSafety
 
 
-_PRECHECK_REPORT_VERSION = 3
 _SUPPORTED_BUCKET_SETTINGS = (
     "versioning",
     "object_lock",
@@ -94,7 +93,6 @@ def _check_entry(
         **{
             "code": code,
             "severity": severity,
-            "level": severity,
             "blocking": bool(blocking),
             "scope": scope,
             "message": sanitized_error_log_detail(message),
@@ -119,9 +117,7 @@ def _check_entry(
 def _count_entries(entries: list[dict[str, Any]]) -> dict[str, int]:
     summary = {"errors": 0, "warnings": 0, "infos": 0, "blocking_errors": 0}
     for entry in entries:
-        severity = (
-            str(entry.get("severity") or entry.get("level") or "").strip().lower()
-        )
+        severity = str(entry.get("severity") or "").strip().lower()
         if severity == "error":
             summary["errors"] += 1
             if bool(entry.get("blocking")):
@@ -488,7 +484,6 @@ class BucketMigrationPrecheckPlanner:
 
     def _new_report(self, *, checked_at: Any) -> dict[str, Any]:
         return {
-            "report_version": _PRECHECK_REPORT_VERSION,
             "status": "passed",
             "checked_at": checked_at.isoformat(),
             "contexts": {},
@@ -682,9 +677,6 @@ class BucketMigrationPrecheckPlanner:
             source_profile=source.profile,
             target_profile=target.profile,
             strategy=source_plan.strategy,
-            safety=safety,
-            blocking=blocking,
-            checks=checks,
         )
         configured = (source.profile or {}).get("supported_settings", {})
         availability = (source.profile or {}).get("feature_availability", {})
@@ -722,7 +714,6 @@ class BucketMigrationPrecheckPlanner:
                 "source_profile": source.profile,
                 "target_profile": target.profile,
                 "checks": checks,
-                "messages": checks,
                 "errors": counts["errors"],
                 "warnings": counts["warnings"],
             },
@@ -743,25 +734,10 @@ class BucketMigrationPrecheckPlanner:
         source_profile: dict[str, Any] | None,
         target_profile: dict[str, Any] | None,
         strategy: str,
-        safety: PrecheckItemSafety,
-        blocking: bool,
-        checks: list[dict[str, Any]],
     ) -> None:
         item.source_snapshot_json = self._service._json_dumps_safe(source_profile)
         item.target_snapshot_json = self._service._json_dumps_safe(target_profile)
-        execution_plan = {
-            "report_version": _PRECHECK_REPORT_VERSION,
-            "strategy": strategy,
-            "supported": not blocking,
-            "blocked": blocking,
-            "delete_source_safe": safety.delete_source_safe,
-            "rollback_safe": safety.rollback_safe,
-            "same_endpoint_copy_safe": safety.same_endpoint_copy_safe,
-            "blocking_codes": [
-                entry["code"] for entry in checks if bool(entry.get("blocking"))
-            ],
-        }
-        item.execution_plan_json = self._service._json_dumps_safe(execution_plan)
+        item.execution_strategy = strategy
         item.updated_at = checked_at
 
     def _finalize_report(
@@ -859,8 +835,6 @@ class BucketMigrationPrecheckPlanner:
                     else "warning" if planned.warnings else "ready"
                 )
             )
-            planned.report["source_identity"] = migration.source_context_id
-            planned.report["target_identity"] = migration.target_context_id
             report["items"].append(planned.report)
             if on_progress:
                 on_progress(report)

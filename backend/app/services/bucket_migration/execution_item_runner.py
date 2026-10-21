@@ -23,13 +23,12 @@ from .diagnostics import MigrationPermissionCheckError
 
 
 class BucketMigrationItemRunnerMixin:
-    def _load_item_execution_plan(self, item: BucketMigrationItem) -> dict[str, Any]:
-        parsed = _json_loads(item.execution_plan_json)
-        return parsed if isinstance(parsed, dict) else {}
-
     def _item_execution_strategy(self, item: BucketMigrationItem) -> str:
-        plan = self._load_item_execution_plan(item)
-        strategy = str(plan.get("strategy") or "current_only").strip() or "current_only"
+        strategy = item.execution_strategy
+        if not isinstance(strategy, str) or not strategy:
+            raise RuntimeError(
+                "Migration item is missing a valid execution strategy. Re-run precheck before starting the migration."
+            )
         return strategy
 
     def _load_item_replication_state(self, item: BucketMigrationItem) -> dict[str, Any]:
@@ -39,27 +38,12 @@ class BucketMigrationItemRunnerMixin:
     def _store_item_replication_state(self, item: BucketMigrationItem, state: dict[str, Any]) -> None:
         item.replication_state_json = self._json_dumps_safe(state)
 
-    def _assert_item_execution_plan_supported(self, item: BucketMigrationItem) -> None:
-        plan = self._load_item_execution_plan(item)
+    def _assert_item_execution_strategy_supported(self, item: BucketMigrationItem) -> None:
         strategy = self._item_execution_strategy(item)
-        supported = bool(plan.get("supported")) if plan else False
-        if not plan:
-            raise RuntimeError(
-                "Missing execution plan for migration item. Re-run precheck before starting the migration."
-            )
         if strategy not in {"current_only", "version_aware", "skip_existing"}:
             raise RuntimeError(
                 f"Execution strategy '{strategy}' is not implemented by the migration worker."
             )
-        if not supported:
-            blocking_codes = plan.get("blocking_codes")
-            if isinstance(blocking_codes, list) and blocking_codes:
-                codes = ", ".join(str(code) for code in blocking_codes[:5])
-                raise RuntimeError(
-                    "Migration item is blocked by precheck findings and cannot run. "
-                    f"Blocking checks: {codes}"
-                )
-            raise RuntimeError("Migration item is blocked by precheck findings and cannot run.")
 
     def _stop_interrupted_item(
         self,

@@ -70,7 +70,6 @@ function buildDetail() {
     cancel_requested: false,
     precheck_status: "passed",
     precheck_report: {
-      report_version: 2,
       status: "failed",
       errors: 1,
       warnings: 1,
@@ -89,10 +88,10 @@ function buildDetail() {
           delete_source_safe: true,
           rollback_safe: true,
           same_endpoint_copy_safe: true,
-          messages: [
+          checks: [
             {
               code: "target_exists",
-              level: "warning",
+              severity: "warning",
               blocking: false,
               message:
                 "Target bucket already exists; this item will be skipped.",
@@ -108,10 +107,10 @@ function buildDetail() {
           delete_source_safe: false,
           rollback_safe: false,
           same_endpoint_copy_safe: true,
-          messages: [
+          checks: [
             {
               code: "source_access_failed",
-              level: "error",
+              severity: "error",
               blocking: true,
               message: "Source bucket read/list check failed: access denied.",
             },

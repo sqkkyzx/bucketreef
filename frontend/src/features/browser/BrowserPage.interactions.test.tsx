@@ -4049,6 +4049,11 @@ describe("BrowserPage interactions", () => {
     expect(
       within(actionsToolbar).queryByRole("button", { name: "Preview" }),
     ).not.toBeInTheDocument();
+
+    const menu = await openActionsMoreMenu(user);
+    expect(
+      within(menu).queryByRole("menuitem", { name: "Download as ZIP" }),
+    ).not.toBeInTheDocument();
   });
 
   it("uses shared controls and English labels in the SSE-C key modal", async () => {
@@ -4083,6 +4088,27 @@ describe("BrowserPage interactions", () => {
     expect(within(dialog).queryByRole("button", { name: "Afficher" })).not.toBeInTheDocument();
     await user.click(showButton);
     expect(within(dialog).getByRole("button", { name: "Hide" })).toHaveClass("ui-button-base");
+  });
+
+  it("uses canonical execution context capabilities for transfer features", async () => {
+    const user = userEvent.setup();
+    setBrowserContext({
+      selectedContextId: "acc-1",
+      selectedContext: makeExecutionContext({
+        kind: "account",
+        id: "acc-1",
+        storage_endpoint_capabilities: { sse: true },
+      }),
+      contextIdForApi: "acc-1",
+    });
+
+    renderPage({ initialEntry: "/browser?bucket=bucket-1" });
+    await findRowByLabel("a.txt");
+
+    const moreMenu = await openContextMoreMenu(user);
+    expect(
+      within(moreMenu).getByRole("menuitem", { name: /SSE-C/i }),
+    ).toBeEnabled();
   });
 
   it("activates an SSE-C key for the current browser scope", async () => {
@@ -4560,6 +4586,9 @@ describe("BrowserPage interactions", () => {
     expect(
       within(menu).getByRole("button", { name: "Download folder" }),
     ).toBeInTheDocument();
+    expect(
+      within(menu).queryByRole("button", { name: "Download as ZIP" }),
+    ).not.toBeInTheDocument();
     expect(
       within(menu).getByRole("button", { name: "Copy" }),
     ).toBeInTheDocument();

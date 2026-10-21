@@ -25,7 +25,6 @@ export type BucketMigrationPrecheckStatus = "pending" | "passed" | "failed";
 export type BucketMigrationPrecheckEntry = {
   code?: string;
   severity?: string;
-  level?: string;
   blocking?: boolean;
   scope?: string;
   message: string;
@@ -42,8 +41,6 @@ type BucketMigrationPrecheckItemReport = {
   state?: "ready" | "blocked" | "unverified" | "warning";
   settings_copied?: string[];
   settings_omitted?: string[];
-  source_identity?: string;
-  target_identity?: string;
   source_bucket?: string;
   target_bucket?: string;
   strategy?: string;
@@ -56,13 +53,11 @@ type BucketMigrationPrecheckItemReport = {
   source_profile?: Record<string, unknown> | null;
   target_profile?: Record<string, unknown> | null;
   checks?: BucketMigrationPrecheckEntry[];
-  messages?: BucketMigrationPrecheckEntry[];
   errors?: number;
   warnings?: number;
 };
 
 export type BucketMigrationPrecheckReport = {
-  report_version?: number;
   status?: string;
   checked_at?: string;
   checks?: BucketMigrationPrecheckEntry[];

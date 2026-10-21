@@ -1,5 +1,114 @@
 # Operations: Upgrade and Compatibility Notes
 
+## 2026-10 API prefix configuration rename
+
+The backend runtime setting formerly named `API_V1_PREFIX` has been renamed to
+`API_PREFIX`. The configured route prefix remains `/api` by default; this change
+removes the misleading version suffix from the configuration contract because
+the application API is not mounted below a `/v1` path.
+
+Update custom environment files, deployment manifests, and secret/configuration
+management to use `API_PREFIX`. The removed `API_V1_PREFIX` variable is no
+longer read by the backend and has no compatibility alias. The bundled Helm
+values now use `API_PREFIX`.
+
+## 2026-10 bucket migration execution strategy column
+
+Migration `0179_bucket_migration_execution_strategy` replaces the generic
+`execution_plan_json` blob with a nullable `execution_strategy` column on
+bucket migration items. Earlier cleanup reduced the plan to one runtime value;
+precheck pass/fail state and blocking diagnostics already live in the migration
+precheck report.
+
+Deploy the migration and backend together. Draft items keep a null strategy
+until precheck assigns one, and runnable items require an explicit supported
+strategy. Downgrade reconstructs the former JSON payload from the strategy and
+the persisted precheck report.
+
+## 2026-10 canonical bucket migration execution strategy
+
+Migration `0178_canonical_bucket_migration_plan_strategy` makes the execution
+strategy explicit in current workflow-v2 item plans. Missing or blank strategy
+values that previously meant `current_only` at runtime are rewritten once in
+the database; surrounding whitespace is removed. Historical workflow-v1 rows
+remain untouched because they cannot be replayed.
+
+Deploy the migration and backend together. The worker no longer supplies a
+default strategy for persisted plans and rejects malformed plans instead.
+Downgrade keeps the explicit strategy because it is already accepted by the
+previous application version.
+
+## 2026-10 bucket migration execution-plan safety cleanup
+
+Migration `0177_remove_bucket_migration_plan_safety` removes
+`delete_source_safe`, `rollback_safe`, and `same_endpoint_copy_safe` from
+persisted per-bucket execution plans. These values already live in the
+precheck report and the worker never reads the execution-plan copies.
+
+Deploy the migration and backend together. New execution plans contain only
+the fields needed to execute or reject an item. Downgrade reconstructs the
+retired safety fields from the canonical per-item precheck report when those
+values are available.
+
+## 2026-10 bucket migration execution-plan cleanup
+
+Migration `0176_remove_bucket_migration_plan_blocked` removes the redundant
+`blocked` flag from persisted per-bucket execution plans. The worker already
+uses the canonical `supported` field to decide whether an item may run, so
+persisting both booleans allowed contradictory state without adding behavior.
+
+Deploy the migration and backend together. New execution plans omit `blocked`.
+Downgrade reconstructs it as the inverse of `supported` for the previous
+application version.
+
+## 2026-10 bucket migration report version cleanup
+
+Migration `0175_remove_bucket_migration_report_version` removes the unused
+`report_version` metadata from persisted bucket migration precheck reports and
+per-bucket execution plans. Runtime code never selected behavior from this value,
+so retaining it only implied a compatibility contract that did not exist.
+
+Deploy the migration, backend, and frontend together. New reports and execution
+plans omit `report_version`. Downgrade restores version `3` on valid persisted
+objects for the previous application version.
+
+## 2026-10 canonical bucket migration item identities
+
+Migration `0174_remove_bucket_migration_item_identities` removes duplicated
+`source_identity` and `target_identity` fields from persisted per-bucket
+precheck items. The execution contexts already belong to the migration record
+and report context block, so keeping a copy on every item created redundant
+state that could drift.
+
+Deploy the migration, backend, and frontend together. New precheck reports no
+longer emit the per-item identity copies. Downgrade reconstructs them from the
+canonical migration source and target context IDs for the previous application
+version.
+
+## 2026-10 canonical bucket migration diagnostic severity
+
+Migration `0173_canonical_bucket_migration_severity` rewrites persisted bucket
+migration diagnostics to use only `severity`. Historical diagnostics that have
+only the retired `level` alias are promoted to `severity`; when both fields
+exist, `severity` remains authoritative and `level` is removed.
+
+Deploy the migration, backend, and frontend together. New precheck diagnostics
+no longer duplicate severity under `level`, and runtime readers no longer carry
+the fallback. Migration event records still use their distinct `level` field.
+Downgrade recreates diagnostic `level` from canonical severity.
+
+## 2026-10 canonical bucket migration precheck diagnostics
+
+Migration `0172_canonical_bucket_migration_checks` rewrites persisted bucket
+migration precheck reports so item diagnostics use only the canonical `checks`
+field. Historical reports that contain only the retired `messages` alias are
+migrated into `checks`; when both fields exist, `checks` remains authoritative
+and `messages` is removed.
+
+Deploy the migration, backend, and frontend together. New reports no longer
+emit duplicate `messages` data, and the frontend reads only `checks`. Downgrade
+recreates `messages` from canonical checks for the previous application version.
+
 ## 2026-10 context-bound direct transfer workers
 
 Deploy the backend and frontend together. Direct transfers now obtain their

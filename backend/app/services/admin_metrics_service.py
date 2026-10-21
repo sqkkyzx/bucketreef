@@ -30,7 +30,7 @@ from app.services.traffic_service import (
     flatten_usage_entries,
     window_start,
 )
-from app.utils.rgw_identifiers import resolve_admin_uid, is_rgw_account_id
+from app.utils.rgw_identifiers import is_rgw_account_id
 from app.utils.rgw_payloads import extract_bucket_list, rgw_qualified_uid
 from app.services.rgw_principal_scope import resolve_target_tenant
 from app.utils.usage_stats import aggregate_bucket_usage, extract_usage_stats
@@ -325,7 +325,7 @@ class AdminMetricsService:
                 # Account roots and registered users can overlap. List each
                 # principal once and count each returned bucket only once.
                 identifiers = {
-                    rgw_qualified_uid(resolve_admin_uid(account.rgw_account_id, account.rgw_user_uid), resolve_target_tenant(account))
+                    rgw_qualified_uid(account.rgw_user_uid, resolve_target_tenant(account))
                     for account in accounts
                 } | {rgw_qualified_uid(user.rgw_user_uid, resolve_target_tenant(user)) for user in users}
                 unique_buckets: dict[tuple, dict] = {}
@@ -393,8 +393,6 @@ class AdminMetricsService:
         self,
         account: S3Account,
     ) -> tuple[int | None, int | None, int | None]:
-        if not account.rgw_user_uid:
-            return None, None, None
         used_bytes, used_objects, bucket_count = self._collect_bucket_usage(
             uid=rgw_qualified_uid(account.rgw_user_uid, resolve_target_tenant(account)),
             context=f"account:{account.id}",
@@ -554,24 +552,12 @@ class AdminMetricsService:
         )
         return payload or {}
 
-    def _normalize_identifier(self, value: Optional[str]) -> Optional[str]:
-        if value is None:
-            return None
-        if not isinstance(value, str):
-            value = str(value)
-        normalized = value.strip()
-        return normalized or None
-
-    def _expand_identifier(self, value: Optional[str]) -> set[str]:
-        normalized = self._normalize_identifier(value)
-        if not normalized:
-            return set()
-        return {normalized}
-
-    def _identifier_in_scope(self, value: Optional[str], allowed: set[str]) -> bool:
-        if not allowed:
+    @staticmethod
+    def _identifier_in_scope(value: object, allowed: set[str]) -> bool:
+        if value is None or not allowed:
             return False
-        return any(token in allowed for token in self._expand_identifier(value))
+        normalized = str(value).strip()
+        return bool(normalized and normalized in allowed)
 
     def _load_scope_targets(self) -> tuple[list[S3Account], list[S3User], set[str]]:
         account_statement = select(S3Account)
@@ -590,9 +576,7 @@ class AdminMetricsService:
         allowed: set[str] = set()
         for acc in accounts:
             allowed.add(acc.rgw_account_id)
-            root_uid = resolve_admin_uid(acc.rgw_account_id, acc.rgw_user_uid)
-            if root_uid:
-                allowed.add(rgw_qualified_uid(root_uid, resolve_target_tenant(acc)))
+            allowed.add(rgw_qualified_uid(acc.rgw_user_uid, resolve_target_tenant(acc)))
         for user in s3_users:
             allowed.add(rgw_qualified_uid(user.rgw_user_uid, resolve_target_tenant(user)))
         return accounts, s3_users, allowed
