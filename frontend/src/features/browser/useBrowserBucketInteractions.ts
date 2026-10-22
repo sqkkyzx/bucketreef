@@ -7,19 +7,17 @@ import { useCallback } from "react";
 type UseBrowserBucketInteractionsOptions = {
   bucketConfigurationEnabled: boolean;
   bucketManagementEnabled: boolean;
-  clearActiveItem: () => void;
   closeBucketMenu: () => void;
   openBucketConfigurationTarget: (bucketName: string) => void;
   openCreateBucketForm: () => void;
   requestDetailsDrawerTransition: (transition: () => void) => boolean;
-  selectBucket: (bucketName: string) => boolean;
+  selectBucket: (bucketName: string) => void;
   setBucketFilter: (value: string) => void;
 };
 
 export function useBrowserBucketInteractions({
   bucketConfigurationEnabled,
   bucketManagementEnabled,
-  clearActiveItem,
   closeBucketMenu,
   openBucketConfigurationTarget,
   openCreateBucketForm,
@@ -31,11 +29,10 @@ export function useBrowserBucketInteractions({
     (bucketName: string) => {
       closeBucketMenu();
       requestDetailsDrawerTransition(() => {
-        if (selectBucket(bucketName)) clearActiveItem();
+        selectBucket(bucketName);
       });
     },
     [
-      clearActiveItem,
       closeBucketMenu,
       requestDetailsDrawerTransition,
       selectBucket,

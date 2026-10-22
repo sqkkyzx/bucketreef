@@ -5,11 +5,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import ManagerFeatureRulesPage from "./ManagerFeatureRulesPage";
 
-const useS3AccountContextMock = vi.fn();
+const useExecutionContextMock = vi.fn();
 const listFeatureRuleInventoryMock = vi.fn();
 
-vi.mock("./S3AccountContext", () => ({
-  useS3AccountContext: () => useS3AccountContextMock(),
+vi.mock("./ExecutionContextProvider", () => ({
+  useExecutionContext: () => useExecutionContextMock(),
 }));
 
 vi.mock("../../api/managerBuckets", async () => {
@@ -31,17 +31,17 @@ function renderPage() {
 describe("ManagerFeatureRulesPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    useS3AccountContextMock.mockReturnValue({
-      accounts: [
+    useExecutionContextMock.mockReturnValue({
+      contexts: [
         {
           id: "account-1",
           display_name: "Account Alpha",
           storage_endpoint_capabilities: { sns: true },
         },
       ],
-      selectedS3AccountId: "account-1",
-      requiresS3AccountSelection: false,
-      accountIdForApi: "account-1",
+      selectedContextId: "account-1",
+      requiresContextSelection: false,
+      contextIdForApi: "account-1",
     });
     listFeatureRuleInventoryMock.mockResolvedValue([]);
   });
@@ -98,7 +98,7 @@ describe("ManagerFeatureRulesPage", () => {
   });
 
   it("renders bucket tags with tag-specific labels", async () => {
-    listFeatureRuleInventoryMock.mockImplementation((_accountId: unknown, feature: unknown) =>
+    listFeatureRuleInventoryMock.mockImplementation((_contextId: unknown, feature: unknown) =>
       Promise.resolve(
         feature === "tags"
           ? [
@@ -197,8 +197,8 @@ describe("ManagerFeatureRulesPage", () => {
     expect(screen.getByRole("dialog")).toBeVisible();
     let finish!: (value: unknown) => void;
     listFeatureRuleInventoryMock.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
-    useS3AccountContextMock.mockReturnValue({ accounts: [], selectedS3AccountId: "account-2",
-      requiresS3AccountSelection: false, accountIdForApi: "account-2" });
+    useExecutionContextMock.mockReturnValue({ contexts: [], selectedContextId: "account-2",
+      requiresContextSelection: false, contextIdForApi: "account-2" });
     view.rerender(<MemoryRouter><ManagerFeatureRulesPage /></MemoryRouter>);
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(screen.queryByText("old-bucket")).not.toBeInTheDocument();

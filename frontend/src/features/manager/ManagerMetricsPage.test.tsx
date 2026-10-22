@@ -6,7 +6,7 @@ import { MemoryRouter } from "react-router-dom";
 import ManagerMetricsPage from "./ManagerMetricsPage";
 import { setSessionUserCache } from "../../utils/workspaces";
 
-const useS3AccountContextMock = vi.fn();
+const useExecutionContextMock = vi.fn();
 const useManagerStatsMock = vi.fn();
 const fetchManagerUsageHistoryTrendsMock = vi.fn();
 const getManagerUsageStatsAggregateMock = vi.fn();
@@ -17,8 +17,8 @@ let bucketUsageStatsEnabled = false;
 let costEnabled = false;
 let costEstimationEnabled = false;
 
-vi.mock("./S3AccountContext", () => ({
-  useS3AccountContext: () => useS3AccountContextMock(),
+vi.mock("./ExecutionContextProvider", () => ({
+  useExecutionContext: () => useExecutionContextMock(),
 }));
 
 vi.mock("./useManagerStats", () => ({
@@ -86,17 +86,17 @@ function buildContext({
   accessMode?: string;
 } = {}) {
   return {
-    accounts: [
+    contexts: [
       {
         id: contextId,
         display_name: "Ceph connection",
         storage_endpoint_capabilities: capabilities,
       },
     ],
-    selectedS3AccountId: contextId,
-    requiresS3AccountSelection: true,
-    hasS3AccountContext: true,
-    accountIdForApi: contextId,
+    selectedContextId: contextId,
+    requiresContextSelection: true,
+    hasExecutionContext: true,
+    contextIdForApi: contextId,
     accessMode,
     managerStatsEnabled,
     managerStatsMessage,
@@ -217,7 +217,7 @@ describe("ManagerMetricsPage", () => {
   beforeEach(() => {
     setSessionUserCache(null);
     useManagerStatsMock.mockReset();
-    useS3AccountContextMock.mockReset();
+    useExecutionContextMock.mockReset();
     fetchManagerUsageHistoryTrendsMock.mockReset();
     getManagerUsageStatsAggregateMock.mockReset();
     streamManagerUsageStatsAggregateMock.mockReset();
@@ -244,7 +244,7 @@ describe("ManagerMetricsPage", () => {
   });
 
   it("renders usage and traffic widgets for eligible connection context", () => {
-    useS3AccountContextMock.mockReturnValue(buildContext());
+    useExecutionContextMock.mockReturnValue(buildContext());
     useManagerStatsMock.mockReturnValue(buildStatsResult());
 
     render(
@@ -264,7 +264,7 @@ describe("ManagerMetricsPage", () => {
   });
 
   it("shows backend reason when metrics are unavailable for selected context", () => {
-    useS3AccountContextMock.mockReturnValue(
+    useExecutionContextMock.mockReturnValue(
       buildContext({
         managerStatsEnabled: false,
         managerStatsMessage: "Metrics are unavailable: unable to resolve RGW identity for this connection.",
@@ -287,7 +287,7 @@ describe("ManagerMetricsPage", () => {
   });
 
   it("keeps disabled storage analytics inside a storage card", () => {
-    useS3AccountContextMock.mockReturnValue(buildContext({ capabilities: { metrics: false, usage: true } }));
+    useExecutionContextMock.mockReturnValue(buildContext({ capabilities: { metrics: false, usage: true } }));
     useManagerStatsMock.mockReturnValue(buildStatsResult({ stats: null }));
 
     render(
@@ -308,7 +308,7 @@ describe("ManagerMetricsPage", () => {
   });
 
   it("keeps disabled traffic analytics inside a traffic card", () => {
-    useS3AccountContextMock.mockReturnValue(buildContext({ capabilities: { metrics: true, usage: false } }));
+    useExecutionContextMock.mockReturnValue(buildContext({ capabilities: { metrics: true, usage: false } }));
     useManagerStatsMock.mockReturnValue(buildStatsResult());
 
     render(
@@ -332,7 +332,7 @@ describe("ManagerMetricsPage", () => {
   });
 
   it("keeps the full-page empty state when all metrics are disabled", () => {
-    useS3AccountContextMock.mockReturnValue(buildContext({ capabilities: { metrics: false, usage: false } }));
+    useExecutionContextMock.mockReturnValue(buildContext({ capabilities: { metrics: false, usage: false } }));
     useManagerStatsMock.mockReturnValue(buildStatsResult({ stats: null }));
 
     render(
@@ -347,7 +347,7 @@ describe("ManagerMetricsPage", () => {
   });
 
   it("keeps manager stats errors inside the storage card", () => {
-    useS3AccountContextMock.mockReturnValue(buildContext());
+    useExecutionContextMock.mockReturnValue(buildContext());
     useManagerStatsMock.mockReturnValue(
       buildStatsResult({
         stats: null,
@@ -373,7 +373,7 @@ describe("ManagerMetricsPage", () => {
 
   it("renders usage history trends for eligible account contexts", async () => {
     usageHistoryEnabled = true;
-    useS3AccountContextMock.mockReturnValue(buildContext({ contextId: "1", accessMode: "account" }));
+    useExecutionContextMock.mockReturnValue(buildContext({ contextId: "1", accessMode: "account" }));
     useManagerStatsMock.mockReturnValue(buildStatsResult());
 
     render(
@@ -401,7 +401,7 @@ describe("ManagerMetricsPage", () => {
         points: [],
       })
     );
-    useS3AccountContextMock.mockReturnValue(buildContext());
+    useExecutionContextMock.mockReturnValue(buildContext());
     useManagerStatsMock.mockReturnValue(buildStatsResult());
 
     render(
@@ -417,7 +417,7 @@ describe("ManagerMetricsPage", () => {
 
   it("hides usage history trends when the feature is disabled", () => {
     usageHistoryEnabled = false;
-    useS3AccountContextMock.mockReturnValue(buildContext({ contextId: "1", accessMode: "account" }));
+    useExecutionContextMock.mockReturnValue(buildContext({ contextId: "1", accessMode: "account" }));
     useManagerStatsMock.mockReturnValue(buildStatsResult());
 
     render(
@@ -434,7 +434,7 @@ describe("ManagerMetricsPage", () => {
   it("shows Cost for an opted-in account context", async () => {
     costEnabled = true;
     costEstimationEnabled = true;
-    useS3AccountContextMock.mockReturnValue(buildContext({ contextId: "1", accessMode: "account" }));
+    useExecutionContextMock.mockReturnValue(buildContext({ contextId: "1", accessMode: "account" }));
     useManagerStatsMock.mockReturnValue(buildStatsResult());
 
     render(
@@ -453,7 +453,7 @@ describe("ManagerMetricsPage", () => {
   it("hides Cost until the selected Manager context opts in", () => {
     costEnabled = true;
     costEstimationEnabled = false;
-    useS3AccountContextMock.mockReturnValue(buildContext({ contextId: "1", accessMode: "account" }));
+    useExecutionContextMock.mockReturnValue(buildContext({ contextId: "1", accessMode: "account" }));
     useManagerStatsMock.mockReturnValue(buildStatsResult());
 
     render(
@@ -466,10 +466,10 @@ describe("ManagerMetricsPage", () => {
     expect(getManagerCostMeMock).not.toHaveBeenCalled();
   });
 
-  it("renders account usage composition and recalculates all account buckets when usage stats are enabled", async () => {
+  it("renders context usage composition and recalculates all context buckets when usage stats are enabled", async () => {
     bucketUsageStatsEnabled = true;
     setManagerUser();
-    useS3AccountContextMock.mockReturnValue(buildContext());
+    useExecutionContextMock.mockReturnValue(buildContext());
     useManagerStatsMock.mockReturnValue(buildStatsResult());
 
     render(
@@ -480,13 +480,13 @@ describe("ManagerMetricsPage", () => {
 
     expect(screen.getByText("Bucket breakdown (storage)")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("tab", { name: "Usage composition" }));
-    await screen.findByText("Account usage composition");
+    await screen.findByRole("heading", { name: "Usage composition" });
     expect(screen.queryByText("Bucket breakdown (storage)")).not.toBeInTheDocument();
     expect(screen.getByText("1 / 2 buckets covered")).toBeInTheDocument();
     expect(screen.getByText("2.0 KB")).toBeInTheDocument();
     expect(getManagerUsageStatsAggregateMock).toHaveBeenCalledWith("conn-1");
 
-    const recalculateButton = screen.getByRole("button", { name: "Recalculate account" });
+    const recalculateButton = screen.getByRole("button", { name: "Recalculate usage composition" });
     expect(recalculateButton).toHaveClass("h-7");
     fireEvent.click(recalculateButton);
 
@@ -500,10 +500,10 @@ describe("ManagerMetricsPage", () => {
     await waitFor(() => expect(getManagerUsageStatsAggregateMock).toHaveBeenCalledTimes(2));
   });
 
-  it("cancels an account usage stats recalculation without reporting an error", async () => {
+  it("cancels a context usage stats recalculation without reporting an error", async () => {
     bucketUsageStatsEnabled = true;
     setManagerUser();
-    useS3AccountContextMock.mockReturnValue(buildContext());
+    useExecutionContextMock.mockReturnValue(buildContext());
     useManagerStatsMock.mockReturnValue(buildStatsResult());
     streamManagerUsageStatsAggregateMock.mockImplementationOnce(
       (_contextId: string, _payload: unknown, options: { signal: AbortSignal }) =>
@@ -523,8 +523,8 @@ describe("ManagerMetricsPage", () => {
     );
 
     fireEvent.click(screen.getByRole("tab", { name: "Usage composition" }));
-    await screen.findByText("Account usage composition");
-    fireEvent.click(screen.getByRole("button", { name: "Recalculate account" }));
+    await screen.findByRole("heading", { name: "Usage composition" });
+    fireEvent.click(screen.getByRole("button", { name: "Recalculate usage composition" }));
 
     const cancelButton = await screen.findByRole("button", { name: "Cancel calculation" });
     expect(cancelButton).toHaveClass("h-7");
@@ -534,7 +534,7 @@ describe("ManagerMetricsPage", () => {
     fireEvent.click(cancelButton);
 
     await waitFor(() => expect(options.signal.aborted).toBe(true));
-    await waitFor(() => expect(screen.getByRole("button", { name: "Recalculate account" })).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole("button", { name: "Recalculate usage composition" })).toBeInTheDocument());
     expect(screen.queryByText("Unable to recalculate usage composition.")).not.toBeInTheDocument();
     expect(getManagerUsageStatsAggregateMock).toHaveBeenCalledTimes(1);
   });

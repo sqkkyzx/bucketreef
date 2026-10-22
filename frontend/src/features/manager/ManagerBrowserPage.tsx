@@ -8,25 +8,25 @@ import PageBanner from "../../components/PageBanner";
 import PageHeader from "../../components/PageHeader";
 import BrowserEmbed from "../browser/BrowserEmbed";
 import { managerPageBreadcrumbs } from "./managerBreadcrumbs";
-import { useS3AccountContext } from "./S3AccountContext";
+import { useExecutionContext } from "./ExecutionContextProvider";
 import { useManagerI18n } from "./managerI18n";
 
 export default function ManagerBrowserPage() {
   const { text } = useManagerI18n();
   const {
-    accounts,
-    selectedS3AccountId,
-    hasS3AccountContext,
-    accountIdForApi,
-    selectedS3AccountType,
+    contexts,
+    selectedContextId,
+    hasExecutionContext,
+    contextIdForApi,
+    selectedContextKind,
     accessError,
     iamIdentity,
     accessMode,
     managerBrowserEnabled,
     managerBrowserMessage,
-  } = useS3AccountContext();
+  } = useExecutionContext();
   const [selectedBrowserBucketName, setSelectedBrowserBucketName] = useState("");
-  const selectedContext = accounts.find((context) => context.id === selectedS3AccountId) ?? null;
+  const selectedContext = contexts.find((context) => context.id === selectedContextId) ?? null;
   const breadcrumbs = selectedBrowserBucketName
     ? managerPageBreadcrumbs(text, "browser", { label: selectedBrowserBucketName })
     : managerPageBreadcrumbs(text, "browser");
@@ -39,7 +39,7 @@ export default function ManagerBrowserPage() {
         breadcrumbs={breadcrumbs}
       />
       <div className="min-h-0 flex-1">
-        {!hasS3AccountContext ? (
+        {!hasExecutionContext ? (
           <PageEmptyState
             title={text("Select a Manager context")}
             description={accessError ?? "Use the Manager selector in the topbar to choose a context."}
@@ -68,8 +68,8 @@ export default function ManagerBrowserPage() {
             ) : null}
             <div className="min-h-0 flex-1">
               <BrowserEmbed
-                contextIdForApi={accountIdForApi}
-                executionContextKind={selectedContext?.kind ?? (selectedS3AccountType === "s3_user" ? "s3_user" : null)}
+                contextIdForApi={contextIdForApi}
+                executionContextKind={selectedContextKind}
                 hasContext
                 workspaceSurface="manager"
                 functionalProfile="advanced"

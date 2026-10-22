@@ -17,7 +17,7 @@ import { useConfirmActionDialog } from "../../components/useConfirmActionDialog"
 import InlinePolicyEditor from "./InlinePolicyEditor";
 import UiSelect from "../../components/ui/UiSelect";
 import { SettingsButton } from "../../components/settings/SettingsControls";
-import { useS3AccountContext } from "./S3AccountContext";
+import { useExecutionContext } from "./ExecutionContextProvider";
 import { managerPageBreadcrumbs } from "./managerBreadcrumbs";
 import { useManagerI18n } from "./managerI18n";
 
@@ -33,17 +33,17 @@ type PageAction = {
 type ManagerEntityPoliciesPageProps = {
   entityType: ManagerPolicyEntityType;
   routeParam: "userName" | "groupName" | "roleName";
-  listPoliciesForEntity: (accountId: S3ExecutionContextSelector, entityName: string) => Promise<IamPolicy[]>;
-  attachPolicyToEntity: (accountId: S3ExecutionContextSelector, entityName: string, policy: IamPolicy) => Promise<IamPolicy>;
-  detachPolicyFromEntity: (accountId: S3ExecutionContextSelector, entityName: string, policyArn: string) => Promise<void>;
-  listInlinePoliciesForEntity: (accountId: S3ExecutionContextSelector, entityName: string) => Promise<{ name: string; document: Record<string, unknown> }[]>;
+  listPoliciesForEntity: (contextId: S3ExecutionContextSelector, entityName: string) => Promise<IamPolicy[]>;
+  attachPolicyToEntity: (contextId: S3ExecutionContextSelector, entityName: string, policy: IamPolicy) => Promise<IamPolicy>;
+  detachPolicyFromEntity: (contextId: S3ExecutionContextSelector, entityName: string, policyArn: string) => Promise<void>;
+  listInlinePoliciesForEntity: (contextId: S3ExecutionContextSelector, entityName: string) => Promise<{ name: string; document: Record<string, unknown> }[]>;
   putInlinePolicyForEntity: (
-    accountId: S3ExecutionContextSelector,
+    contextId: S3ExecutionContextSelector,
     entityName: string,
     policyName: string,
     document: Record<string, unknown>
   ) => Promise<{ name: string; document: Record<string, unknown> }>;
-  deleteInlinePolicyForEntity: (accountId: S3ExecutionContextSelector, entityName: string, policyName: string) => Promise<void>;
+  deleteInlinePolicyForEntity: (contextId: S3ExecutionContextSelector, entityName: string, policyName: string) => Promise<void>;
   extraActions?: (entityName: string) => PageAction[];
   embedded?: boolean;
 };
@@ -99,9 +99,9 @@ export default function ManagerEntityPoliciesPage({
   } as const;
   const params = useParams();
   const rawEntityName = params[routeParam];
-  const { selectedS3AccountType, accountIdForApi, requiresS3AccountSelection, accessMode, namingValidationProfile } = useS3AccountContext();
-  const needsS3AccountSelection = requiresS3AccountSelection && !accountIdForApi;
-  const isS3User = selectedS3AccountType === "s3_user";
+  const { selectedContextKind, contextIdForApi, requiresContextSelection, accessMode, namingValidationProfile } = useExecutionContext();
+  const needsContextSelection = requiresContextSelection && !contextIdForApi;
+  const isS3User = selectedContextKind === "s3_user";
 
   const [attached, setAttached] = useState<IamPolicy[]>([]);
   const [available, setAvailable] = useState<IamPolicy[]>([]);
@@ -123,13 +123,13 @@ export default function ManagerEntityPoliciesPage({
 
   const noPoliciesAvailable = available.length === 0;
 
-  const load = useCallback(async (accountId: S3ExecutionContextSelector, entityName: string) => {
+  const load = useCallback(async (contextId: S3ExecutionContextSelector, entityName: string) => {
     setLoading(true);
     setError(null);
     try {
       const [attachedPolicies, allPolicies] = await Promise.all([
-        listPoliciesForEntity(accountId, entityName),
-        listIamPolicies(accountId),
+        listPoliciesForEntity(contextId, entityName),
+        listIamPolicies(contextId),
       ]);
       setAttached(attachedPolicies);
       setAvailable(allPolicies);
@@ -149,33 +149,33 @@ export default function ManagerEntityPoliciesPage({
       setLoading(false);
       return;
     }
-    if (needsS3AccountSelection) {
+    if (needsContextSelection) {
       setAttached([]);
       setAvailable([]);
       setLoading(false);
       return;
     }
     if (rawEntityName) {
-      load(accountIdForApi, rawEntityName);
+      load(contextIdForApi, rawEntityName);
     }
-  }, [accessMode, accountIdForApi, isS3User, load, needsS3AccountSelection, rawEntityName]);
+  }, [accessMode, contextIdForApi, isS3User, load, needsContextSelection, rawEntityName]);
 
   const handleRefresh = () => {
-    if (needsS3AccountSelection || !rawEntityName) return;
-    load(accountIdForApi, rawEntityName);
+    if (needsContextSelection || !rawEntityName) return;
+    load(contextIdForApi, rawEntityName);
   };
 
   const handleAttach = async (event: FormEvent) => {
     event.preventDefault();
-    if (needsS3AccountSelection || !rawEntityName || !selectedArn || busy !== null || loading) return;
+    if (needsContextSelection || !rawEntityName || !selectedArn || busy !== null || loading) return;
     const policy = available.find((candidate) => candidate.arn === selectedArn);
     if (!policy) return;
     setBusy("attach");
     setError(null);
     setActionMessage(null);
     try {
-      await attachPolicyToEntity(accountIdForApi, rawEntityName, policy);
-      await load(accountIdForApi, rawEntityName);
+      await attachPolicyToEntity(contextIdForApi, rawEntityName, policy);
+      await load(contextIdForApi, rawEntityName);
       setActionMessage(text("Policy attached"));
     } catch (err) {
       setError(extractApiError(err, text("Unexpected error")));
@@ -185,13 +185,13 @@ export default function ManagerEntityPoliciesPage({
   };
 
   const detachPolicy = async (policyArn: string) => {
-    if (needsS3AccountSelection || !rawEntityName) return;
+    if (needsContextSelection || !rawEntityName) return;
     setBusy(policyArn);
     setError(null);
     setActionMessage(null);
     try {
-      await detachPolicyFromEntity(accountIdForApi, rawEntityName, policyArn);
-      await load(accountIdForApi, rawEntityName);
+      await detachPolicyFromEntity(contextIdForApi, rawEntityName, policyArn);
+      await load(contextIdForApi, rawEntityName);
       setActionMessage(text("Policy detached"));
     } catch (err) {
       setError(extractApiError(err, text("Unexpected error")));
@@ -215,18 +215,18 @@ export default function ManagerEntityPoliciesPage({
   };
 
   const loadInlinePolicies = useCallback(async () => {
-    if (!rawEntityName || needsS3AccountSelection) return [];
-    return listInlinePoliciesForEntity(accountIdForApi, rawEntityName);
-  }, [accountIdForApi, listInlinePoliciesForEntity, needsS3AccountSelection, rawEntityName]);
+    if (!rawEntityName || needsContextSelection) return [];
+    return listInlinePoliciesForEntity(contextIdForApi, rawEntityName);
+  }, [contextIdForApi, listInlinePoliciesForEntity, needsContextSelection, rawEntityName]);
 
   const saveInlinePolicy = async (name: string, document: Record<string, unknown>) => {
     if (!rawEntityName) return;
-    await putInlinePolicyForEntity(accountIdForApi, rawEntityName, name, document);
+    await putInlinePolicyForEntity(contextIdForApi, rawEntityName, name, document);
   };
 
   const removeInlinePolicy = async (name: string) => {
     if (!rawEntityName) return;
-    await deleteInlinePolicyForEntity(accountIdForApi, rawEntityName, name);
+    await deleteInlinePolicyForEntity(contextIdForApi, rawEntityName, name);
   };
 
   if (isS3User) {
@@ -254,8 +254,8 @@ export default function ManagerEntityPoliciesPage({
     return <div className="ui-body text-slate-600">{text("{entity} not specified.", { entity: singularLabel })}</div>;
   }
 
-  if (needsS3AccountSelection) {
-    return <div className="ui-body text-slate-600">{text("Select an account before managing {entities}.", { entities: pluralLabel })}</div>;
+  if (needsContextSelection) {
+    return <div className="ui-body text-slate-600">{text("Select a context before managing {entities}.", { entities: pluralLabel })}</div>;
   }
 
   const options = available.map((policy) => ({ value: policy.arn, label: policy.name }));
@@ -326,9 +326,9 @@ export default function ManagerEntityPoliciesPage({
           loadPolicies={loadInlinePolicies}
           savePolicy={saveInlinePolicy}
           deletePolicy={removeInlinePolicy}
-          disabled={needsS3AccountSelection}
-          disabledReason={text("Select an account before editing {entity} inline policies.", { entity: singularLabel })}
-          key={`${config.singularLabel}-inline-${accountIdForApi ?? "none"}-${rawEntityName ?? ""}`}
+          disabled={needsContextSelection}
+          disabledReason={text("Select a context before editing {entity} inline policies.", { entity: singularLabel })}
+          key={`${config.singularLabel}-inline-${contextIdForApi ?? "none"}-${rawEntityName ?? ""}`}
         />
 
         <SettingsSection presentation="compact" title={text("Attached policies")} description={text("Attach/detach managed policies for this {entity}.", { entity: singularLabel })}>

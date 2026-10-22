@@ -7,7 +7,7 @@ import ManagerRoleEditor from "./ManagerRoleEditor";
 import ManagerRolePoliciesPage from "./ManagerRolePoliciesPage";
 import { managerPageBreadcrumbs } from "./managerBreadcrumbs";
 import { useManagerI18n } from "./managerI18n";
-import { useS3AccountContext } from "./S3AccountContext";
+import { useExecutionContext } from "./ExecutionContextProvider";
 
 type RoleTab = "general" | "trust" | "policies";
 
@@ -15,9 +15,9 @@ export default function ManagerRoleWorkspacePage() {
   const { text } = useManagerI18n();
   const location = useLocation();
   const { roleName } = useParams<{ roleName: string }>();
-  const { selectedS3AccountType, accountIdForApi, requiresS3AccountSelection } = useS3AccountContext();
-  const needsSelection = requiresS3AccountSelection && !accountIdForApi;
-  const isS3User = selectedS3AccountType === "s3_user";
+  const { selectedContextKind, contextIdForApi, requiresContextSelection } = useExecutionContext();
+  const needsSelection = requiresContextSelection && !contextIdForApi;
+  const isS3User = selectedContextKind === "s3_user";
   const name = (() => {
     if (!roleName) return "";
     try { return decodeURIComponent(roleName); } catch { return roleName; }
@@ -26,8 +26,8 @@ export default function ManagerRoleWorkspacePage() {
   if (needsSelection) {
     return (
       <PageEmptyState
-        title={text("Select an account before managing IAM roles")}
-        description={text("Roles are defined per execution context. Choose an account to edit this role.")}
+        title={text("Select a context before managing IAM roles")}
+        description={text("Roles are defined per execution context. Choose a context to edit this role.")}
         primaryAction={{ label: text("Open dashboard"), to: "/manager" }}
         tone="warning"
       />
@@ -69,8 +69,8 @@ export default function ManagerRoleWorkspacePage() {
     >
       {activeTab === "general" && (
         <ManagerRoleEditor
-          key={`${accountIdForApi}:${name}:general`}
-          accountId={accountIdForApi}
+          key={`${contextIdForApi}:${name}:general`}
+          contextId={contextIdForApi}
           roleName={name}
           mode="general"
           embedded
@@ -80,8 +80,8 @@ export default function ManagerRoleWorkspacePage() {
       )}
       {activeTab === "trust" && (
         <ManagerRoleEditor
-          key={`${accountIdForApi}:${name}:trust`}
-          accountId={accountIdForApi}
+          key={`${contextIdForApi}:${name}:trust`}
+          contextId={contextIdForApi}
           roleName={name}
           mode="trust"
           embedded

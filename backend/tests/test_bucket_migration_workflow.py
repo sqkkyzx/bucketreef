@@ -117,6 +117,25 @@ def test_expired_report_cannot_start(prepared):
         service.start_migration(migration.id, configuration_revision=1)
 
 
+def test_start_persists_sanitized_precondition_errors(prepared):
+    service, migration, _ = prepared
+    service.run_precheck(migration.id, active_checks=True)
+    service._revalidate_transfer_preconditions = Mock(
+        side_effect=ValueError(
+            "secret_key=TOPSECRET endpoint=https://private.example.test/admin"
+        )
+    )
+
+    with pytest.raises(ValueError, match="TOPSECRET"):
+        service.start_migration(migration.id, configuration_revision=1)
+
+    report = json.loads(migration.precheck_report_json)
+    assert report["checks"][0]["code"] == "start_precondition_changed"
+    assert report["checks"][0]["message"] == (
+        "secret_key=<redacted> endpoint=<redacted-url>"
+    )
+
+
 def test_immediate_copy_requires_interruption_confirmation(prepared):
     service, migration, _ = prepared
     migration.mode = "one_shot"
@@ -708,6 +727,32 @@ def test_finished_cutover_does_not_wait_for_another_cutover(prepared):
     migration.items[0].status = "completed"
     service._finalize_or_wait_cutover(migration)
     assert migration.status == "completed"
+
+
+def test_finalize_sanitizes_target_lock_release_errors(prepared):
+    service, migration, _ = prepared
+    item = migration.items[0]
+    migration.status = "running"
+    item.status = "completed"
+    item.target_lock_applied = True
+    item.target_policy_backup_json = "{}"
+    service._commit()
+    service._restore_target_write_lock_policy = Mock(
+        side_effect=RuntimeError(
+            "secret_key=TOPSECRET endpoint=https://private.example.test/admin"
+        )
+    )
+
+    service._finalize_or_wait_cutover(
+        migration,
+        target_ctx=service._resolve_context(migration.target_context_id),
+    )
+
+    assert migration.status == "completed_with_errors"
+    assert migration.error_message is not None
+    assert "TOPSECRET" not in migration.error_message
+    assert "private.example.test" not in migration.error_message
+    assert "secret_key=<redacted> endpoint=<redacted-url>" in migration.error_message
 
 
 def test_finalize_honors_pause_requested_after_item_stops(prepared):

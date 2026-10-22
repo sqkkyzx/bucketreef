@@ -22,7 +22,7 @@ import UiInlineMessage from "../../components/ui/UiInlineMessage";
 import { formatCompactNumber } from "../../utils/format";
 import { formatLocalDateTime } from "../../utils/dateTime";
 import { isAdminLikeRole, readStoredUser } from "../../utils/workspaces";
-import { useS3AccountContext } from "./S3AccountContext";
+import { useExecutionContext } from "./ExecutionContextProvider";
 import TrafficAnalytics from "./TrafficAnalytics";
 import BucketUsageStatsPanel from "../shared/BucketUsageStatsPanel";
 import PropertySummaryChip, { PropertySummaryTone } from "../../components/PropertySummaryChip";
@@ -100,7 +100,7 @@ const bucketDetailWrapActionsClass = "flex flex-wrap gap-2";
 type BucketDetailPageProps = {
   mode?: BucketDetailMode;
   bucketNameOverride?: string;
-  accountIdOverride?: string | null;
+  contextIdOverride?: string | null;
   hideQuotaTab?: boolean;
   embedded?: boolean;
   hideObjectsTab?: boolean;
@@ -115,25 +115,25 @@ type BucketDetailPageContentProps = BucketDetailPageProps & {
   cephAdminEndpoint: ReturnType<typeof useCephAdminEndpoint>;
   onActiveTabChange: (tab: BucketDetailTabId) => void;
   routeBucketName?: string;
-  s3AccountContext: ReturnType<typeof useS3AccountContext>;
+  executionContext: ReturnType<typeof useExecutionContext>;
 };
 
 export function BucketDetailContent(props: BucketDetailPageProps) {
   const [activeTab, setActiveTab] = useState<BucketDetailTabId>("overview");
   const params = useParams<{ bucketName: string }>();
-  const s3AccountContext = useS3AccountContext();
+  const executionContext = useExecutionContext();
   const cephAdminEndpoint = useCephAdminEndpoint();
   const bucketName = props.bucketNameOverride ?? params.bucketName;
   const contextKey = JSON.stringify([
     props.mode ?? "manager",
     bucketName ?? null,
-    props.accountIdOverride ?? null,
-    s3AccountContext.accountIdForApi ?? null,
-    s3AccountContext.selectedS3AccountId ?? null,
-    s3AccountContext.requiresS3AccountSelection
+    props.contextIdOverride ?? null,
+    executionContext.contextIdForApi,
+    executionContext.selectedContextId ?? null,
+    executionContext.requiresContextSelection
       ? null
-      : (s3AccountContext.accounts[0]?.id ?? null),
-    s3AccountContext.accessMode,
+      : (executionContext.contexts[0]?.id ?? null),
+    executionContext.accessMode,
     cephAdminEndpoint.selectedEndpointId ?? null,
   ]);
 
@@ -145,7 +145,7 @@ export function BucketDetailContent(props: BucketDetailPageProps) {
       cephAdminEndpoint={cephAdminEndpoint}
       onActiveTabChange={setActiveTab}
       routeBucketName={params.bucketName}
-      s3AccountContext={s3AccountContext}
+      executionContext={executionContext}
     />
   );
 }
@@ -183,7 +183,7 @@ export default function BucketDetailPage({ onDirtyChange, onBusyChange, ...props
 function BucketDetailPageContent({
   mode = "manager",
   bucketNameOverride,
-  accountIdOverride = null,
+  contextIdOverride = null,
   hideQuotaTab = false,
   embedded = false,
   hideObjectsTab = false,
@@ -195,7 +195,7 @@ function BucketDetailPageContent({
   cephAdminEndpoint,
   onActiveTabChange,
   routeBucketName,
-  s3AccountContext,
+  executionContext,
 }: BucketDetailPageContentProps) {
   const { text, intlLocale } = useManagerI18n();
   const { generalSettings } = useGeneralSettings();
@@ -203,43 +203,43 @@ function BucketDetailPageContent({
   const bucketName = bucketNameOverride ?? routeBucketName;
   const isCephAdmin = mode === "ceph-admin";
   const {
-    accounts,
-    selectedS3AccountId,
-    accountIdForApi,
-    requiresS3AccountSelection,
+    contexts,
+    selectedContextId,
+    contextIdForApi,
+    requiresContextSelection,
     managerBucketQuotaEnabled,
     managerStatsEnabled,
     managerStatsMessage,
     managerBrowserEnabled,
-  } = s3AccountContext;
+  } = executionContext;
   const { selectedEndpointId, selectedEndpoint } = cephAdminEndpoint;
   const [pendingConfigurationDelete, setPendingConfigurationDelete] = useState<BucketConfigurationDeleteKind | null>(null);
 
-  const selectedS3Account = useMemo(() => {
+  const selectedContext = useMemo(() => {
     if (isCephAdmin) return null;
-    if (accountIdOverride) {
-      return accounts.find((account) => account.id === accountIdOverride) ?? null;
+    if (contextIdOverride) {
+      return contexts.find((context) => context.id === contextIdOverride) ?? null;
     }
-    if (selectedS3AccountId) {
-      return accounts.find((account) => account.id === selectedS3AccountId) ?? null;
+    if (selectedContextId) {
+      return contexts.find((context) => context.id === selectedContextId) ?? null;
     }
-    if (!requiresS3AccountSelection && accounts.length > 0) {
-      return accounts[0];
+    if (!requiresContextSelection && contexts.length > 0) {
+      return contexts[0];
     }
     return null;
-  }, [accountIdOverride, accounts, isCephAdmin, requiresS3AccountSelection, selectedS3AccountId]);
-  const isCephEndpoint = isCephAdmin || selectedS3Account?.endpoint_provider === "ceph";
-  const accountId = accountIdOverride ?? accountIdForApi ?? null;
-  const hasAccountContext = !requiresS3AccountSelection || accountId !== null;
+  }, [contextIdOverride, contexts, isCephAdmin, requiresContextSelection, selectedContextId]);
+  const isCephEndpoint = isCephAdmin || selectedContext?.endpoint_provider === "ceph";
+  const contextId = contextIdOverride ?? contextIdForApi;
+  const hasManagerExecutionContext = !requiresContextSelection || contextId !== null;
   const endpointId = selectedEndpointId ?? null;
   const hasCephContext = Boolean(endpointId);
-  const hasContext = isCephAdmin ? hasCephContext : hasAccountContext;
+  const hasContext = isCephAdmin ? hasCephContext : hasManagerExecutionContext;
   const managerBrowserAvailable =
     generalSettings.browser_enabled &&
     generalSettings.browser_manager_enabled &&
     managerBrowserEnabled === true;
   const versioningController = useBucketVersioningController({
-    accountId,
+    contextId,
     bucketName,
     cephAdmin: isCephAdmin,
     enabled: hasContext,
@@ -256,7 +256,7 @@ function BucketDetailPageContent({
     updateDraft: updateVersioningDraft,
   } = versioningController;
   const policyController = useBucketPolicyController({
-    accountId,
+    contextId,
     bucketName,
     cephAdmin: isCephAdmin,
     enabled: hasContext,
@@ -270,7 +270,7 @@ function BucketDetailPageContent({
     loading: policyLoading,
   } = policyController;
   const corsController = useBucketCorsController({
-    accountId,
+    contextId,
     bucketName,
     cephAdmin: isCephAdmin,
     enabled: hasContext,
@@ -284,7 +284,7 @@ function BucketDetailPageContent({
     loading: corsLoading,
   } = corsController;
   const accessLoggingController = useBucketAccessLoggingController({
-    accountId,
+    contextId,
     bucketName,
     cephAdmin: isCephAdmin,
     enabled: hasContext,
@@ -298,7 +298,7 @@ function BucketDetailPageContent({
     loading: accessLoggingLoading,
   } = accessLoggingController;
   const notificationsController = useBucketNotificationsController({
-    accountId,
+    contextId,
     bucketName,
     cephAdmin: isCephAdmin,
     enabled: hasContext,
@@ -312,7 +312,7 @@ function BucketDetailPageContent({
     loading: notificationsLoading,
   } = notificationsController;
   const publicAccessController = useBucketPublicAccessController({
-    accountId,
+    contextId,
     bucketName,
     cephAdmin: isCephAdmin,
     enabled: hasContext,
@@ -327,7 +327,7 @@ function BucketDetailPageContent({
     partiallyEnabled: publicAccessBlockPartial,
   } = publicAccessController;
   const bucketAclController = useBucketAclController({
-    accountId,
+    contextId,
     bucketName,
     cephAdmin: isCephAdmin,
     enabled: hasContext,
@@ -340,7 +340,7 @@ function BucketDetailPageContent({
     loading: bucketAclLoading,
   } = bucketAclController;
   const objectLockController = useBucketObjectLockController({
-    accountId,
+    contextId,
     bucketName,
     cephAdmin: isCephAdmin,
     enabled: hasContext,
@@ -357,7 +357,7 @@ function BucketDetailPageContent({
     persistentlyEnabled: objectLockPersistentlyEnabled,
   } = objectLockController;
   const bucketTagsController = useBucketTagsController({
-    accountId,
+    contextId,
     bucketName,
     cephAdmin: isCephAdmin,
     enabled: hasContext,
@@ -369,7 +369,7 @@ function BucketDetailPageContent({
     loading: bucketTagsLoading,
   } = bucketTagsController;
   const quotaFeatureEnabled = isCephAdmin ? isCephEndpoint : Boolean(isCephEndpoint && managerBucketQuotaEnabled);
-  const showQuotaTab = !hideQuotaTab && (isCephAdmin || Boolean(quotaFeatureEnabled && hasAccountContext));
+  const showQuotaTab = !hideQuotaTab && (isCephAdmin || Boolean(quotaFeatureEnabled && hasManagerExecutionContext));
   const showObjectsTab = !hideObjectsTab;
   const availableTabs = useMemo(() => {
     return resolveBucketDetailTabs({ showObjectsTab });
@@ -384,10 +384,10 @@ function BucketDetailPageContent({
     if (isCephAdmin) {
       return selectedEndpoint?.capabilities?.static_website === true;
     }
-    return selectedS3Account?.storage_endpoint_capabilities?.static_website === true;
-  }, [isCephAdmin, selectedEndpoint, selectedS3Account]);
+    return selectedContext?.storage_endpoint_capabilities?.static_website === true;
+  }, [isCephAdmin, selectedContext, selectedEndpoint]);
   const websiteController = useBucketWebsiteController({
-    accountId,
+    contextId,
     bucketName,
     cephAdmin: isCephAdmin,
     enabled: hasContext && staticWebsiteEnabled,
@@ -404,10 +404,10 @@ function BucketDetailPageContent({
     if (isCephAdmin) {
       return selectedEndpoint?.capabilities?.sse === true;
     }
-    return selectedS3Account?.storage_endpoint_capabilities?.sse === true;
-  }, [isCephAdmin, selectedEndpoint, selectedS3Account]);
+    return selectedContext?.storage_endpoint_capabilities?.sse === true;
+  }, [isCephAdmin, selectedContext, selectedEndpoint]);
   const encryptionController = useBucketEncryptionController({
-    accountId,
+    contextId,
     bucketName,
     cephAdmin: isCephAdmin,
     enabled: hasContext && sseFeatureEnabled,
@@ -421,7 +421,7 @@ function BucketDetailPageContent({
     loading: encryptionLoading,
   } = encryptionController;
   const lifecycleController = useBucketLifecycleController({
-    accountId,
+    contextId,
     bucketName,
     cephAdmin: isCephAdmin,
     enabled: hasContext,
@@ -443,7 +443,7 @@ function BucketDetailPageContent({
     recalculating: usageStatsRecalculating,
     snapshot: usageStatsSnapshot,
   } = useBucketUsageStatsController({
-    accountId,
+    contextId,
     bucketName,
     cephAdmin: isCephAdmin,
     enabled: hasContext,
@@ -459,7 +459,7 @@ function BucketDetailPageContent({
     refresh: refreshObjects,
     rows: objectRows,
   } = useBucketObjectsController({
-    accountId,
+    contextId,
     bucketName,
     cephAdmin: isCephAdmin,
     enabled: hasContext,
@@ -469,17 +469,17 @@ function BucketDetailPageContent({
     if (isCephAdmin) {
       return selectedEndpoint?.capabilities?.sns === true;
     }
-    return selectedS3Account?.storage_endpoint_capabilities?.sns !== false;
-  }, [isCephAdmin, selectedEndpoint, selectedS3Account]);
+    return selectedContext?.storage_endpoint_capabilities?.sns !== false;
+  }, [isCephAdmin, selectedContext, selectedEndpoint]);
   const replicationFeatureEnabled = useMemo(() => {
     if (!isCephEndpoint) return false;
     if (isCephAdmin) {
       return selectedEndpoint?.capabilities?.replication === true;
     }
-    return selectedS3Account?.storage_endpoint_capabilities?.replication === true;
-  }, [isCephAdmin, isCephEndpoint, selectedEndpoint, selectedS3Account]);
+    return selectedContext?.storage_endpoint_capabilities?.replication === true;
+  }, [isCephAdmin, isCephEndpoint, selectedContext, selectedEndpoint]);
   const replicationController = useBucketReplicationController({
-    accountId,
+    contextId,
     bucketName,
     cephAdmin: isCephAdmin,
     enabled: hasContext && isCephEndpoint && replicationFeatureEnabled,
@@ -496,14 +496,14 @@ function BucketDetailPageContent({
     if (isCephAdmin) {
       return selectedEndpoint?.capabilities?.metrics ?? true;
     }
-    return Boolean(managerStatsEnabled) && (selectedS3Account?.storage_endpoint_capabilities?.metrics ?? true);
-  }, [isCephAdmin, managerStatsEnabled, selectedEndpoint, selectedS3Account]);
+    return Boolean(managerStatsEnabled) && (selectedContext?.storage_endpoint_capabilities?.metrics ?? true);
+  }, [isCephAdmin, managerStatsEnabled, selectedContext, selectedEndpoint]);
   const canViewLiveBucketMetrics = Boolean(isCephEndpoint && usageFeatureEnabled);
   const userRole = getUserRole();
   const isAdmin = isAdminLikeRole(userRole);
   const canEditQuota =
     quotaFeatureEnabled &&
-    ((isCephAdmin && isAdmin && hasCephContext) || (!isCephAdmin && hasAccountContext));
+    ((isCephAdmin && isAdmin && hasCephContext) || (!isCephAdmin && hasManagerExecutionContext));
   const versioningDisableBlocked = objectLockActive && versioningIsEnabled;
 
   const {
@@ -512,7 +512,7 @@ function BucketDetailPageContent({
     loading: loadingBucket,
     refresh: refreshBucketMeta,
   } = useBucketMetadataController({
-    accountId,
+    contextId,
     bucketName,
     cephAdmin: isCephAdmin,
     enabled: hasContext,
@@ -521,7 +521,7 @@ function BucketDetailPageContent({
   });
 
   const quotaController = useBucketQuotaController({
-    accountId,
+    contextId,
     bucketName,
     cephAdmin: isCephAdmin,
     editable: canEditQuota,
@@ -1008,7 +1008,7 @@ function BucketDetailPageContent({
 
   return (
     <BucketFeatureSuggestionsProvider
-      accountId={accountId}
+      contextId={contextId}
       bucketName={bucketName}
       cephAdmin={isCephAdmin}
       enabled={hasContext}
@@ -1422,10 +1422,10 @@ function BucketDetailPageContent({
                     ) : (
                       <PageBanner tone="warning">{text("Select an endpoint and a bucket to view detailed metrics.")}</PageBanner>
                     )
-                  ) : hasAccountContext && bucketName ? (
-                    <TrafficAnalytics accountId={accountIdForApi} bucketName={bucketName} enabled={hasAccountContext} />
+                  ) : hasManagerExecutionContext && bucketName ? (
+                    <TrafficAnalytics contextId={contextIdForApi} bucketName={bucketName} enabled={hasManagerExecutionContext} />
                   ) : (
-                    <PageBanner tone="warning">{text("Select an account and a bucket to view detailed metrics.")}</PageBanner>
+                    <PageBanner tone="warning">{text("Select a context and a bucket to view detailed metrics.")}</PageBanner>
                   ))}
               </div>
             ),

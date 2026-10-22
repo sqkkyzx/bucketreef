@@ -11,7 +11,7 @@ import ManagerDashboard from "./ManagerDashboard";
 import { setSessionUserCache } from "../../utils/workspaces";
 import { DEFAULT_MANAGER_FEATURE_POLICIES } from "../../api/featurePolicies";
 
-const useS3AccountContextMock = vi.fn();
+const useExecutionContextMock = vi.fn();
 const useManagerStatsMock = vi.fn();
 const useIamOverviewMock = vi.fn();
 const listBucketsMock = vi.fn();
@@ -28,8 +28,8 @@ let bucketPurgeEnabled = false;
 const MANAGER_BUCKET_COLUMNS_SESSION_STORAGE_KEY = "manager.bucket_list.columns.session.v1";
 const ACTIVITY_FEATURE_STATES = { activity_history: { enabled: true, source: "platform" } };
 
-vi.mock("./S3AccountContext", () => ({
-  useS3AccountContext: () => useS3AccountContextMock(),
+vi.mock("./ExecutionContextProvider", () => ({
+  useExecutionContext: () => useExecutionContextMock(),
 }));
 
 vi.mock("./useManagerStats", () => ({
@@ -223,8 +223,8 @@ function setManagerUser({ bucketPurge = false }: { bucketPurge?: boolean } = {})
 }
 
 function setSelectedManagerAccountContext() {
-  useS3AccountContextMock.mockReturnValue({
-    accounts: [
+  useExecutionContextMock.mockReturnValue({
+    contexts: [
       {
         id: "account-1",
         name: "Account Alpha",
@@ -233,12 +233,12 @@ function setSelectedManagerAccountContext() {
         storage_endpoint_capabilities: { iam: true, metrics: true, usage: true, sns: true },
       },
     ],
-    selectedS3AccountId: "account-1",
-    requiresS3AccountSelection: false,
-    sessionS3AccountName: null,
-    selectedS3AccountType: "account",
-    hasS3AccountContext: true,
-    accountIdForApi: "account-1",
+    selectedContextId: "account-1",
+    requiresContextSelection: false,
+    sessionAccountName: null,
+    selectedContextKind: "account",
+    hasExecutionContext: true,
+    contextIdForApi: "account-1",
     accessMode: "default",
     managerStatsEnabled: true,
     managerStatsMessage: null,
@@ -286,14 +286,14 @@ describe("manager shell pages", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     setSessionUserCache(null);
-    useS3AccountContextMock.mockReturnValue({
-      accounts: [],
-      selectedS3AccountId: null,
-      requiresS3AccountSelection: true,
-      sessionS3AccountName: null,
-      selectedS3AccountType: null,
-      hasS3AccountContext: false,
-      accountIdForApi: null,
+    useExecutionContextMock.mockReturnValue({
+      contexts: [],
+      selectedContextId: null,
+      requiresContextSelection: true,
+      sessionAccountName: null,
+      selectedContextKind: null,
+      hasExecutionContext: false,
+      contextIdForApi: null,
       accessMode: "admin",
       managerStatsEnabled: false,
       managerStatsMessage: null,
@@ -343,7 +343,7 @@ describe("manager shell pages", () => {
     expect(screen.queryByText("Recent activity")).not.toBeInTheDocument();
     expect(screen.getByText("Transfer")).toBeInTheDocument();
     expect(screen.queryByText("Active transfers")).not.toBeInTheDocument();
-    expect(screen.queryByText("Select an account to display live values.")).not.toBeInTheDocument();
+    expect(screen.queryByText("Select a context to display live values.")).not.toBeInTheDocument();
     expect(screen.queryByText("5.3 TB")).not.toBeInTheDocument();
     expect(screen.queryByText("128")).not.toBeInTheDocument();
     expect(screen.queryByText("backup-prod")).not.toBeInTheDocument();
@@ -355,8 +355,8 @@ describe("manager shell pages", () => {
   });
 
   it("keeps manager dashboard cards visible without fallback values when metrics are unavailable", async () => {
-    useS3AccountContextMock.mockReturnValue({
-      accounts: [
+    useExecutionContextMock.mockReturnValue({
+      contexts: [
         {
           id: "conn-1",
           name: "User9001",
@@ -364,12 +364,12 @@ describe("manager shell pages", () => {
           storage_endpoint_capabilities: { iam: false, metrics: true, usage: true },
         },
       ],
-      selectedS3AccountId: "conn-1",
-      requiresS3AccountSelection: false,
-      sessionS3AccountName: null,
-      selectedS3AccountType: "connection",
-      hasS3AccountContext: true,
-      accountIdForApi: "conn-1",
+      selectedContextId: "conn-1",
+      requiresContextSelection: false,
+      sessionAccountName: null,
+      selectedContextKind: "connection",
+      hasExecutionContext: true,
+      contextIdForApi: "conn-1",
       accessMode: "default",
       managerStatsEnabled: false,
       managerStatsMessage: "Metrics are unavailable for this context.",
@@ -399,8 +399,8 @@ describe("manager shell pages", () => {
   });
 
   it("shows IAM resource actions in quota status for IAM-capable connection contexts", async () => {
-    useS3AccountContextMock.mockReturnValue({
-      accounts: [
+    useExecutionContextMock.mockReturnValue({
+      contexts: [
         {
           id: "conn-1",
           name: "AWS/tests3",
@@ -409,12 +409,12 @@ describe("manager shell pages", () => {
           capabilities: { can_manage_iam: true, sts_capable: false, admin_api_capable: false },
         },
       ],
-      selectedS3AccountId: "conn-1",
-      requiresS3AccountSelection: false,
-      sessionS3AccountName: null,
-      selectedS3AccountType: "connection",
-      hasS3AccountContext: true,
-      accountIdForApi: "conn-1",
+      selectedContextId: "conn-1",
+      requiresContextSelection: false,
+      sessionAccountName: null,
+      selectedContextKind: "connection",
+      hasExecutionContext: true,
+      contextIdForApi: "conn-1",
       accessMode: "connection",
       managerStatsEnabled: false,
       managerStatsMessage: null,
@@ -443,8 +443,8 @@ describe("manager shell pages", () => {
   });
 
   it("keeps the redesigned dashboard structure stable when storage metrics are disabled", async () => {
-    useS3AccountContextMock.mockReturnValue({
-      accounts: [
+    useExecutionContextMock.mockReturnValue({
+      contexts: [
         {
           id: "account-1",
           name: "Account Alpha",
@@ -452,12 +452,12 @@ describe("manager shell pages", () => {
           storage_endpoint_capabilities: { iam: true, metrics: true, usage: true },
         },
       ],
-      selectedS3AccountId: "account-1",
-      requiresS3AccountSelection: false,
-      sessionS3AccountName: null,
-      selectedS3AccountType: "account",
-      hasS3AccountContext: true,
-      accountIdForApi: "account-1",
+      selectedContextId: "account-1",
+      requiresContextSelection: false,
+      sessionAccountName: null,
+      selectedContextKind: "account",
+      hasExecutionContext: true,
+      contextIdForApi: "account-1",
       accessMode: "default",
       managerStatsEnabled: false,
       managerStatsMessage: "Metrics are unavailable for this context.",
@@ -489,8 +489,8 @@ describe("manager shell pages", () => {
 
   it("renders the compact data types card when bucket usage stats are enabled", async () => {
     setManagerUser();
-    useS3AccountContextMock.mockReturnValue({
-      accounts: [
+    useExecutionContextMock.mockReturnValue({
+      contexts: [
         {
           id: "account-1",
           name: "Account Alpha",
@@ -498,12 +498,12 @@ describe("manager shell pages", () => {
           storage_endpoint_capabilities: { iam: true, metrics: true, usage: true },
         },
       ],
-      selectedS3AccountId: "account-1",
-      requiresS3AccountSelection: true,
-      sessionS3AccountName: null,
-      selectedS3AccountType: "account",
-      hasS3AccountContext: true,
-      accountIdForApi: "account-1",
+      selectedContextId: "account-1",
+      requiresContextSelection: true,
+      sessionAccountName: null,
+      selectedContextKind: "account",
+      hasExecutionContext: true,
+      contextIdForApi: "account-1",
       managerStatsEnabled: true,
       managerStatsMessage: null,
       managerBrowserEnabled: true,
@@ -546,8 +546,8 @@ describe("manager shell pages", () => {
   it("keeps the compact data types card quiet when usage stats fail to load", async () => {
     getManagerUsageStatsAggregateMock.mockRejectedValue(new Error("Network Error"));
     setManagerUser();
-    useS3AccountContextMock.mockReturnValue({
-      accounts: [
+    useExecutionContextMock.mockReturnValue({
+      contexts: [
         {
           id: "account-1",
           name: "Account Alpha",
@@ -555,12 +555,12 @@ describe("manager shell pages", () => {
           storage_endpoint_capabilities: { iam: true, metrics: true, usage: true },
         },
       ],
-      selectedS3AccountId: "account-1",
-      requiresS3AccountSelection: true,
-      sessionS3AccountName: null,
-      selectedS3AccountType: "account",
-      hasS3AccountContext: true,
-      accountIdForApi: "account-1",
+      selectedContextId: "account-1",
+      requiresContextSelection: true,
+      sessionAccountName: null,
+      selectedContextKind: "account",
+      hasExecutionContext: true,
+      contextIdForApi: "account-1",
       accessMode: "default",
       managerStatsEnabled: true,
       managerStatsMessage: null,
@@ -584,8 +584,8 @@ describe("manager shell pages", () => {
 
   it("hides the dashboard data types card when bucket usage stats are disabled", async () => {
     setManagerUser();
-    useS3AccountContextMock.mockReturnValue({
-      accounts: [
+    useExecutionContextMock.mockReturnValue({
+      contexts: [
         {
           id: "account-1",
           name: "Account Alpha",
@@ -593,12 +593,12 @@ describe("manager shell pages", () => {
           storage_endpoint_capabilities: { iam: true, metrics: true, usage: true },
         },
       ],
-      selectedS3AccountId: "account-1",
-      requiresS3AccountSelection: true,
-      sessionS3AccountName: null,
-      selectedS3AccountType: "account",
-      hasS3AccountContext: true,
-      accountIdForApi: "account-1",
+      selectedContextId: "account-1",
+      requiresContextSelection: true,
+      sessionAccountName: null,
+      selectedContextKind: "account",
+      hasExecutionContext: true,
+      contextIdForApi: "account-1",
       accessMode: "default",
       managerStatsEnabled: true,
       managerStatsMessage: null,
@@ -623,8 +623,8 @@ describe("manager shell pages", () => {
 
   it("renders upload and download volumes from manager traffic usage", async () => {
     fetchManagerTrafficMock.mockResolvedValue(managerTrafficResponse(2048, 4096));
-    useS3AccountContextMock.mockReturnValue({
-      accounts: [
+    useExecutionContextMock.mockReturnValue({
+      contexts: [
         {
           id: "account-1",
           name: "Account Alpha",
@@ -632,12 +632,12 @@ describe("manager shell pages", () => {
           storage_endpoint_capabilities: { iam: true, metrics: true, usage: true },
         },
       ],
-      selectedS3AccountId: "account-1",
-      requiresS3AccountSelection: false,
-      sessionS3AccountName: null,
-      selectedS3AccountType: "account",
-      hasS3AccountContext: true,
-      accountIdForApi: "account-1",
+      selectedContextId: "account-1",
+      requiresContextSelection: false,
+      sessionAccountName: null,
+      selectedContextKind: "account",
+      hasExecutionContext: true,
+      contextIdForApi: "account-1",
       accessMode: "default",
       managerStatsEnabled: true,
       managerStatsMessage: null,
@@ -681,8 +681,8 @@ describe("manager shell pages", () => {
       }
       return Promise.resolve(managerTrafficResponse(256, 512, { window: "day", end, series: [trafficPoint(end, 256, 512)] }));
     });
-    useS3AccountContextMock.mockReturnValue({
-      accounts: [
+    useExecutionContextMock.mockReturnValue({
+      contexts: [
         {
           id: "account-1",
           name: "Account Alpha",
@@ -690,12 +690,12 @@ describe("manager shell pages", () => {
           storage_endpoint_capabilities: { iam: true, metrics: true, usage: true },
         },
       ],
-      selectedS3AccountId: "account-1",
-      requiresS3AccountSelection: false,
-      sessionS3AccountName: null,
-      selectedS3AccountType: "account",
-      hasS3AccountContext: true,
-      accountIdForApi: "account-1",
+      selectedContextId: "account-1",
+      requiresContextSelection: false,
+      sessionAccountName: null,
+      selectedContextKind: "account",
+      hasExecutionContext: true,
+      contextIdForApi: "account-1",
       accessMode: "default",
       managerStatsEnabled: true,
       managerStatsMessage: null,
@@ -738,8 +738,8 @@ describe("manager shell pages", () => {
       }
       return Promise.resolve(managerTrafficResponse(512, 512, { window: "day", end, series: [trafficPoint(end, 512, 512)] }));
     });
-    useS3AccountContextMock.mockReturnValue({
-      accounts: [
+    useExecutionContextMock.mockReturnValue({
+      contexts: [
         {
           id: "account-1",
           name: "Account Alpha",
@@ -747,12 +747,12 @@ describe("manager shell pages", () => {
           storage_endpoint_capabilities: { iam: true, metrics: true, usage: true },
         },
       ],
-      selectedS3AccountId: "account-1",
-      requiresS3AccountSelection: false,
-      sessionS3AccountName: null,
-      selectedS3AccountType: "account",
-      hasS3AccountContext: true,
-      accountIdForApi: "account-1",
+      selectedContextId: "account-1",
+      requiresContextSelection: false,
+      sessionAccountName: null,
+      selectedContextKind: "account",
+      hasExecutionContext: true,
+      contextIdForApi: "account-1",
       accessMode: "default",
       managerStatsEnabled: true,
       managerStatsMessage: null,
@@ -774,8 +774,8 @@ describe("manager shell pages", () => {
 
   it("keeps real zero upload and download volumes visible", async () => {
     fetchManagerTrafficMock.mockResolvedValue(managerTrafficResponse(0, 0));
-    useS3AccountContextMock.mockReturnValue({
-      accounts: [
+    useExecutionContextMock.mockReturnValue({
+      contexts: [
         {
           id: "account-1",
           name: "Account Alpha",
@@ -783,12 +783,12 @@ describe("manager shell pages", () => {
           storage_endpoint_capabilities: { iam: true, metrics: true, usage: true },
         },
       ],
-      selectedS3AccountId: "account-1",
-      requiresS3AccountSelection: false,
-      sessionS3AccountName: null,
-      selectedS3AccountType: "account",
-      hasS3AccountContext: true,
-      accountIdForApi: "account-1",
+      selectedContextId: "account-1",
+      requiresContextSelection: false,
+      sessionAccountName: null,
+      selectedContextKind: "account",
+      hasExecutionContext: true,
+      contextIdForApi: "account-1",
       accessMode: "default",
       managerStatsEnabled: true,
       managerStatsMessage: null,
@@ -808,8 +808,8 @@ describe("manager shell pages", () => {
 
   it("keeps upload and download traffic silent when usage loading fails", async () => {
     fetchManagerTrafficMock.mockRejectedValue(new Error("traffic unavailable"));
-    useS3AccountContextMock.mockReturnValue({
-      accounts: [
+    useExecutionContextMock.mockReturnValue({
+      contexts: [
         {
           id: "account-1",
           name: "Account Alpha",
@@ -817,12 +817,12 @@ describe("manager shell pages", () => {
           storage_endpoint_capabilities: { iam: true, metrics: true, usage: true },
         },
       ],
-      selectedS3AccountId: "account-1",
-      requiresS3AccountSelection: false,
-      sessionS3AccountName: null,
-      selectedS3AccountType: "account",
-      hasS3AccountContext: true,
-      accountIdForApi: "account-1",
+      selectedContextId: "account-1",
+      requiresContextSelection: false,
+      sessionAccountName: null,
+      selectedContextKind: "account",
+      hasExecutionContext: true,
+      contextIdForApi: "account-1",
       accessMode: "default",
       managerStatsEnabled: true,
       managerStatsMessage: null,
@@ -856,8 +856,8 @@ describe("manager shell pages", () => {
         user_email: "manager@example.com",
       },
     ]);
-    useS3AccountContextMock.mockReturnValue({
-      accounts: [
+    useExecutionContextMock.mockReturnValue({
+      contexts: [
         {
           id: "account-1",
           name: "Account Alpha",
@@ -865,12 +865,12 @@ describe("manager shell pages", () => {
           storage_endpoint_capabilities: { iam: true, metrics: true, usage: true },
         },
       ],
-      selectedS3AccountId: "account-1",
-      requiresS3AccountSelection: false,
-      sessionS3AccountName: null,
-      selectedS3AccountType: "account",
-      hasS3AccountContext: true,
-      accountIdForApi: "account-1",
+      selectedContextId: "account-1",
+      requiresContextSelection: false,
+      sessionAccountName: null,
+      selectedContextKind: "account",
+      hasExecutionContext: true,
+      contextIdForApi: "account-1",
       accessMode: "default",
       managerStatsEnabled: false,
       managerStatsMessage: null,
@@ -916,8 +916,8 @@ describe("manager shell pages", () => {
         user_email: "manager@example.com",
       },
     ]);
-    useS3AccountContextMock.mockReturnValue({
-      accounts: [
+    useExecutionContextMock.mockReturnValue({
+      contexts: [
         {
           id: "account-1",
           name: "Account Alpha",
@@ -925,12 +925,12 @@ describe("manager shell pages", () => {
           storage_endpoint_capabilities: { iam: true, metrics: true, usage: true },
         },
       ],
-      selectedS3AccountId: "account-1",
-      requiresS3AccountSelection: false,
-      sessionS3AccountName: null,
-      selectedS3AccountType: "account",
-      hasS3AccountContext: true,
-      accountIdForApi: "account-1",
+      selectedContextId: "account-1",
+      requiresContextSelection: false,
+      sessionAccountName: null,
+      selectedContextKind: "account",
+      hasExecutionContext: true,
+      contextIdForApi: "account-1",
       accessMode: "default",
       managerStatsEnabled: false,
       managerStatsMessage: null,
@@ -954,8 +954,8 @@ describe("manager shell pages", () => {
   });
 
   it("shows an empty recent activity state only after an empty successful response", async () => {
-    useS3AccountContextMock.mockReturnValue({
-      accounts: [
+    useExecutionContextMock.mockReturnValue({
+      contexts: [
         {
           id: "account-1",
           name: "Account Alpha",
@@ -963,12 +963,12 @@ describe("manager shell pages", () => {
           storage_endpoint_capabilities: { iam: true, metrics: true, usage: true },
         },
       ],
-      selectedS3AccountId: "account-1",
-      requiresS3AccountSelection: false,
-      sessionS3AccountName: null,
-      selectedS3AccountType: "account",
-      hasS3AccountContext: true,
-      accountIdForApi: "account-1",
+      selectedContextId: "account-1",
+      requiresContextSelection: false,
+      sessionAccountName: null,
+      selectedContextKind: "account",
+      hasExecutionContext: true,
+      contextIdForApi: "account-1",
       accessMode: "default",
       managerStatsEnabled: false,
       managerStatsMessage: null,
@@ -988,8 +988,8 @@ describe("manager shell pages", () => {
 
   it("keeps recent activity silent when audit activity loading fails", async () => {
     listManagerActivityMock.mockRejectedValue(new Error("activity unavailable"));
-    useS3AccountContextMock.mockReturnValue({
-      accounts: [
+    useExecutionContextMock.mockReturnValue({
+      contexts: [
         {
           id: "account-1",
           name: "Account Alpha",
@@ -997,12 +997,12 @@ describe("manager shell pages", () => {
           storage_endpoint_capabilities: { iam: true, metrics: true, usage: true },
         },
       ],
-      selectedS3AccountId: "account-1",
-      requiresS3AccountSelection: false,
-      sessionS3AccountName: null,
-      selectedS3AccountType: "account",
-      hasS3AccountContext: true,
-      accountIdForApi: "account-1",
+      selectedContextId: "account-1",
+      requiresContextSelection: false,
+      sessionAccountName: null,
+      selectedContextKind: "account",
+      hasExecutionContext: true,
+      contextIdForApi: "account-1",
       accessMode: "default",
       managerStatsEnabled: false,
       managerStatsMessage: null,
@@ -1056,8 +1056,8 @@ describe("manager shell pages", () => {
       loading: false,
       error: null,
     });
-    useS3AccountContextMock.mockReturnValue({
-      accounts: [
+    useExecutionContextMock.mockReturnValue({
+      contexts: [
         {
           id: "account-1",
           name: "User9001",
@@ -1066,12 +1066,12 @@ describe("manager shell pages", () => {
           capabilities: { can_manage_iam: true },
         },
       ],
-      selectedS3AccountId: "account-1",
-      requiresS3AccountSelection: false,
-      sessionS3AccountName: null,
-      selectedS3AccountType: "account",
-      hasS3AccountContext: true,
-      accountIdForApi: "account-1",
+      selectedContextId: "account-1",
+      requiresContextSelection: false,
+      sessionAccountName: null,
+      selectedContextKind: "account",
+      hasExecutionContext: true,
+      contextIdForApi: "account-1",
       accessMode: "default",
       managerStatsEnabled: true,
       managerStatsMessage: null,
@@ -1145,8 +1145,8 @@ describe("manager shell pages", () => {
       loading: false,
       error: null,
     });
-    useS3AccountContextMock.mockReturnValue({
-      accounts: [
+    useExecutionContextMock.mockReturnValue({
+      contexts: [
         {
           id: "account-1",
           name: "Account Alpha",
@@ -1154,12 +1154,12 @@ describe("manager shell pages", () => {
           storage_endpoint_capabilities: { iam: true, metrics: true, usage: true },
         },
       ],
-      selectedS3AccountId: "account-1",
-      requiresS3AccountSelection: false,
-      sessionS3AccountName: null,
-      selectedS3AccountType: "account",
-      hasS3AccountContext: true,
-      accountIdForApi: "account-1",
+      selectedContextId: "account-1",
+      requiresContextSelection: false,
+      sessionAccountName: null,
+      selectedContextKind: "account",
+      hasExecutionContext: true,
+      contextIdForApi: "account-1",
       accessMode: "default",
       managerStatsEnabled: true,
       managerStatsMessage: null,
@@ -1194,8 +1194,8 @@ describe("manager shell pages", () => {
   });
 
   it("adds the selected bucket to the manager browser breadcrumb", async () => {
-    useS3AccountContextMock.mockReturnValue({
-      accounts: [
+    useExecutionContextMock.mockReturnValue({
+      contexts: [
         {
           id: "account-1",
           name: "Account Alpha",
@@ -1203,12 +1203,12 @@ describe("manager shell pages", () => {
           storage_endpoint_capabilities: { iam: true },
         },
       ],
-      selectedS3AccountId: "account-1",
-      requiresS3AccountSelection: false,
-      sessionS3AccountName: null,
-      selectedS3AccountType: "account",
-      hasS3AccountContext: true,
-      accountIdForApi: "account-1",
+      selectedContextId: "account-1",
+      requiresContextSelection: false,
+      sessionAccountName: null,
+      selectedContextKind: "account",
+      hasExecutionContext: true,
+      contextIdForApi: "account-1",
       managerStatsEnabled: true,
       managerStatsMessage: null,
       managerBrowserEnabled: true,
@@ -1236,12 +1236,12 @@ describe("manager shell pages", () => {
   });
 
   it("does not mount the data plane while Manager Browser access is loading or denied", () => {
-    useS3AccountContextMock.mockReturnValue({
-      accounts: [{ id: "account-1", name: "Account Alpha", type: "account" }],
-      selectedS3AccountId: "account-1",
-      hasS3AccountContext: true,
-      accountIdForApi: "account-1",
-      selectedS3AccountType: "account",
+    useExecutionContextMock.mockReturnValue({
+      contexts: [{ id: "account-1", name: "Account Alpha", type: "account" }],
+      selectedContextId: "account-1",
+      hasExecutionContext: true,
+      contextIdForApi: "account-1",
+      selectedContextKind: "account",
       accessMode: "admin",
       managerBrowserEnabled: false,
       managerBrowserMessage: "Explicit data access is required.",
@@ -1257,12 +1257,12 @@ describe("manager shell pages", () => {
     expect(screen.getByText("Explicit data access is required.")).toBeInTheDocument();
     expect(screen.queryByTestId("browser-embed")).not.toBeInTheDocument();
 
-    useS3AccountContextMock.mockReturnValue({
-      accounts: [{ id: "account-1", name: "Account Alpha", type: "account" }],
-      selectedS3AccountId: "account-1",
-      hasS3AccountContext: true,
-      accountIdForApi: "account-1",
-      selectedS3AccountType: "account",
+    useExecutionContextMock.mockReturnValue({
+      contexts: [{ id: "account-1", name: "Account Alpha", type: "account" }],
+      selectedContextId: "account-1",
+      hasExecutionContext: true,
+      contextIdForApi: "account-1",
+      selectedContextKind: "account",
       accessMode: "admin",
       managerBrowserEnabled: null,
       managerBrowserMessage: null,
@@ -1284,7 +1284,7 @@ describe("manager shell pages", () => {
       </MemoryRouter>
     );
 
-    expect(screen.getByText("Select an account before managing buckets")).toBeInTheDocument();
+    expect(screen.getByText("Select a context before managing buckets")).toBeInTheDocument();
     expect(screen.queryByText("Execution context")).not.toBeInTheDocument();
   });
 
@@ -1379,8 +1379,8 @@ describe("manager shell pages", () => {
         },
       },
     ]);
-    useS3AccountContextMock.mockReturnValue({
-      accounts: [
+    useExecutionContextMock.mockReturnValue({
+      contexts: [
         {
           id: "account-1",
           name: "Account Alpha",
@@ -1389,12 +1389,12 @@ describe("manager shell pages", () => {
           storage_endpoint_capabilities: { iam: true, metrics: true, usage: true, sns: true },
         },
       ],
-      selectedS3AccountId: "account-1",
-      requiresS3AccountSelection: false,
-      sessionS3AccountName: null,
-      selectedS3AccountType: "account",
-      hasS3AccountContext: true,
-      accountIdForApi: "account-1",
+      selectedContextId: "account-1",
+      requiresContextSelection: false,
+      sessionAccountName: null,
+      selectedContextKind: "account",
+      hasExecutionContext: true,
+      contextIdForApi: "account-1",
       accessMode: "default",
       managerStatsEnabled: true,
       managerStatsMessage: null,
@@ -1737,8 +1737,8 @@ describe("manager shell pages", () => {
       lifecycle_rules: [{ id: "archive-rule", status: "Enabled", prefix: "logs/" }],
       cors_rules: [],
     });
-    useS3AccountContextMock.mockReturnValue({
-      accounts: [
+    useExecutionContextMock.mockReturnValue({
+      contexts: [
         {
           id: "account-1",
           name: "Account Alpha",
@@ -1747,12 +1747,12 @@ describe("manager shell pages", () => {
           storage_endpoint_capabilities: { iam: true, metrics: true, usage: true, sns: true },
         },
       ],
-      selectedS3AccountId: "account-1",
-      requiresS3AccountSelection: false,
-      sessionS3AccountName: null,
-      selectedS3AccountType: "account",
-      hasS3AccountContext: true,
-      accountIdForApi: "account-1",
+      selectedContextId: "account-1",
+      requiresContextSelection: false,
+      sessionAccountName: null,
+      selectedContextKind: "account",
+      hasExecutionContext: true,
+      contextIdForApi: "account-1",
       accessMode: "default",
       managerStatsEnabled: true,
       managerStatsMessage: null,

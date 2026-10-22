@@ -6,7 +6,7 @@ import { iamNameFormatError } from "../../utils/resourceNames";
 import { ListActions, ListBadge, ListActionButton, ListActionLink } from "../../components/list/ListControls";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
-import { useS3AccountContext } from "./S3AccountContext";
+import { useExecutionContext } from "./ExecutionContextProvider";
 import { managerPageBreadcrumbs } from "./managerBreadcrumbs";
 import { S3ExecutionContextSelector } from "../../api/accountParams";
 import {
@@ -46,9 +46,9 @@ import { useManagerI18n } from "./managerI18n";
 export default function ManagerRolesPage() {
   const { text } = useManagerI18n();
   const deleteConfirmation = useConfirmActionDialog();
-  const { selectedS3AccountType, accountIdForApi, requiresS3AccountSelection, accessMode, namingValidationProfile } = useS3AccountContext();
-  const needsS3AccountSelection = requiresS3AccountSelection && !accountIdForApi;
-  const isS3User = selectedS3AccountType === "s3_user";
+  const { selectedContextKind, contextIdForApi, requiresContextSelection, accessMode, namingValidationProfile } = useExecutionContext();
+  const needsContextSelection = requiresContextSelection && !contextIdForApi;
+  const isS3User = selectedContextKind === "s3_user";
   const [roleFilter, setRoleFilter] = useState("");
   const {
     error,
@@ -109,22 +109,22 @@ export default function ManagerRolesPage() {
   const [actionMessage, setActionMessage] = useState<string | null>(null);
 
   const loadPolicies = useCallback(
-    (accountId: S3ExecutionContextSelector) =>
-      loadRelated(accountId, listIamPolicies, setPolicies),
+    (contextId: S3ExecutionContextSelector) =>
+      loadRelated(contextId, listIamPolicies, setPolicies),
     [loadRelated],
   );
 
   useEffect(() => {
-    if (needsS3AccountSelection) {
+    if (needsContextSelection) {
       setRoles([]);
       setPolicies([]);
       setLoading(false);
       return;
     }
-    load(accountIdForApi);
-    loadPolicies(accountIdForApi);
+    load(contextIdForApi);
+    loadPolicies(contextIdForApi);
     resetInlinePolicyDraftEditor();
-  }, [accountIdForApi, needsS3AccountSelection, accessMode, load, loadPolicies, resetInlinePolicyDraftEditor, setLoading, setRoles]);
+  }, [contextIdForApi, needsContextSelection, accessMode, load, loadPolicies, resetInlinePolicyDraftEditor, setLoading, setRoles]);
 
   useEffect(() => {
     if (selectedPolicies.length > 0) {
@@ -164,7 +164,7 @@ export default function ManagerRolesPage() {
 
   const handleAdvancedCreate = async (e: FormEvent) => {
     e.preventDefault();
-    if (needsS3AccountSelection || creating) return;
+    if (needsContextSelection || creating) return;
     setAdvancedValidationAttempted(true);
     if (!advancedName.trim() || nameFormatError || pathFormatError || maxSessionDurationError || tagsError || advancedPolicy.error || !validateInlineDrafts()) {
       focusFirstInvalidField(e.currentTarget as HTMLFormElement);
@@ -176,7 +176,7 @@ export default function ManagerRolesPage() {
     setActionMessage(null);
     try {
       const roleName = advancedName.trim();
-      await createIamRole(accountIdForApi, {
+      await createIamRole(contextIdForApi, {
         name: roleName,
         path: trimmedPath === "" ? undefined : trimmedPath,
         assume_role_policy_document: advancedPolicy.document,
@@ -188,7 +188,7 @@ export default function ManagerRolesPage() {
         for (const arn of selectedPolicies) {
           const policy = policies.find((p) => p.arn === arn);
           if (policy) {
-            await attachRolePolicy(accountIdForApi, roleName, policy);
+            await attachRolePolicy(contextIdForApi, roleName, policy);
           }
         }
       }
@@ -203,7 +203,7 @@ export default function ManagerRolesPage() {
       resetInlinePolicyDraftEditor();
       setShowCreateForm(false);
       setActionMessage(text("Role created"));
-      await load(accountIdForApi);
+      await load(contextIdForApi);
     } catch (err) {
       setError(extractApiError(err, "Unexpected error"));
     } finally {
@@ -212,14 +212,14 @@ export default function ManagerRolesPage() {
   };
 
   const deleteRole = async (name: string) => {
-    if (needsS3AccountSelection) return;
+    if (needsContextSelection) return;
     setDeletingRole(name);
     setError(null);
     setActionMessage(null);
     try {
-      await deleteIamRole(accountIdForApi, name);
+      await deleteIamRole(contextIdForApi, name);
       setActionMessage(text("Role deleted"));
-      await load(accountIdForApi);
+      await load(contextIdForApi);
     } catch (err) {
       setError(extractApiError(err, "Unexpected error"));
     } finally {
@@ -228,10 +228,10 @@ export default function ManagerRolesPage() {
   };
 
   const handleDelete = (name: string) => {
-    if (needsS3AccountSelection) return;
+    if (needsContextSelection) return;
     deleteConfirmation.requestConfirmation({
       title: text("Delete IAM role?"),
-      description: text("Permanently remove this IAM role from the selected account."),
+      description: text("Permanently remove this IAM role from the selected context."),
       confirmLabel: text("Delete role"),
       details: [{ label: text("IAM role"), value: name }],
       impacts: ["Workloads that assume this role will no longer receive its permissions."],
@@ -352,7 +352,7 @@ export default function ManagerRolesPage() {
         description={text("Manage roles using the account root keys.")}
         breadcrumbs={managerPageBreadcrumbs(text, "roles")}
         actions={
-          !needsS3AccountSelection && !isS3User
+          !needsContextSelection && !isS3User
             ? [
                 {
                   label: text("Create role"),
@@ -366,10 +366,10 @@ export default function ManagerRolesPage() {
       {!showCreateForm && error && <PageBanner tone="error">{text(error)}</PageBanner>}
       {actionMessage && <PageBanner tone="success">{actionMessage}</PageBanner>}
 
-      {needsS3AccountSelection ? (
+      {needsContextSelection ? (
         <PageEmptyState
-          title={text("Select an account before managing IAM roles")}
-          description={text("Roles are defined per execution context. Choose an account to list trust relationships and attached policies.")}
+          title={text("Select a context before managing IAM roles")}
+          description={text("Roles are defined per execution context. Choose a context to list trust relationships and attached policies.")}
           primaryAction={{ label: text("Open dashboard"), to: "/manager" }}
           tone="warning"
         />
@@ -416,7 +416,7 @@ export default function ManagerRolesPage() {
           contentVariant="plain"
           dirty={advancedCurrentSignature !== advancedInitialSignature}
           error={error} onSubmit={handleAdvancedCreate}
-          busy={creating} disabled={needsS3AccountSelection || namingValidationProfile === null}
+          busy={creating} disabled={needsContextSelection || namingValidationProfile === null}
           submitLabel={text("Create role")} busyLabel={text("Creating...")}
         >
           <ManagerRoleFormFields name={advancedName} path={advancedPath} policy={assumeRolePolicyText}

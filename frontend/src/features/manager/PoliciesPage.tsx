@@ -4,7 +4,7 @@
  */
 import { iamNameFormatError } from "../../utils/resourceNames";
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { useS3AccountContext } from "./S3AccountContext";
+import { useExecutionContext } from "./ExecutionContextProvider";
 import { managerPageBreadcrumbs } from "./managerBreadcrumbs";
 import { IamPolicy, createIamPolicy, listIamPolicies } from "../../api/managerIamPolicies";
 import ListPageSection from "../../components/list/ListPageSection";
@@ -37,18 +37,18 @@ const DEFAULT_POLICY_DOCUMENT = JSON.stringify(
 export default function PoliciesPage() {
   const { text } = useManagerI18n();
   const {
-    accounts = [],
-    selectedS3AccountId = null,
-    selectedS3AccountType,
-    accountIdForApi,
-    requiresS3AccountSelection,
+    contexts = [],
+    selectedContextId = null,
+    selectedContextKind,
+    contextIdForApi,
+    requiresContextSelection,
     accessMode,
-  } = useS3AccountContext();
-  const needsS3AccountSelection = requiresS3AccountSelection && !accountIdForApi;
-  const isS3User = selectedS3AccountType === "s3_user";
-  const selectedContext = accounts.find((context) => context.id === selectedS3AccountId) ?? null;
+  } = useExecutionContext();
+  const needsContextSelection = requiresContextSelection && !contextIdForApi;
+  const isS3User = selectedContextKind === "s3_user";
+  const selectedContext = contexts.find((context) => context.id === selectedContextId) ?? null;
   const createManagedPolicyUnsupported = selectedContext?.endpoint_provider === "ceph";
-  const canCreateManagedPolicy = !needsS3AccountSelection && !isS3User && !createManagedPolicyUnsupported;
+  const canCreateManagedPolicy = !needsContextSelection && !isS3User && !createManagedPolicyUnsupported;
   const [policyFilter, setPolicyFilter] = useState("");
   const {
     error,
@@ -82,19 +82,19 @@ export default function PoliciesPage() {
   );
 
   useEffect(() => {
-    if (needsS3AccountSelection) {
+    if (needsContextSelection) {
       setPolicies([]);
       setLoading(false);
       return;
     }
-    load(accountIdForApi);
-  }, [accountIdForApi, needsS3AccountSelection, accessMode, load, setLoading, setPolicies]);
+    load(contextIdForApi);
+  }, [contextIdForApi, needsContextSelection, accessMode, load, setLoading, setPolicies]);
 
   const nameFormatError = iamNameFormatError(advancedName.trim(), "policy");
 
   const handleAdvancedCreate = async (e: FormEvent) => {
     e.preventDefault();
-    if (needsS3AccountSelection || isS3User || creating) return;
+    if (needsContextSelection || isS3User || creating) return;
     setValidationAttempted(true);
     if (!advancedName.trim() || nameFormatError || documentError) {
       focusFirstInvalidField(e.currentTarget as HTMLFormElement);
@@ -104,12 +104,12 @@ export default function PoliciesPage() {
     setError(null);
     setActionMessage(null);
     try {
-      await createIamPolicy(accountIdForApi, advancedName.trim(), parsedDocument!);
+      await createIamPolicy(contextIdForApi, advancedName.trim(), parsedDocument!);
       setAdvancedName("");
       setDocumentText(DEFAULT_POLICY_DOCUMENT);
       setShowCreateForm(false);
       setActionMessage(text("Policy created"));
-      await load(accountIdForApi);
+      await load(contextIdForApi);
     } catch (err) {
       setError(extractApiError(err, "Unexpected error"));
     } finally {
@@ -151,7 +151,7 @@ export default function PoliciesPage() {
     <div className={workflowPageHostClass(showCreateForm)}>
       <PageHeader actionPresentation="listing"
         title={text("IAM Policies")}
-        description={text("List and create Ceph IAM policies for the selected account.")}
+        description={text("List and create Ceph IAM policies for the selected context.")}
         breadcrumbs={managerPageBreadcrumbs(text, "policies")}
         actions={
           canCreateManagedPolicy
@@ -173,10 +173,10 @@ export default function PoliciesPage() {
         </PageBanner>
       )}
 
-      {needsS3AccountSelection ? (
+      {needsContextSelection ? (
         <PageEmptyState
-          title={text("Select an account before managing IAM policies")}
-          description={text("Policies are created inside an execution context. Choose an account to list, create, and attach managed IAM policies.")}
+          title={text("Select a context before managing IAM policies")}
+          description={text("Policies are created inside an execution context. Choose a context to list, create, and attach managed IAM policies.")}
           primaryAction={{ label: text("Open dashboard"), to: "/manager" }}
           tone="warning"
         />
@@ -223,7 +223,7 @@ export default function PoliciesPage() {
           contentVariant="plain"
           dirty={advancedCurrentSignature !== advancedInitialSignature}
           error={error} onSubmit={handleAdvancedCreate}
-          busy={creating} disabled={needsS3AccountSelection || isS3User}
+          busy={creating} disabled={needsContextSelection || isS3User}
           submitLabel={text("Create policy")} busyLabel={text("Creating...")}
         >
           <SettingsSection title={text("Identity")} presentation="compact">

@@ -12,10 +12,10 @@ const api = vi.hoisted(() => ({
   getPolicy: vi.fn(),
   updatePolicy: vi.fn(),
 }));
-const useS3AccountContextMock = vi.fn();
+const useExecutionContextMock = vi.fn();
 
-vi.mock("./S3AccountContext", () => ({
-  useS3AccountContext: () => useS3AccountContextMock(),
+vi.mock("./ExecutionContextProvider", () => ({
+  useExecutionContext: () => useExecutionContextMock(),
 }));
 
 vi.mock("../../api/topics", async (original) => ({
@@ -42,11 +42,11 @@ describe("ManagerTopicWorkspacePage", () => {
   beforeEach(() => {
     vi.resetAllMocks();
     vi.stubGlobal("AbortController", function () { return transferableAbortController(); });
-    useS3AccountContextMock.mockReturnValue({
-      accounts: [{ id: "conn-7", display_name: "Lab", storage_endpoint_capabilities: { sns: true } }],
-      selectedS3AccountId: "conn-7",
-      accountIdForApi: "conn-7",
-      requiresS3AccountSelection: false,
+    useExecutionContextMock.mockReturnValue({
+      contexts: [{ id: "conn-7", display_name: "Lab", storage_endpoint_capabilities: { sns: true } }],
+      selectedContextId: "conn-7",
+      contextIdForApi: "conn-7",
+      requiresContextSelection: false,
       accessMode: "default",
     });
     api.listTopics.mockResolvedValue([{ name: "topic-events", arn: topicArn, configuration: {} }]);
@@ -92,11 +92,11 @@ describe("ManagerTopicWorkspacePage", () => {
   });
 
   it("keeps SNS capability gating on the resource workspace", async () => {
-    useS3AccountContextMock.mockReturnValue({
-      accounts: [{ id: "conn-7", display_name: "Lab", storage_endpoint_capabilities: { sns: false } }],
-      selectedS3AccountId: "conn-7",
-      accountIdForApi: "conn-7",
-      requiresS3AccountSelection: false,
+    useExecutionContextMock.mockReturnValue({
+      contexts: [{ id: "conn-7", display_name: "Lab", storage_endpoint_capabilities: { sns: false } }],
+      selectedContextId: "conn-7",
+      contextIdForApi: "conn-7",
+      requiresContextSelection: false,
       accessMode: "default",
     });
     renderWorkspace("/manager/topics/topic-events");

@@ -15,14 +15,14 @@ import UiSelect from "../../components/ui/UiSelect";
 import { useConfirmActionDialog } from "../../components/useConfirmActionDialog";
 import { extractApiError } from "../../utils/apiError";
 import { useManagerI18n } from "./managerI18n";
-import { useS3AccountContext } from "./S3AccountContext";
+import { useExecutionContext } from "./ExecutionContextProvider";
 
 export default function ManagerUserGroupsPage() {
   const { text } = useManagerI18n();
   const { userName } = useParams<{ userName: string }>();
-  const { selectedS3AccountType, accountIdForApi, requiresS3AccountSelection, accessMode } = useS3AccountContext();
-  const needsS3AccountSelection = requiresS3AccountSelection && !accountIdForApi;
-  const isS3User = selectedS3AccountType === "s3_user";
+  const { selectedContextKind, contextIdForApi, requiresContextSelection, accessMode } = useExecutionContext();
+  const needsContextSelection = requiresContextSelection && !contextIdForApi;
+  const isS3User = selectedContextKind === "s3_user";
   const decodedUser = useMemo(() => {
     if (!userName) return "";
     try { return decodeURIComponent(userName); } catch { return userName; }
@@ -36,13 +36,13 @@ export default function ManagerUserGroupsPage() {
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const membershipConfirmation = useConfirmActionDialog();
 
-  const load = useCallback(async (accountId: S3ExecutionContextSelector, targetUser: string) => {
+  const load = useCallback(async (contextId: S3ExecutionContextSelector, targetUser: string) => {
     setLoading(true);
     setError(null);
     try {
       const [user, availableGroups] = await Promise.all([
-        getIamUser(accountId, targetUser),
-        listIamGroups(accountId),
+        getIamUser(contextId, targetUser),
+        listIamGroups(contextId),
       ]);
       const membership = new Set(user.groups ?? []);
       setAllGroups(availableGroups);
@@ -55,14 +55,14 @@ export default function ManagerUserGroupsPage() {
   }, [text]);
 
   useEffect(() => {
-    if (!userName || needsS3AccountSelection || isS3User) {
+    if (!userName || needsContextSelection || isS3User) {
       setGroups([]);
       setAllGroups([]);
       setLoading(false);
       return;
     }
-    void load(accountIdForApi, userName);
-  }, [accessMode, accountIdForApi, isS3User, load, needsS3AccountSelection, userName]);
+    void load(contextIdForApi, userName);
+  }, [accessMode, contextIdForApi, isS3User, load, needsContextSelection, userName]);
 
   const availableGroups = useMemo(
     () => allGroups.filter((group) => !groups.some((current) => current.name === group.name)),
@@ -80,9 +80,9 @@ export default function ManagerUserGroupsPage() {
     setError(null);
     setActionMessage(null);
     try {
-      await addIamGroupUser(accountIdForApi, newGroup, userName);
+      await addIamGroupUser(contextIdForApi, newGroup, userName);
       setNewGroup("");
-      await load(accountIdForApi, userName);
+      await load(contextIdForApi, userName);
       setActionMessage(text("User added to group"));
     } catch (err) {
       setError(extractApiError(err, text("Unable to update IAM group membership.")));
@@ -97,8 +97,8 @@ export default function ManagerUserGroupsPage() {
     setError(null);
     setActionMessage(null);
     try {
-      await removeIamGroupUser(accountIdForApi, groupName, userName);
-      await load(accountIdForApi, userName);
+      await removeIamGroupUser(contextIdForApi, groupName, userName);
+      await load(contextIdForApi, userName);
       setActionMessage(text("User removed from group"));
     } catch (err) {
       setError(extractApiError(err, text("Unable to update IAM group membership.")));
@@ -143,7 +143,7 @@ export default function ManagerUserGroupsPage() {
     return <PageBanner tone="info">{text("IAM users are not available for standalone S3 users. Select an S3 Account to continue.")}</PageBanner>;
   }
   if (!userName) return <div className="ui-body text-slate-600">{text("User not specified.")}</div>;
-  if (needsS3AccountSelection) return <div className="ui-body text-slate-600">{text("Select an account before managing groups.")}</div>;
+  if (needsContextSelection) return <div className="ui-body text-slate-600">{text("Select a context before managing groups.")}</div>;
 
   return (
     <div className="space-y-4">

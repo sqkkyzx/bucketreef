@@ -1304,6 +1304,36 @@ def test_detect_features_classifies_denied_unavailable_and_unprivileged_credenti
     assert result.credential_checks.supervision.status == "unavailable"
 
 
+def test_detect_features_sanitizes_ceph_admin_validation_errors(db_session, monkeypatch):
+    class FakeRGWClient:
+        def get_user_by_access_key(self, *_args, **_kwargs):
+            return {"user_id": "ceph-admin", "admin": True, "system": False}
+
+    monkeypatch.setattr(
+        "app.services.storage_endpoints_service.get_rgw_admin_client",
+        lambda **_kwargs: FakeRGWClient(),
+    )
+    monkeypatch.setattr(
+        "app.services.storage_endpoint_feature_detection.EndpointServiceIdentityService.validate_payload",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            ValueError("secret_key=TOPSECRET endpoint=https://private.example.test/admin")
+        ),
+    )
+
+    result = StorageEndpointsService(db_session).detect_features(
+        StorageEndpointFeatureDetectionRequest(
+            endpoint_url="https://ceph.example.test",
+            ceph_admin_access_key="CEPH-AK",
+            ceph_admin_secret_key="CEPH-SK",
+        )
+    )
+
+    assert result.credential_checks.ceph_admin.status == "denied"
+    assert result.credential_checks.ceph_admin.message == (
+        "secret_key=<redacted> endpoint=<redacted-url>"
+    )
+
+
 @pytest.mark.parametrize(
     "error,expected_status,expected_message",
     [
@@ -1400,6 +1430,52 @@ def test_detect_features_keeps_account_and_usage_probes_independent(db_session, 
     assert result.usage is True
     assert result.usage_error is None
     assert result.warnings == []
+
+
+def test_detect_features_sanitizes_rgw_probe_errors(db_session, monkeypatch):
+    sensitive_error = RGWAdminError(
+        "secret_key=TOPSECRET endpoint=https://private.example.test/admin",
+        status_code=301,
+        error_code="RedirectNotAllowed",
+    )
+
+    class FakeRGWClient:
+        account_api_supported = None
+
+        def get_user_by_access_key(self, *_args, **_kwargs):
+            raise sensitive_error
+
+        def get_account(self, *_args, **_kwargs):
+            raise sensitive_error
+
+        def get_all_buckets(self, **_kwargs):
+            raise sensitive_error
+
+        def get_usage(self, **_kwargs):
+            raise sensitive_error
+
+    monkeypatch.setattr(
+        "app.services.storage_endpoints_service.get_rgw_admin_client",
+        lambda **_kwargs: FakeRGWClient(),
+    )
+
+    result = StorageEndpointsService(db_session).detect_features(
+        StorageEndpointFeatureDetectionRequest(
+            endpoint_url="https://ceph.example.test",
+            admin_access_key="AKIA-ADMIN",
+            admin_secret_key="SECRET-ADMIN",
+            supervision_access_key="AKIA-SUPERVISION",
+            supervision_secret_key="SECRET-SUPERVISION",
+        )
+    )
+
+    safe_error = "secret_key=<redacted> endpoint=<redacted-url>"
+    assert result.admin_error == safe_error
+    assert result.account_error == safe_error
+    assert result.metrics_error == safe_error
+    assert result.usage_error == safe_error
+    assert result.credential_checks.admin.message == safe_error
+    assert result.credential_checks.supervision.message == safe_error
 
 
 def test_delete_endpoint_blocks_when_references_exist(db_session):

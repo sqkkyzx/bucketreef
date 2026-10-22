@@ -7,18 +7,18 @@ const listIamPoliciesMock = vi.fn();
 const listUserPoliciesMock = vi.fn();
 const detachUserPolicyMock = vi.fn();
 
-vi.mock("./S3AccountContext", () => ({
-  useS3AccountContext: () => ({
-    selectedS3AccountType: "tenant",
-    accountIdForApi: "acc-1",
-    requiresS3AccountSelection: false,
+vi.mock("./ExecutionContextProvider", () => ({
+  useExecutionContext: () => ({
+    selectedContextKind: "account",
+    contextIdForApi: "acc-1",
+    requiresContextSelection: false,
     accessMode: "regular",
-    accounts: [],
+    contexts: [],
   }),
 }));
 
 vi.mock("../../api/managerIamPolicies", () => ({
-  listIamPolicies: (accountId: unknown) => listIamPoliciesMock(accountId),
+  listIamPolicies: (contextId: unknown) => listIamPoliciesMock(contextId),
 }));
 
 vi.mock("../../api/managerIamUsers", () => ({
@@ -26,7 +26,7 @@ vi.mock("../../api/managerIamUsers", () => ({
   deleteUserInlinePolicy: vi.fn(),
   detachUserPolicy: (...args: unknown[]) => detachUserPolicyMock(...args),
   listUserInlinePolicies: vi.fn(async () => []),
-  listUserPolicies: (accountId: unknown, userName: string) => listUserPoliciesMock(accountId, userName),
+  listUserPolicies: (contextId: unknown, userName: string) => listUserPoliciesMock(contextId, userName),
   putUserInlinePolicy: vi.fn(),
 }));
 

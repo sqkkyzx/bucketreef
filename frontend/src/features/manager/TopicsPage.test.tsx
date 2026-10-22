@@ -6,13 +6,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import TopicsPage from "./TopicsPage";
 import { transferableAbortController } from "node:util";
 
-const useS3AccountContextMock = vi.fn();
+const useExecutionContextMock = vi.fn();
 const listTopicsMock = vi.fn();
 const deleteTopicMock = vi.fn();
 const createTopicMock = vi.fn();
 
-vi.mock("./S3AccountContext", () => ({
-  useS3AccountContext: () => useS3AccountContextMock(),
+vi.mock("./ExecutionContextProvider", () => ({
+  useExecutionContext: () => useExecutionContextMock(),
 }));
 
 vi.mock("../../api/topics", async () => {
@@ -30,16 +30,16 @@ describe("TopicsPage", () => {
 
   beforeEach(() => {
     vi.stubGlobal("AbortController", function () { return transferableAbortController(); });
-    useS3AccountContextMock.mockReset();
+    useExecutionContextMock.mockReset();
     listTopicsMock.mockReset();
     deleteTopicMock.mockReset();
     createTopicMock.mockReset();
-    useS3AccountContextMock.mockReturnValue({
-      accounts: [],
-      selectedS3AccountId: null,
-      accountIdForApi: null,
-      requiresS3AccountSelection: true,
-      sessionS3AccountName: null,
+    useExecutionContextMock.mockReturnValue({
+      contexts: [],
+      selectedContextId: null,
+      contextIdForApi: null,
+      requiresContextSelection: true,
+      sessionAccountName: null,
       accessMode: "default",
       iamIdentity: null,
     });
@@ -53,20 +53,20 @@ describe("TopicsPage", () => {
       </MemoryRouter>
     );
 
-    expect(screen.getByText("Select an account before managing SNS topics")).toBeInTheDocument();
+    expect(screen.getByText("Select a context before managing SNS topics")).toBeInTheDocument();
     expect(screen.queryByText("Execution context")).not.toBeInTheDocument();
-    expect(screen.queryByText("Select an account to manage its topics.")).not.toBeInTheDocument();
+    expect(screen.queryByText("Select a context to manage its topics.")).not.toBeInTheDocument();
   });
 
   it("confirms before deleting a notification topic", async () => {
     const user = userEvent.setup();
     const topicArn = "arn:aws:sns:us-east-1:lab:topic-events";
-    useS3AccountContextMock.mockReturnValue({
-      accounts: [{ id: "7", display_name: "Lab account", storage_endpoint_capabilities: { sns: true } }],
-      selectedS3AccountId: "7",
-      accountIdForApi: "7",
-      requiresS3AccountSelection: false,
-      sessionS3AccountName: null,
+    useExecutionContextMock.mockReturnValue({
+      contexts: [{ id: "7", display_name: "Lab account", storage_endpoint_capabilities: { sns: true } }],
+      selectedContextId: "7",
+      contextIdForApi: "7",
+      requiresContextSelection: false,
+      sessionAccountName: null,
       accessMode: "default",
       iamIdentity: null,
     });
@@ -88,7 +88,7 @@ describe("TopicsPage", () => {
 
   it("retains the create draft while pending and restores dismissal after a failure", async () => {
     const user = userEvent.setup();
-    useS3AccountContextMock.mockReturnValue({ accountIdForApi: "conn-7", accounts: [], requiresS3AccountSelection: false });
+    useExecutionContextMock.mockReturnValue({ contextIdForApi: "conn-7", contexts: [], requiresContextSelection: false });
     let rejectCreate!: (error: Error) => void;
     createTopicMock.mockReturnValue(new Promise((_resolve, reject) => { rejectCreate = reject; }));
     render(<MemoryRouter><TopicsPage /></MemoryRouter>);
@@ -121,18 +121,18 @@ describe("TopicsPage", () => {
   it("renders canonical Ceph topics without raw notification details", async () => {
     const user = userEvent.setup();
     const topicArn = "arn:aws:sns:default:tenant:ceph-topic-main";
-    useS3AccountContextMock.mockReturnValue({
-      accounts: [
+    useExecutionContextMock.mockReturnValue({
+      contexts: [
         {
           id: "7",
           display_name: "Lab account",
           storage_endpoint_capabilities: { sns: true },
         },
       ],
-      selectedS3AccountId: "7",
-      accountIdForApi: "7",
-      requiresS3AccountSelection: false,
-      sessionS3AccountName: null,
+      selectedContextId: "7",
+      contextIdForApi: "7",
+      requiresContextSelection: false,
+      sessionAccountName: null,
       accessMode: "default",
       iamIdentity: null,
     });
@@ -186,7 +186,7 @@ describe("TopicsPage", () => {
 
   it("retains a failed deletion for retry and blocks duplicate submissions and pending dismissal", async () => {
     const topicArn = "arn:aws:sns:default:tenant:topic-events";
-    useS3AccountContextMock.mockReturnValue({ accountIdForApi: "conn-7", accounts: [], requiresS3AccountSelection: false });
+    useExecutionContextMock.mockReturnValue({ contextIdForApi: "conn-7", contexts: [], requiresContextSelection: false });
     listTopicsMock.mockResolvedValue([{ name: "topic-events", arn: topicArn, configuration: {} }]);
     const user = userEvent.setup();
     let rejectDelete!: (error: Error) => void;
@@ -211,7 +211,7 @@ describe("TopicsPage", () => {
 
 
 it("marks invalid standard topic names immediately and blocks their creation", async () => {
-  useS3AccountContextMock.mockReturnValue({ accounts: [], selectedS3AccountId: "7", accountIdForApi: "7", requiresS3AccountSelection: true });
+  useExecutionContextMock.mockReturnValue({ contexts: [], selectedContextId: "7", contextIdForApi: "7", requiresContextSelection: true });
   listTopicsMock.mockResolvedValue([]);
   createTopicMock.mockResolvedValue({ name: "valid_topic-1", arn: "arn:aws:sns:us-east-1:lab:valid_topic-1" });
   render(<MemoryRouter><TopicsPage /></MemoryRouter>);

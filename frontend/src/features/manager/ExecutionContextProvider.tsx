@@ -3,8 +3,7 @@
  * Licensed under the Apache License, Version 2.0
  */
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
-import { S3ExecutionContextSelector } from "../../api/accountParams";
-import { ExecutionContext } from "../../api/executionContexts";
+import type { ExecutionContext } from "../../api/executionContexts";
 import { fetchManagerContext, type ManagerAccessMode } from "../../api/managerContext";
 import type { FeatureState } from "../../api/featurePolicies";
 import { useExecutionContextCatalog } from "../../hooks/useExecutionContextCatalog";
@@ -12,17 +11,17 @@ import { CLIENT_STORAGE_KEYS } from "../../utils/clientStorage";
 
 import type { NamingValidationProfile } from "../../utils/resourceNames";
 
-type S3AccountContextType = {
+type ExecutionContextState = {
   namingValidationProfile: NamingValidationProfile | null;
-  accounts: ExecutionContext[];
+  contexts: ExecutionContext[];
   contextsLoaded: boolean;
-  selectedS3AccountId: string | null;
-  requiresS3AccountSelection: boolean;
-  hasS3AccountContext: boolean;
-  accountIdForApi: S3ExecutionContextSelector;
-  sessionS3AccountName: string | null;
-  selectedS3AccountName: string | null;
-  selectedS3AccountType: string | null;
+  selectedContextId: string | null;
+  requiresContextSelection: boolean;
+  hasExecutionContext: boolean;
+  contextIdForApi: string | null;
+  sessionAccountName: string | null;
+  selectedContextName: string | null;
+  selectedContextKind: ExecutionContext["kind"] | null;
   accessError?: string | null;
   iamIdentity: string | null;
   accessMode: ManagerAccessMode | null;
@@ -38,17 +37,17 @@ type S3AccountContextType = {
   managerFeatureStates: Record<string, FeatureState> | null;
 };
 
-const S3AccountContext = createContext<S3AccountContextType>({
+const ExecutionContextStateContext = createContext<ExecutionContextState>({
   namingValidationProfile: null,
-  accounts: [],
+  contexts: [],
   contextsLoaded: false,
-  selectedS3AccountId: null,
-  requiresS3AccountSelection: true,
-  hasS3AccountContext: false,
-  accountIdForApi: null,
-  sessionS3AccountName: null,
-  selectedS3AccountName: null,
-  selectedS3AccountType: null,
+  selectedContextId: null,
+  requiresContextSelection: true,
+  hasExecutionContext: false,
+  contextIdForApi: null,
+  sessionAccountName: null,
+  selectedContextName: null,
+  selectedContextKind: null,
   accessError: null,
   iamIdentity: null,
   accessMode: null,
@@ -64,47 +63,34 @@ const S3AccountContext = createContext<S3AccountContextType>({
   managerFeatureStates: null,
 });
 
-type S3AccountProviderScope = "manager" | "browser";
+type ExecutionContextProviderScope = "manager" | "browser";
 
-type S3AccountProviderProps = {
+type ExecutionContextProviderProps = {
   children: ReactNode;
-  scope?: S3AccountProviderScope;
+  scope?: ExecutionContextProviderScope;
 };
 
-function deriveS3AccountType(context: ExecutionContext | null | undefined): string | null {
-  if (!context) return null;
-  if (context.kind === "connection") {
-    return "connection";
-  }
-  if (context.kind === "s3_user") {
-    return "s3_user";
-  }
-  return "tenant";
-}
-
-export function S3AccountProvider({ children, scope = "manager" }: S3AccountProviderProps) {
+export function ExecutionContextProvider({ children, scope = "manager" }: ExecutionContextProviderProps) {
   const executionContextStorageKey = scope === "browser"
     ? CLIENT_STORAGE_KEYS.selectedBrowserExecutionContext
     : CLIENT_STORAGE_KEYS.selectedManagerExecutionContext;
   const {
-    contexts: accounts,
+    contexts,
     contextsLoaded,
-    selectedContextId: selectedS3AccountId,
-    selectedContext: selectedS3Account,
-    requiresSelection: requiresS3AccountSelection,
+    selectedContextId,
+    selectedContext,
+    requiresSelection: requiresContextSelection,
     accessError,
     sessionAccountName,
   } = useExecutionContextCatalog({
     scope,
     storageKey: executionContextStorageKey,
-    selectionPolicy: "first-available",
     accessDeniedMessage:
       scope === "browser"
         ? "Access to browser contexts is denied for this user."
         : "Access to manager is denied for this user.",
-    revokedSelectionMessage: "The previously selected Manager context is no longer authorized.",
   });
-  const [namingProfileState, setNamingProfileState] = useState<{ accountId: S3ExecutionContextSelector; profile: NamingValidationProfile } | null>(null);
+  const [namingProfileState, setNamingProfileState] = useState<{ contextId: string | null; profile: NamingValidationProfile } | null>(null);
   const [iamIdentity, setIamIdentity] = useState<string | null>(null);
   const [accessMode, setAccessModeState] = useState<ManagerAccessMode | null>(null);
   const [managerStatsEnabled, setManagerStatsEnabled] = useState<boolean | null>(null);
@@ -117,17 +103,17 @@ export function S3AccountProvider({ children, scope = "manager" }: S3AccountProv
   const [managerAccessKeyExpirationEnabled, setManagerAccessKeyExpirationEnabled] = useState<boolean | null>(null);
   const [managerPrivateAccessEnabled, setManagerPrivateAccessEnabled] = useState<boolean | null>(null);
   const [managerFeatureStates, setManagerFeatureStates] = useState<Record<string, FeatureState> | null>(null);
-  const hasS3AccountContext = requiresS3AccountSelection ? selectedS3Account !== null : true;
-  const accountIdForApi: S3ExecutionContextSelector = requiresS3AccountSelection ? selectedS3AccountId : null;
-  const selectedS3AccountName = selectedS3Account?.display_name ?? sessionAccountName;
-  const selectedS3AccountType = deriveS3AccountType(selectedS3Account);
+  const hasExecutionContext = requiresContextSelection ? selectedContext !== null : true;
+  const contextIdForApi = requiresContextSelection ? selectedContextId : null;
+  const selectedContextName = selectedContext?.display_name ?? sessionAccountName;
+  const selectedContextKind = selectedContext?.kind ?? null;
 
-  const namingValidationProfile = hasS3AccountContext && namingProfileState?.accountId === accountIdForApi
+  const namingValidationProfile = hasExecutionContext && namingProfileState?.contextId === contextIdForApi
     ? namingProfileState.profile : null;
 
   useEffect(() => {
     setNamingProfileState(null);
-    if (!hasS3AccountContext) {
+    if (!hasExecutionContext) {
       setIamIdentity(null);
       setAccessModeState(null);
       setManagerStatsEnabled(null);
@@ -153,10 +139,10 @@ export function S3AccountProvider({ children, scope = "manager" }: S3AccountProv
     setManagerAccessKeyExpirationEnabled(null);
     setManagerPrivateAccessEnabled(null);
     setManagerFeatureStates(null);
-    fetchManagerContext(accountIdForApi)
+    fetchManagerContext(contextIdForApi)
       .then((data) => {
         if (!isMounted) return;
-        setNamingProfileState({ accountId: accountIdForApi, profile: data.naming_validation_profile ?? "standard" });
+        setNamingProfileState({ contextId: contextIdForApi, profile: data.naming_validation_profile ?? "standard" });
         setIamIdentity(data.iam_identity ?? null);
         setAccessModeState(data.access_mode);
         setManagerStatsEnabled(Boolean(data.manager_stats_enabled));
@@ -188,21 +174,21 @@ export function S3AccountProvider({ children, scope = "manager" }: S3AccountProv
     return () => {
       isMounted = false;
     };
-  }, [accountIdForApi, hasS3AccountContext]);
+  }, [contextIdForApi, hasExecutionContext]);
 
   return (
-    <S3AccountContext.Provider
+    <ExecutionContextStateContext.Provider
       value={{
         namingValidationProfile,
-        accounts,
+        contexts,
         contextsLoaded,
-        selectedS3AccountId,
-        requiresS3AccountSelection,
-        hasS3AccountContext,
-        accountIdForApi,
-        sessionS3AccountName: sessionAccountName,
-        selectedS3AccountName,
-        selectedS3AccountType,
+        selectedContextId,
+        requiresContextSelection,
+        hasExecutionContext,
+        contextIdForApi,
+        sessionAccountName,
+        selectedContextName,
+        selectedContextKind,
         accessError,
         iamIdentity,
         accessMode,
@@ -219,10 +205,10 @@ export function S3AccountProvider({ children, scope = "manager" }: S3AccountProv
       }}
     >
       {children}
-    </S3AccountContext.Provider>
+    </ExecutionContextStateContext.Provider>
   );
 }
 
-export function useS3AccountContext() {
-  return useContext(S3AccountContext);
+export function useExecutionContext() {
+  return useContext(ExecutionContextStateContext);
 }

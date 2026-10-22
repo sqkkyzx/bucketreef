@@ -5,7 +5,6 @@
 import {
   useCallback,
   useEffect,
-  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -471,6 +470,7 @@ export default function BrowserPage({
     deletedObjectsIsTruncated,
     deletedPrefixes,
     isVersioningEnabled,
+    versioningResolved,
     loadMore: handleLoadMoreObjectResults,
     loadObjects,
     objects,
@@ -621,7 +621,6 @@ export default function BrowserPage({
     setStatusMessage,
   });
   const objectsListViewportRef = useRef<HTMLDivElement | null>(null);
-  const contextIdForApiRef = useRef(contextIdForApi);
   const effectiveCaps =
     storageEndpointCapabilities === undefined
       ? (selectedContext?.storage_endpoint_capabilities ?? null)
@@ -698,9 +697,9 @@ export default function BrowserPage({
       sseActive,
     });
   useEffect(() => {
-    if (isVersioningEnabled) return;
+    if (!versioningResolved || isVersioningEnabled) return;
     hideDeletedObjects();
-  }, [bucketName, hideDeletedObjects, isVersioningEnabled]);
+  }, [hideDeletedObjects, isVersioningEnabled, versioningResolved]);
 
   const {
     loadTreeChildren,
@@ -748,9 +747,7 @@ export default function BrowserPage({
     [items, showFolderItems],
   );
   const {
-    activateItem,
     allSelected,
-    clearActiveItem,
     handleItemCheckboxClick,
     handleListBackgroundClick,
     handleListKeyDown: handleSelectionKeyDown,
@@ -812,7 +809,6 @@ export default function BrowserPage({
     requestOptions: browserRequestOptions,
     requestTransition: requestDetailsDrawerTransition,
     setPrefix,
-    clearActiveItem,
     selectionReady,
     contextSwitchInFlight,
     normalizedPath,
@@ -833,7 +829,6 @@ export default function BrowserPage({
     isStorageSpaceContext,
     listItems,
     objectDetailsTarget,
-    onActivateItem: activateItem,
     onLoadedFilesChange,
     onOpenFolder: handleSelectPrefix,
     onOpenObjectDetails,
@@ -842,11 +837,6 @@ export default function BrowserPage({
     setWarningMessage,
     versioningEnabled: isVersioningEnabled,
   });
-
-  useLayoutEffect(() => {
-    if (!contextSwitchInFlight) return;
-    clearActiveItem();
-  }, [contextSwitchInFlight, clearActiveItem]);
 
   const tableLayout = useMemo(
     () =>
@@ -1050,10 +1040,6 @@ export default function BrowserPage({
     handleSelectPrefix(item.key);
   };
   useEffect(() => {
-    contextIdForApiRef.current = contextIdForApi;
-  }, [contextIdForApi]);
-
-  useEffect(() => {
     if (
       storageFilter !== "all" &&
       !searchableStorageClasses.includes(storageFilter)
@@ -1108,7 +1094,6 @@ export default function BrowserPage({
   } = useBrowserBucketInteractions({
     bucketConfigurationEnabled,
     bucketManagementEnabled,
-    clearActiveItem,
     closeBucketMenu,
     openBucketConfigurationTarget,
     openCreateBucketForm,
@@ -1145,7 +1130,6 @@ export default function BrowserPage({
     requestTransition: requestDetailsDrawerTransition,
     setBucketName,
     setPrefix,
-    clearActiveItem,
     onStatus: setStatusMessage,
     onWarning: setWarningMessage,
   });

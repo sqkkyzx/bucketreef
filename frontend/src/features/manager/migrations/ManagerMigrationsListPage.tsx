@@ -10,7 +10,7 @@ import PageBanner from "../../../components/PageBanner";
 import PageEmptyState from "../../../components/PageEmptyState";
 import PageShell from "../../../components/PageShell";
 import { type BucketMigrationStatus } from "../../../api/managerMigrations";
-import { useS3AccountContext } from "../S3AccountContext";
+import { useExecutionContext } from "../ExecutionContextProvider";
 import { managerPageBreadcrumbs } from "../managerBreadcrumbs";
 import { useManagerContexts } from "../useManagerContexts";
 import { useManagerMigrationsList } from "./hooks";
@@ -40,8 +40,8 @@ const SORT_PRIORITY: Record<BucketMigrationStatus, number> = {
 export default function ManagerMigrationsListPage() {
   const { text } = useManagerI18n();
   const navigate = useNavigate();
-  const { selectedS3AccountId, requiresS3AccountSelection } = useS3AccountContext();
-  const sourceContextId = selectedS3AccountId ?? "";
+  const { selectedContextId, requiresContextSelection } = useExecutionContext();
+  const sourceContextId = selectedContextId ?? "";
 
   const { contextLabelById, contextsLoading, contextsError } = useManagerContexts();
   const { migrations, migrationsLoading, migrationsError } = useManagerMigrationsList(sourceContextId);
@@ -73,7 +73,7 @@ export default function ManagerMigrationsListPage() {
       {contextsError && <PageBanner tone="error">{text(contextsError)}</PageBanner>}
       {migrationsError && <PageBanner tone="error">{text(migrationsError)}</PageBanner>}
 
-      {!requiresS3AccountSelection ? (
+      {!requiresContextSelection ? (
         <PageEmptyState
           title={text("Bucket migration is unavailable in session mode")}
           description={text("This tool needs a persistent execution context so it can resolve source and target inventories before launching a migration.")}

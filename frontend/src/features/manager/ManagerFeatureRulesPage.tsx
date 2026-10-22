@@ -22,7 +22,7 @@ import {
 } from "../../api/managerBuckets";
 import { S3ExecutionContextSelector } from "../../api/accountParams";
 import { extractApiError } from "../../utils/apiError";
-import { useS3AccountContext } from "./S3AccountContext";
+import { useExecutionContext } from "./ExecutionContextProvider";
 import FeatureRulesTable from "./FeatureRulesTable";
 import { managerPageBreadcrumbs } from "./managerBreadcrumbs";
 import { useManagerI18n } from "./managerI18n";
@@ -62,7 +62,7 @@ function ruleSearchText(row: FeatureRuleInventoryBucket): string {
 
 export default function ManagerFeatureRulesPage() {
   const { text } = useManagerI18n();
-  const { accounts, selectedS3AccountId, requiresS3AccountSelection, accountIdForApi } = useS3AccountContext();
+  const { contexts, selectedContextId, requiresContextSelection, contextIdForApi } = useExecutionContext();
   const [feature, setFeature] = useState<FeatureRuleFeature>("lifecycle");
   const [statusFilterValue, setStatusFilterValue] = useState<StatusFilter>("all");
   const [filter, setFilter] = useState("");
@@ -72,12 +72,12 @@ export default function ManagerFeatureRulesPage() {
   const [selectedRule, setSelectedRule] = useState<SelectedRule | null>(null);
   const ruleJsonRef = useRef<HTMLTextAreaElement>(null);
 
-  const selectedS3Account = useMemo(
-    () => accounts.find((account) => account.id === selectedS3AccountId),
-    [accounts, selectedS3AccountId]
+  const selectedContext = useMemo(
+    () => contexts.find((context) => context.id === selectedContextId),
+    [contexts, selectedContextId]
   );
-  const snsFeatureEnabled = selectedS3Account?.storage_endpoint_capabilities?.sns !== false;
-  const needsS3AccountSelection = requiresS3AccountSelection && !accountIdForApi;
+  const snsFeatureEnabled = selectedContext?.storage_endpoint_capabilities?.sns !== false;
+  const needsContextSelection = requiresContextSelection && !contextIdForApi;
 
   useEffect(() => {
     if (feature === "notifications" && !snsFeatureEnabled) {
@@ -89,11 +89,11 @@ export default function ManagerFeatureRulesPage() {
     let cancelled = false;
     setSelectedRule(null);
     setItems([]);
-    async function load(accountId: S3ExecutionContextSelector) {
+    async function load(contextId: S3ExecutionContextSelector) {
       setLoading(true);
       setError(null);
       try {
-        const result = await listFeatureRuleInventory(accountId, feature);
+        const result = await listFeatureRuleInventory(contextId, feature);
         if (!cancelled) {
           setItems(result);
         }
@@ -109,17 +109,17 @@ export default function ManagerFeatureRulesPage() {
       }
     }
 
-    if (needsS3AccountSelection) {
+    if (needsContextSelection) {
       setItems([]);
       setLoading(false);
       setError(null);
       return;
     }
-    void load(accountIdForApi ?? null);
+    void load(contextIdForApi);
     return () => {
       cancelled = true;
     };
-  }, [accountIdForApi, feature, needsS3AccountSelection, text]);
+  }, [contextIdForApi, feature, needsContextSelection, text]);
 
   const filteredItems = useMemo(() => {
     const needle = filter.trim().toLowerCase();
@@ -154,9 +154,9 @@ export default function ManagerFeatureRulesPage() {
     >
       {error && <PageBanner tone="error">{text(error)}</PageBanner>}
 
-      {needsS3AccountSelection ? (
+      {needsContextSelection ? (
         <PageEmptyState
-          title={text("Select an account before inventorying feature rules")}
+          title={text("Select a context before inventorying feature rules")}
           description={text("The rule inventory uses the selected manager execution context to read bucket configuration.")}
           primaryAction={{ label: text("Open dashboard"), to: "/manager" }}
           tone="warning"

@@ -29,8 +29,8 @@ vi.mock("./useManagerContexts", () => ({
   }),
 }));
 
-vi.mock("./S3AccountContext", () => ({
-  useS3AccountContext: () => ({ managerBrowserEnabled: true }),
+vi.mock("./ExecutionContextProvider", () => ({
+  useExecutionContext: () => ({ managerBrowserEnabled: true }),
 }));
 
 vi.mock("../../components/GeneralSettingsContext", () => ({
@@ -69,7 +69,7 @@ describe("ManagerBucketComparePage", () => {
       filter: "",
       filteredBuckets: [{ name: "alpha" }, { name: "beta" }],
       loading: false,
-      requiresS3AccountSelection: true,
+      requiresContextSelection: true,
       selectedBucketList: ["alpha"],
       selectedBuckets: new Set(["alpha"]),
       selectAllFiltered,

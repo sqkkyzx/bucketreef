@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import BucketDetailPage from "../BucketDetailPage";
 import { setSessionUserCache } from "../../../utils/workspaces";
 
-const useS3AccountContextMock = vi.fn();
+const useExecutionContextMock = vi.fn();
 const useCephAdminEndpointMock = vi.fn();
 const getBucketStatsMock = vi.fn();
 const getBucketVersioningMock = vi.fn();
@@ -124,8 +124,8 @@ vi.mock("../../../api/managerObjects", async () => {
   };
 });
 
-vi.mock("../S3AccountContext", () => ({
-  useS3AccountContext: () => useS3AccountContextMock(),
+vi.mock("../ExecutionContextProvider", () => ({
+  useExecutionContext: () => useExecutionContextMock(),
 }));
 
 vi.mock("../../cephAdmin/CephAdminEndpointContext", () => ({
@@ -134,7 +134,7 @@ vi.mock("../../cephAdmin/CephAdminEndpointContext", () => ({
 
 function managerCephAccountContext(accountId: string) {
   return {
-    accounts: [
+    contexts: [
       {
         id: accountId,
         endpoint_provider: "ceph",
@@ -147,9 +147,9 @@ function managerCephAccountContext(accountId: string) {
         },
       },
     ],
-    selectedS3AccountId: accountId,
-    accountIdForApi: accountId,
-    requiresS3AccountSelection: true,
+    selectedContextId: accountId,
+    contextIdForApi: accountId,
+    requiresContextSelection: true,
     accessMode: "admin",
     managerBucketQuotaEnabled: true,
     managerStatsEnabled: true,
@@ -165,11 +165,11 @@ describe("BucketDetailPage replication state", () => {
     vi.stubGlobal("AbortController", function () { return transferableAbortController(); });
     setSessionUserCache(null);
     window.localStorage.clear();
-    useS3AccountContextMock.mockReturnValue({
-      accounts: [],
-      selectedS3AccountId: null,
-      accountIdForApi: null,
-      requiresS3AccountSelection: false,
+    useExecutionContextMock.mockReturnValue({
+      contexts: [],
+      selectedContextId: null,
+      contextIdForApi: null,
+      requiresContextSelection: false,
       accessMode: "admin",
       managerBucketQuotaEnabled: false,
       managerStatsEnabled: false,
@@ -272,7 +272,7 @@ describe("BucketDetailPage replication state", () => {
 
   function renderNavigableBucket(mode: "manager" | "ceph-admin" = "manager") {
     setSessionUserCache({ role: "ui_admin", authType: "password" });
-    useS3AccountContextMock.mockReturnValue(managerCephAccountContext("acc-1"));
+    useExecutionContextMock.mockReturnValue(managerCephAccountContext("acc-1"));
     const route = `/${mode}/buckets/demo-bucket?${mode === "manager" ? "ctx=acc-1" : "ep=1"}`;
     const router = createMemoryRouter([
       { path: `/${mode}/buckets/:bucketName`, element: <BucketDetailPage mode={mode} /> },
@@ -535,7 +535,7 @@ describe("BucketDetailPage replication state", () => {
   it.each(["manager", "ceph-admin"] as const)("keeps an unchanged configuration save disabled in %s", async (mode) => {
     const user = userEvent.setup();
     setSessionUserCache({ role: "ui_admin" });
-    useS3AccountContextMock.mockReturnValue(managerCephAccountContext("acc-1"));
+    useExecutionContextMock.mockReturnValue(managerCephAccountContext("acc-1"));
     render(
       <MemoryRouter>
         <BucketDetailPage mode={mode} bucketNameOverride="demo-bucket" embedded />
@@ -641,11 +641,11 @@ describe("BucketDetailPage replication state", () => {
   });
 
   it("renders the Manager bucket detail header with a working buckets return action", () => {
-    useS3AccountContextMock.mockReturnValue({
-      accounts: [],
-      selectedS3AccountId: null,
-      accountIdForApi: null,
-      requiresS3AccountSelection: true,
+    useExecutionContextMock.mockReturnValue({
+      contexts: [],
+      selectedContextId: null,
+      contextIdForApi: null,
+      requiresContextSelection: true,
       accessMode: "admin",
       managerBucketQuotaEnabled: false,
     });
@@ -743,7 +743,7 @@ describe("BucketDetailPage replication state", () => {
 
   it("loads the Manager overview contract once and isolates object-tab loading", async () => {
     const user = userEvent.setup();
-    useS3AccountContextMock.mockReturnValue(
+    useExecutionContextMock.mockReturnValue(
       managerCephAccountContext("acc-ceph"),
     );
 
@@ -786,7 +786,7 @@ describe("BucketDetailPage replication state", () => {
     const user = userEvent.setup();
     let accountId = "acc-old";
     const accountContext = () => managerCephAccountContext(accountId);
-    useS3AccountContextMock.mockImplementation(accountContext);
+    useExecutionContextMock.mockImplementation(accountContext);
 
     let resolveOldLogging!: (value: {
       enabled: boolean;
@@ -862,11 +862,11 @@ describe("BucketDetailPage replication state", () => {
   });
 
   it("hides Manager quota configuration without bucket quota access", async () => {
-    useS3AccountContextMock.mockReturnValue({
-      accounts: [{ id: "ceph-account", name: "Ceph account", endpoint_provider: "ceph" }],
-      selectedS3AccountId: "ceph-account",
-      accountIdForApi: "ceph-account",
-      requiresS3AccountSelection: true,
+    useExecutionContextMock.mockReturnValue({
+      contexts: [{ id: "ceph-account", name: "Ceph account", endpoint_provider: "ceph" }],
+      selectedContextId: "ceph-account",
+      contextIdForApi: "ceph-account",
+      requiresContextSelection: true,
       accessMode: "admin",
       managerBucketQuotaEnabled: false,
     });
@@ -904,11 +904,11 @@ describe("BucketDetailPage replication state", () => {
         s3_connection_details: [],
       },
     });
-    useS3AccountContextMock.mockReturnValue({
-      accounts: [{ id: "ceph-account", name: "Ceph account", endpoint_provider: "ceph" }],
-      selectedS3AccountId: "ceph-account",
-      accountIdForApi: "ceph-account",
-      requiresS3AccountSelection: true,
+    useExecutionContextMock.mockReturnValue({
+      contexts: [{ id: "ceph-account", name: "Ceph account", endpoint_provider: "ceph" }],
+      selectedContextId: "ceph-account",
+      contextIdForApi: "ceph-account",
+      requiresContextSelection: true,
       accessMode: "admin",
       managerBucketQuotaEnabled: true,
     });
@@ -951,7 +951,7 @@ describe("BucketDetailPage replication state", () => {
       <MemoryRouter>
         <BucketDetailPage
           bucketNameOverride="demo-bucket"
-          accountIdOverride="conn-aws"
+          contextIdOverride="conn-aws"
           hideQuotaTab
           embedded
           hideObjectsTab
@@ -1613,8 +1613,8 @@ describe("BucketDetailPage replication state", () => {
 
   it("keeps bucket Metrics available for non-Ceph manager endpoints", async () => {
     const user = userEvent.setup();
-    useS3AccountContextMock.mockReturnValue({
-      accounts: [
+    useExecutionContextMock.mockReturnValue({
+      contexts: [
         {
           kind: "connection",
           id: "conn-aws",
@@ -1626,9 +1626,9 @@ describe("BucketDetailPage replication state", () => {
           capabilities: { can_manage_iam: false, sts_capable: false, admin_api_capable: false },
         },
       ],
-      selectedS3AccountId: "conn-aws",
-      accountIdForApi: "conn-aws",
-      requiresS3AccountSelection: true,
+      selectedContextId: "conn-aws",
+      contextIdForApi: "conn-aws",
+      requiresContextSelection: true,
       accessMode: "connection",
       managerBucketQuotaEnabled: false,
       managerStatsEnabled: false,

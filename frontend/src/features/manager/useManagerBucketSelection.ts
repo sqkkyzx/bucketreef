@@ -8,11 +8,11 @@ import { listBuckets } from "../../api/managerBuckets";
 import type { Bucket } from "../../api/bucketContracts";
 import { resolveListTableStatus } from "../../components/list/listTableStatus";
 import { extractApiError } from "../../utils/apiError";
-import { useS3AccountContext } from "./S3AccountContext";
+import { useExecutionContext } from "./ExecutionContextProvider";
 
 export function useManagerBucketSelection() {
-  const { accounts, selectedS3AccountId, requiresS3AccountSelection } = useS3AccountContext();
-  const sourceContextId = selectedS3AccountId ?? "";
+  const { contexts, selectedContextId, requiresContextSelection } = useExecutionContext();
+  const sourceContextId = selectedContextId ?? "";
   const [buckets, setBuckets] = useState<Bucket[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -20,8 +20,8 @@ export function useManagerBucketSelection() {
   const [selectedBuckets, setSelectedBuckets] = useState<Set<string>>(new Set());
 
   const sourceContext = useMemo(
-    () => accounts.find((context) => context.id === sourceContextId) ?? null,
-    [accounts, sourceContextId]
+    () => contexts.find((context) => context.id === sourceContextId) ?? null,
+    [contexts, sourceContextId]
   );
 
   useEffect(() => {
@@ -113,7 +113,7 @@ export function useManagerBucketSelection() {
     filter,
     filteredBuckets,
     loading,
-    requiresS3AccountSelection,
+    requiresContextSelection,
     selectedBucketList,
     selectedBuckets,
     selectedTargets,

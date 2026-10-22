@@ -77,7 +77,7 @@ import { formatAccountLabel } from "../shared/storageEndpointLabel";
 import { BucketUsageStatsDataTypesCard } from "../shared/BucketUsageStatsVisuals";
 import { useIamOverview } from "./useIamOverview";
 import { useManagerStats } from "./useManagerStats";
-import { useS3AccountContext } from "./S3AccountContext";
+import { useExecutionContext } from "./ExecutionContextProvider";
 import { managerPageBreadcrumbs } from "./managerBreadcrumbs";
 import { managerActivityPresentation, managerActivityTarget } from "./managerActivityPresentation";
 import { useManagerI18n } from "./managerI18n";
@@ -636,18 +636,18 @@ export default function ManagerDashboard() {
   const { text, intlLocale } = useManagerI18n();
   const { generalSettings } = useGeneralSettings();
   const {
-    accounts,
-    selectedS3AccountId,
-    sessionS3AccountName,
-    selectedS3AccountType,
-    hasS3AccountContext,
-    requiresS3AccountSelection,
-    accountIdForApi,
+    contexts,
+    selectedContextId,
+    sessionAccountName,
+    selectedContextKind,
+    hasExecutionContext,
+    requiresContextSelection,
+    contextIdForApi,
     accessMode,
     managerStatsEnabled,
     managerStatsMessage,
     managerFeatureStates,
-  } = useS3AccountContext();
+  } = useExecutionContext();
   const [refreshNonce, setRefreshNonce] = useState(0);
   const [lastUpdated, setLastUpdated] = useState<Date>(() => new Date());
   const [workspaceHealth, setWorkspaceHealth] = useState<WorkspaceEndpointHealthOverviewResponse | null>(null);
@@ -670,30 +670,30 @@ export default function ManagerDashboard() {
   const [managerLimits, setManagerLimits] = useState<ManagerContext | null>(null);
 
   const selected = useMemo(
-    () => accounts.find((account) => account.id === selectedS3AccountId),
-    [accounts, selectedS3AccountId]
+    () => contexts.find((context) => context.id === selectedContextId),
+    [contexts, selectedContextId]
   );
-  const hasContext = hasS3AccountContext;
+  const hasContext = hasExecutionContext;
   const endpointCaps = selected?.storage_endpoint_capabilities ?? null;
   const iamFeatureEnabled = endpointCaps ? endpointCaps.iam !== false : true;
   const contextCanManageIam = selected?.capabilities?.can_manage_iam !== false;
   const usageFeatureEnabled = Boolean(managerStatsEnabled) && (endpointCaps ? endpointCaps.metrics !== false : true);
   const trafficFeatureEnabled = Boolean(managerStatsEnabled) && (endpointCaps ? endpointCaps.usage !== false : true);
-  const isS3User = selectedS3AccountType === "s3_user";
+  const isS3User = selectedContextKind === "s3_user";
   const activityHistoryEnabled = hasContext && managerFeatureStates?.activity_history?.enabled === true;
   const canManageIam = !isS3User && contextCanManageIam && iamFeatureEnabled;
   const canLoadUsageStatsDataTypes =
     hasContext &&
-    Boolean(requiresS3AccountSelection) &&
+    Boolean(requiresContextSelection) &&
     managerFeatureStates?.bucket_usage_stats?.enabled === true;
   const refreshKey = `${accessMode ?? "default"}:${refreshNonce}`;
   const { stats, loading, error } = useManagerStats(
-    accountIdForApi,
+    contextIdForApi,
     usageFeatureEnabled && hasContext,
     refreshKey
   );
   const { overview: iamOverview, loading: iamLoading, error: iamError } = useIamOverview(
-    accountIdForApi,
+    contextIdForApi,
     canManageIam,
     hasContext,
     refreshKey
@@ -706,7 +706,7 @@ export default function ManagerDashboard() {
     }
     let cancelled = false;
     setManagerLimits(null);
-    fetchManagerContext(accountIdForApi, { includeLimits: true })
+    fetchManagerContext(contextIdForApi, { includeLimits: true })
       .then((context) => {
         if (!cancelled) setManagerLimits(context);
       })
@@ -716,7 +716,7 @@ export default function ManagerDashboard() {
     return () => {
       cancelled = true;
     };
-  }, [accountIdForApi, hasContext, refreshNonce]);
+  }, [contextIdForApi, hasContext, refreshNonce]);
 
   useEffect(() => {
     if (!hasContext) {
@@ -734,7 +734,7 @@ export default function ManagerDashboard() {
     let cancelled = false;
     setWorkspaceHealthLoading(true);
     setWorkspaceHealthError(null);
-    fetchManagerWorkspaceHealthOverview(accountIdForApi)
+    fetchManagerWorkspaceHealthOverview(contextIdForApi)
       .then((data) => {
         if (cancelled) return;
         setWorkspaceHealth(data);
@@ -742,7 +742,7 @@ export default function ManagerDashboard() {
       .catch((err) => {
         if (cancelled) return;
         setWorkspaceHealth(null);
-        setWorkspaceHealthError(extractApiError(err, text("Unable to load endpoint health for this account.")));
+        setWorkspaceHealthError(extractApiError(err, text("Unable to load endpoint health for this context.")));
       })
       .finally(() => {
         if (!cancelled) setWorkspaceHealthLoading(false);
@@ -750,7 +750,7 @@ export default function ManagerDashboard() {
     return () => {
       cancelled = true;
     };
-  }, [accountIdForApi, generalSettings.endpoint_status_enabled, hasContext, refreshNonce, text]);
+  }, [contextIdForApi, generalSettings.endpoint_status_enabled, hasContext, refreshNonce, text]);
 
   useEffect(() => {
     if (!hasContext) {
@@ -762,7 +762,7 @@ export default function ManagerDashboard() {
     let cancelled = false;
     setBucketCountLoading(true);
     setBucketCountError(null);
-    listBuckets(accountIdForApi, { with_stats: false })
+    listBuckets(contextIdForApi, { with_stats: false })
       .then((items) => {
         if (cancelled) return;
         setBuckets(items);
@@ -778,7 +778,7 @@ export default function ManagerDashboard() {
     return () => {
       cancelled = true;
     };
-  }, [accountIdForApi, hasContext, refreshNonce, text]);
+  }, [contextIdForApi, hasContext, refreshNonce, text]);
 
   useEffect(() => {
     if (!hasContext || !activityHistoryEnabled) {
@@ -790,7 +790,7 @@ export default function ManagerDashboard() {
     let cancelled = false;
     setActivityLoading(true);
     setActivityError(null);
-    listManagerActivity(accountIdForApi, { limit: 5 })
+    listManagerActivity(contextIdForApi, { limit: 5 })
       .then((items) => {
         if (cancelled) return;
         setActivityLogs(items);
@@ -806,7 +806,7 @@ export default function ManagerDashboard() {
     return () => {
       cancelled = true;
     };
-  }, [accountIdForApi, activityHistoryEnabled, hasContext, refreshNonce, text]);
+  }, [contextIdForApi, activityHistoryEnabled, hasContext, refreshNonce, text]);
 
   useEffect(() => {
     if (!hasContext || !trafficFeatureEnabled) {
@@ -821,7 +821,7 @@ export default function ManagerDashboard() {
     setTrafficError(null);
     Promise.allSettled(
       TRAFFIC_TREND_WINDOWS.map((option) =>
-        fetchManagerTraffic(accountIdForApi, option.window).then((data) => [option.window, data] as const)
+        fetchManagerTraffic(contextIdForApi, option.window).then((data) => [option.window, data] as const)
       )
     )
       .then((results) => {
@@ -850,7 +850,7 @@ export default function ManagerDashboard() {
     return () => {
       cancelled = true;
     };
-  }, [accountIdForApi, hasContext, refreshNonce, text, trafficFeatureEnabled]);
+  }, [contextIdForApi, hasContext, refreshNonce, text, trafficFeatureEnabled]);
 
   useEffect(() => {
     if (!hasContext || !usageFeatureEnabled) {
@@ -860,7 +860,7 @@ export default function ManagerDashboard() {
     }
     let cancelled = false;
     setUsageTrendsLoading(true);
-    fetchManagerUsageTrends(accountIdForApi)
+    fetchManagerUsageTrends(contextIdForApi)
       .then((data) => {
         if (!cancelled) setUsageTrends(data);
       })
@@ -873,7 +873,7 @@ export default function ManagerDashboard() {
     return () => {
       cancelled = true;
     };
-  }, [accountIdForApi, hasContext, refreshNonce, usageFeatureEnabled]);
+  }, [contextIdForApi, hasContext, refreshNonce, usageFeatureEnabled]);
 
   useEffect(() => {
     if (!canLoadUsageStatsDataTypes) {
@@ -883,7 +883,7 @@ export default function ManagerDashboard() {
     }
     let cancelled = false;
     setUsageStatsLoading(true);
-    getManagerUsageStatsAggregate(accountIdForApi)
+    getManagerUsageStatsAggregate(contextIdForApi)
       .then((data) => {
         if (!cancelled) setUsageStatsAggregate(data.aggregate);
       })
@@ -898,12 +898,12 @@ export default function ManagerDashboard() {
     return () => {
       cancelled = true;
     };
-  }, [accountIdForApi, canLoadUsageStatsDataTypes, refreshNonce]);
+  }, [contextIdForApi, canLoadUsageStatsDataTypes, refreshNonce]);
 
-  const accountLabel = selected
+  const contextLabel = selected
     ? formatAccountLabel(selected)
-    : sessionS3AccountName ?? "S3 session";
-  const noContextReason = !hasContext ? text("Select an account to display live values.") : null;
+    : sessionAccountName ?? "S3 session";
+  const noContextReason = !hasContext ? text("Select a context to display live values.") : null;
   const metricsUnavailableReason =
     noContextReason ||
     (managerStatsEnabled === null
@@ -1031,7 +1031,7 @@ export default function ManagerDashboard() {
     <div className="ui-dashboard-compact" data-testid="manager-dashboard">
       <PageHeader
         title={text("Manager dashboard")}
-        description={text("Overview of {account} storage account and resources.", { account: accountLabel })}
+        description={text("Overview of storage resources for {context}.", { context: contextLabel })}
         breadcrumbs={managerPageBreadcrumbs(text, "dashboard")}
         rightContent={
           <div className="flex items-center gap-3">

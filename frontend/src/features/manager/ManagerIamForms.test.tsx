@@ -17,9 +17,9 @@ const api = vi.hoisted(() => ({
   attachGroup: vi.fn(), attachRole: vi.fn(), getRole: vi.fn(), updateRole: vi.fn(),
   putRoleTags: vi.fn(), deleteRoleTag: vi.fn(),
 }));
-vi.mock("./S3AccountContext", () => ({
-  useS3AccountContext: () => ({ selectedS3AccountId: "acc-7", selectedS3AccountType: "account",
-    namingValidationProfile: api.namingProfile, accountIdForApi: "acc-7", requiresS3AccountSelection: true, accessMode: "default" }),
+vi.mock("./ExecutionContextProvider", () => ({
+  useExecutionContext: () => ({ selectedContextId: "acc-7", selectedContextKind: "account",
+    namingValidationProfile: api.namingProfile, contextIdForApi: "acc-7", requiresContextSelection: true, accessMode: "default" }),
 }));
 vi.mock("../../api/managerIamUsers", async (original) => ({
   ...await original<typeof import("../../api/managerIamUsers")>(),
@@ -166,7 +166,7 @@ describe("IAM role configuration", () => {
   const open = async () => {
     render(
       <MemoryRouter>
-        <ManagerRoleEditor accountId="acc-7" roleName={role.name} onClose={() => undefined} onSaved={() => undefined} />
+        <ManagerRoleEditor contextId="acc-7" roleName={role.name} onClose={() => undefined} onSaved={() => undefined} />
       </MemoryRouter>,
     );
     return screen.findByRole("form", { name: "Edit IAM role" });
@@ -251,7 +251,7 @@ describe("IAM role configuration", () => {
     api.getRole.mockRejectedValueOnce(new Error("Role details unavailable"));
     render(
       <MemoryRouter>
-        <ManagerRoleEditor accountId="acc-7" roleName={role.name} onClose={() => undefined} onSaved={() => undefined} />
+        <ManagerRoleEditor contextId="acc-7" roleName={role.name} onClose={() => undefined} onSaved={() => undefined} />
       </MemoryRouter>,
     );
     await screen.findByText("Role details unavailable");
@@ -271,14 +271,14 @@ it("ignores a late role read after remounting its editor", async () => {
   api.getRole.mockReturnValueOnce(new Promise(resolve => { resolveOld = resolve; }));
   const view = render(
     <MemoryRouter>
-      <ManagerRoleEditor accountId="acc-7" roleName={role.name} onClose={() => undefined} onSaved={() => undefined} />
+      <ManagerRoleEditor contextId="acc-7" roleName={role.name} onClose={() => undefined} onSaved={() => undefined} />
     </MemoryRouter>,
   );
   expect(screen.getByRole("textbox", { name: "Assume role policy (JSON)" })).toBeDisabled();
   view.rerender(<MemoryRouter><div /></MemoryRouter>);
   view.rerender(
     <MemoryRouter>
-      <ManagerRoleEditor accountId="acc-7" roleName={role.name} onClose={() => undefined} onSaved={() => undefined} />
+      <ManagerRoleEditor contextId="acc-7" roleName={role.name} onClose={() => undefined} onSaved={() => undefined} />
     </MemoryRouter>,
   );
   const policy = screen.getByRole("textbox", { name: "Assume role policy (JSON)" });

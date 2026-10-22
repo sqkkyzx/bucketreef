@@ -29,7 +29,7 @@ import { currentUtcMonthInputValue } from "../../utils/dateInputValues";
 import { formatBytes, formatCompactNumber, formatPercentage } from "../../utils/format";
 import BucketUsageStatsAggregateCard from "../shared/BucketUsageStatsAggregateCard";
 import TrafficAnalytics from "./TrafficAnalytics";
-import { useS3AccountContext } from "./S3AccountContext";
+import { useExecutionContext } from "./ExecutionContextProvider";
 import { managerPageBreadcrumbs } from "./managerBreadcrumbs";
 import { useManagerStats } from "./useManagerStats";
 import { useManagerI18n } from "./managerI18n";
@@ -54,28 +54,28 @@ export default function ManagerMetricsPage() {
   const [costLoading, setCostLoading] = useState(false);
   const [costError, setCostError] = useState<string | null>(null);
   const {
-    accounts,
-    selectedS3AccountId,
-    hasS3AccountContext,
-    requiresS3AccountSelection,
-    accountIdForApi,
+    contexts,
+    selectedContextId,
+    hasExecutionContext,
+    requiresContextSelection,
+    contextIdForApi,
     accessMode,
     managerStatsEnabled,
     managerStatsMessage,
     managerFeatureStates,
-  } = useS3AccountContext();
+  } = useExecutionContext();
 
   const selected = useMemo(
-    () => accounts.find((a) => a.id === selectedS3AccountId),
-    [accounts, selectedS3AccountId]
+    () => contexts.find((a) => a.id === selectedContextId),
+    [contexts, selectedContextId]
   );
-  const hasContext = hasS3AccountContext;
+  const hasContext = hasExecutionContext;
   const endpointCaps = selected?.storage_endpoint_capabilities ?? null;
   const usageFeatureEnabled = Boolean(managerStatsEnabled) && (endpointCaps ? endpointCaps.metrics !== false : true);
   const metricsFeatureEnabled = Boolean(managerStatsEnabled) && (endpointCaps ? endpointCaps.usage !== false : true);
   const canLoadUsageStatsAggregate =
     hasContext &&
-    Boolean(requiresS3AccountSelection) &&
+    Boolean(requiresContextSelection) &&
     managerFeatureStates?.bucket_usage_stats?.enabled === true;
   const canShowCostEstimation =
     Boolean(generalSettings.cost_enabled) &&
@@ -92,7 +92,7 @@ export default function ManagerMetricsPage() {
       : null;
 
   const { stats, loading, error } = useManagerStats(
-    accountIdForApi,
+    contextIdForApi,
     canShowUsageBreakdowns,
     accessMode ?? "default"
   );
@@ -129,7 +129,7 @@ export default function ManagerMetricsPage() {
     let cancelled = false;
     setCostLoading(true);
     setCostError(null);
-    getManagerCostMe(month, accountIdForApi)
+    getManagerCostMe(month, contextIdForApi)
       .then((data) => {
         if (!cancelled) setCostDetail(data);
       })
@@ -145,7 +145,7 @@ export default function ManagerMetricsPage() {
     return () => {
       cancelled = true;
     };
-  }, [accountIdForApi, canShowCostEstimation, month, text]);
+  }, [contextIdForApi, canShowCostEstimation, month, text]);
 
   const loadUsageStatsAggregate = useCallback(async () => {
     if (!canLoadUsageStatsAggregate) {
@@ -157,7 +157,7 @@ export default function ManagerMetricsPage() {
     setUsageStatsLoading(true);
     setUsageStatsError(null);
     try {
-      const data = await getManagerUsageStatsAggregate(accountIdForApi);
+      const data = await getManagerUsageStatsAggregate(contextIdForApi);
       setUsageStatsAggregate(data.aggregate);
     } catch (err) {
       setUsageStatsAggregate(null);
@@ -165,7 +165,7 @@ export default function ManagerMetricsPage() {
     } finally {
       setUsageStatsLoading(false);
     }
-  }, [accountIdForApi, canLoadUsageStatsAggregate, text]);
+  }, [contextIdForApi, canLoadUsageStatsAggregate, text]);
 
   useEffect(() => {
     void loadUsageStatsAggregate();
@@ -179,7 +179,7 @@ export default function ManagerMetricsPage() {
     setUsageStatsError(null);
     try {
       await streamManagerUsageStatsAggregate(
-        accountIdForApi,
+        contextIdForApi,
         { parallelism: 8 },
         { signal: controller.signal },
       );
@@ -194,7 +194,7 @@ export default function ManagerMetricsPage() {
         setUsageStatsRecalculating(false);
       }
     }
-  }, [accountIdForApi, canLoadUsageStatsAggregate, loadUsageStatsAggregate, text, usageStatsRecalculating]);
+  }, [contextIdForApi, canLoadUsageStatsAggregate, loadUsageStatsAggregate, text, usageStatsRecalculating]);
 
   const handleCancelUsageStats = useCallback(() => {
     usageStatsAbortRef.current?.abort();
@@ -204,7 +204,7 @@ export default function ManagerMetricsPage() {
     return () => {
       usageStatsAbortRef.current?.abort();
     };
-  }, [accountIdForApi, canLoadUsageStatsAggregate]);
+  }, [contextIdForApi, canLoadUsageStatsAggregate]);
 
   useEffect(() => {
     if (!showUsageHistoryTrends) {
@@ -216,7 +216,7 @@ export default function ManagerMetricsPage() {
     let cancelled = false;
     setUsageHistoryLoading(true);
     setUsageHistoryError(null);
-    fetchManagerUsageHistoryTrends(accountIdForApi, usageHistoryWindow)
+    fetchManagerUsageHistoryTrends(contextIdForApi, usageHistoryWindow)
       .then((data) => {
         if (!cancelled) setUsageHistoryTrends(data);
       })
@@ -232,17 +232,17 @@ export default function ManagerMetricsPage() {
     return () => {
       cancelled = true;
     };
-  }, [accountIdForApi, showUsageHistoryTrends, text, usageHistoryWindow]);
+  }, [contextIdForApi, showUsageHistoryTrends, text, usageHistoryWindow]);
 
   const usageStatsAggregateSection = canLoadUsageStatsAggregate ? (
     <BucketUsageStatsAggregateCard
-      title={text("Account usage composition")}
-      description={text("Latest calculated bucket snapshots for the active account context.")}
+      title={text("Usage composition")}
+      description={text("Latest calculated bucket snapshots for the active execution context.")}
       aggregate={usageStatsAggregate}
       loading={usageStatsLoading}
       error={usageStatsError}
       recalculating={usageStatsRecalculating}
-      recalculateLabel={text("Recalculate account")}
+      recalculateLabel={text("Recalculate usage composition")}
       text={text}
       onCancel={handleCancelUsageStats}
       onRecalculate={handleRecalculateUsageStats}
@@ -274,8 +274,8 @@ export default function ManagerMetricsPage() {
     >
       {!hasContext ? (
         <PageEmptyState
-          title={text("Select an account to view usage and metrics")}
-          description={text("Usage composition and Manager metrics depend on an execution context. Choose an account to load bucket usage, storage, and traffic analytics.")}
+          title={text("Select a context to view usage and metrics")}
+          description={text("Usage composition and Manager metrics depend on an execution context. Choose a context to load bucket usage, storage, and traffic analytics.")}
           primaryAction={{ label: text("Open dashboard"), to: "/manager" }}
           tone="warning"
         />
@@ -418,7 +418,7 @@ export default function ManagerMetricsPage() {
           ) : null}
           {showTrafficAnalytics && (
             <TrafficAnalytics
-              accountId={accountIdForApi}
+              contextId={contextIdForApi}
               enabled={showTrafficAnalytics}
               visible={activeTab === "traffic"}
             />

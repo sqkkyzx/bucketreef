@@ -6,7 +6,7 @@ import { iamNameFormatError } from "../../utils/resourceNames";
 import { ListActions, ListBadge, ListActionLink, ListActionButton } from "../../components/list/ListControls";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
-import { useS3AccountContext } from "./S3AccountContext";
+import { useExecutionContext } from "./ExecutionContextProvider";
 import { managerPageBreadcrumbs } from "./managerBreadcrumbs";
 import { S3ExecutionContextSelector } from "../../api/accountParams";
 import { IAMGroup, attachGroupPolicy, createIamGroup, deleteIamGroup, listIamGroups } from "../../api/managerIamGroups";
@@ -37,9 +37,9 @@ import { useManagerI18n } from "./managerI18n";
 export default function ManagerGroupsPage() {
   const { text } = useManagerI18n();
   const deleteConfirmation = useConfirmActionDialog();
-  const { selectedS3AccountType, accountIdForApi, requiresS3AccountSelection, accessMode, namingValidationProfile } = useS3AccountContext();
-  const needsS3AccountSelection = requiresS3AccountSelection && !accountIdForApi;
-  const isS3User = selectedS3AccountType === "s3_user";
+  const { selectedContextKind, contextIdForApi, requiresContextSelection, accessMode, namingValidationProfile } = useExecutionContext();
+  const needsContextSelection = requiresContextSelection && !contextIdForApi;
+  const isS3User = selectedContextKind === "s3_user";
   const [groupFilter, setGroupFilter] = useState("");
   const {
     error,
@@ -90,22 +90,22 @@ export default function ManagerGroupsPage() {
   );
 
   const loadPolicies = useCallback(
-    (accountId: S3ExecutionContextSelector) =>
-      loadRelated(accountId, listIamPolicies, setPolicies),
+    (contextId: S3ExecutionContextSelector) =>
+      loadRelated(contextId, listIamPolicies, setPolicies),
     [loadRelated],
   );
 
   useEffect(() => {
-    if (needsS3AccountSelection) {
+    if (needsContextSelection) {
       setGroups([]);
       setPolicies([]);
       setLoading(false);
       return;
     }
-    load(accountIdForApi);
-    loadPolicies(accountIdForApi);
+    load(contextIdForApi);
+    loadPolicies(contextIdForApi);
     resetInlinePolicyDraftEditor();
-  }, [accountIdForApi, needsS3AccountSelection, accessMode, load, loadPolicies, resetInlinePolicyDraftEditor, setGroups, setLoading]);
+  }, [contextIdForApi, needsContextSelection, accessMode, load, loadPolicies, resetInlinePolicyDraftEditor, setGroups, setLoading]);
 
   useEffect(() => {
     if (selectedPolicies.length > 0) {
@@ -129,7 +129,7 @@ export default function ManagerGroupsPage() {
 
   const handleAdvancedCreate = async (e: FormEvent) => {
     e.preventDefault();
-    if (needsS3AccountSelection || busy !== null) return;
+    if (needsContextSelection || busy !== null) return;
     setAdvancedValidationAttempted(true);
     if (!advancedName.trim() || nameFormatError || !validateInlineDrafts()) {
       focusFirstInvalidField(e.currentTarget as HTMLFormElement);
@@ -140,12 +140,12 @@ export default function ManagerGroupsPage() {
     setActionMessage(null);
     try {
       const groupName = advancedName.trim();
-      await createIamGroup(accountIdForApi, groupName, inlineDrafts);
+      await createIamGroup(contextIdForApi, groupName, inlineDrafts);
       if (selectedPolicies.length > 0) {
         for (const arn of selectedPolicies) {
           const policy = policies.find((p) => p.arn === arn);
           if (policy) {
-            await attachGroupPolicy(accountIdForApi, groupName, policy);
+            await attachGroupPolicy(contextIdForApi, groupName, policy);
           }
         }
       }
@@ -156,7 +156,7 @@ export default function ManagerGroupsPage() {
       resetInlinePolicyDraftEditor();
       setShowCreateForm(false);
       setActionMessage(text("Group created"));
-      await load(accountIdForApi);
+      await load(contextIdForApi);
     } catch (err) {
       setError(extractApiError(err, "Unexpected error"));
     } finally {
@@ -165,14 +165,14 @@ export default function ManagerGroupsPage() {
   };
 
   const deleteGroup = async (name: string) => {
-    if (needsS3AccountSelection) return;
+    if (needsContextSelection) return;
     setBusy(name);
     setError(null);
     setActionMessage(null);
     try {
-      await deleteIamGroup(accountIdForApi, name);
+      await deleteIamGroup(contextIdForApi, name);
       setActionMessage(text("Group deleted"));
-      await load(accountIdForApi);
+      await load(contextIdForApi);
     } catch (err) {
       setError(extractApiError(err, "Unexpected error"));
     } finally {
@@ -181,10 +181,10 @@ export default function ManagerGroupsPage() {
   };
 
   const handleDelete = (name: string) => {
-    if (needsS3AccountSelection) return;
+    if (needsContextSelection) return;
     deleteConfirmation.requestConfirmation({
       title: text("Delete IAM group?"),
-      description: text("Permanently remove this IAM group from the selected account."),
+      description: text("Permanently remove this IAM group from the selected context."),
       confirmLabel: text("Delete group"),
       details: [{ label: text("IAM group"), value: name }],
       impacts: ["Members will lose permissions inherited only through this group."],
@@ -289,7 +289,7 @@ export default function ManagerGroupsPage() {
         description={text("Manage groups using the account root keys.")}
         breadcrumbs={managerPageBreadcrumbs(text, "groups")}
         actions={
-          !needsS3AccountSelection && !isS3User
+          !needsContextSelection && !isS3User
             ? [
                 {
                   label: text("Create group"),
@@ -303,10 +303,10 @@ export default function ManagerGroupsPage() {
       {!showCreateForm && error && <PageBanner tone="error">{text(error)}</PageBanner>}
       {actionMessage && <PageBanner tone="success">{actionMessage}</PageBanner>}
 
-      {needsS3AccountSelection ? (
+      {needsContextSelection ? (
         <PageEmptyState
-          title={text("Select an account before managing IAM groups")}
-          description={text("Groups are scoped to an execution context. Choose an account to list membership containers and attach shared policies.")}
+          title={text("Select a context before managing IAM groups")}
+          description={text("Groups are scoped to an execution context. Choose a context to list membership containers and attach shared policies.")}
           primaryAction={{ label: text("Open dashboard"), to: "/manager" }}
           tone="warning"
         />
@@ -353,7 +353,7 @@ export default function ManagerGroupsPage() {
           contentVariant="plain"
           dirty={advancedCurrentSignature !== advancedInitialSignature}
           error={error} onSubmit={handleAdvancedCreate}
-          busy={busy !== null} disabled={needsS3AccountSelection || namingValidationProfile === null}
+          busy={busy !== null} disabled={needsContextSelection || namingValidationProfile === null}
           submitLabel={text("Create group")} busyLabel={text("Creating...")}
         >
           <SettingsSection title={text("Identity")} presentation="compact">

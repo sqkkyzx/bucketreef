@@ -11,11 +11,11 @@ const api = vi.hoisted(() => ({
   removeUser: vi.fn(),
 }));
 
-vi.mock("./S3AccountContext", () => ({
-  useS3AccountContext: () => ({
-    selectedS3AccountType: "account",
-    accountIdForApi: "acc-1",
-    requiresS3AccountSelection: false,
+vi.mock("./ExecutionContextProvider", () => ({
+  useExecutionContext: () => ({
+    selectedContextKind: "account",
+    contextIdForApi: "acc-1",
+    requiresContextSelection: false,
     accessMode: "default",
   }),
 }));

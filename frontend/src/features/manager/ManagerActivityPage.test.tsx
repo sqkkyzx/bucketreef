@@ -6,22 +6,22 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import ManagerActivityPage from "./ManagerActivityPage";
 
 const listManagerActivityMock = vi.fn();
-const useS3AccountContextMock = vi.fn();
+const useExecutionContextMock = vi.fn();
 
 vi.mock("../../api/managerActivity", () => ({
   listManagerActivity: (...args: unknown[]) => listManagerActivityMock(...args),
 }));
 
-vi.mock("./S3AccountContext", () => ({
-  useS3AccountContext: () => useS3AccountContextMock(),
+vi.mock("./ExecutionContextProvider", () => ({
+  useExecutionContext: () => useExecutionContextMock(),
 }));
 
 function accountContext(overrides?: Record<string, unknown>) {
   return {
-    accountIdForApi: "account-1",
+    contextIdForApi: "account-1",
     contextsLoaded: true,
-    hasS3AccountContext: true,
-    selectedS3AccountType: "tenant",
+    hasExecutionContext: true,
+    selectedContextKind: "account",
     managerFeatureStates: {
       activity_history: { enabled: true, source: "platform" },
     },
@@ -47,7 +47,7 @@ function activity(id: number, overrides?: Record<string, unknown>) {
 describe("ManagerActivityPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    useS3AccountContextMock.mockReturnValue(accountContext());
+    useExecutionContextMock.mockReturnValue(accountContext());
     listManagerActivityMock.mockResolvedValue([]);
   });
 
@@ -112,9 +112,9 @@ describe("ManagerActivityPage", () => {
   });
 
   it("loads activity for an enabled RGW User context", async () => {
-    useS3AccountContextMock.mockReturnValue(accountContext({
-      accountIdForApi: "s3u-8",
-      selectedS3AccountType: "s3_user",
+    useExecutionContextMock.mockReturnValue(accountContext({
+      contextIdForApi: "s3u-8",
+      selectedContextKind: "s3_user",
     }));
     listManagerActivityMock.mockResolvedValue([activity(8, {
       context_kind: "s3_user",
@@ -134,8 +134,8 @@ describe("ManagerActivityPage", () => {
   });
 
   it("redirects disabled contexts to the Manager dashboard", async () => {
-    useS3AccountContextMock.mockReturnValue(accountContext({
-      selectedS3AccountType: "s3_user",
+    useExecutionContextMock.mockReturnValue(accountContext({
+      selectedContextKind: "s3_user",
       managerFeatureStates: { activity_history: { enabled: false, source: "resource" } },
     }));
     render(
@@ -151,10 +151,10 @@ describe("ManagerActivityPage", () => {
   });
 
   it("waits for the execution-context catalogue before deciding that no context is available", async () => {
-    useS3AccountContextMock.mockReturnValue(accountContext({
-      accountIdForApi: null,
+    useExecutionContextMock.mockReturnValue(accountContext({
+      contextIdForApi: null,
       contextsLoaded: false,
-      hasS3AccountContext: false,
+      hasExecutionContext: false,
       managerFeatureStates: null,
     }));
     const view = render(
@@ -169,7 +169,7 @@ describe("ManagerActivityPage", () => {
     expect(await screen.findByText("Loading activity history...")).toBeInTheDocument();
     expect(screen.queryByText("Manager dashboard destination")).not.toBeInTheDocument();
 
-    useS3AccountContextMock.mockReturnValue(accountContext());
+    useExecutionContextMock.mockReturnValue(accountContext());
     view.rerender(
       <MemoryRouter initialEntries={["/manager/activity"]}>
         <Routes>

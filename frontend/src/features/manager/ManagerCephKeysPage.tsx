@@ -28,7 +28,7 @@ import { cx } from "../../components/ui/styles";
 import { extractApiError } from "../../utils/apiError";
 import { formatLocalDateTime } from "../../utils/dateTime";
 import { useConfirmActionDialog } from "../../components/useConfirmActionDialog";
-import { useS3AccountContext } from "./S3AccountContext";
+import { useExecutionContext } from "./ExecutionContextProvider";
 import { managerPageBreadcrumbs } from "./managerBreadcrumbs";
 import CreateManagedPrivateAccessModal from "./CreateManagedPrivateAccessModal";
 import AccessKeyMetadataDialog from "./AccessKeyMetadataDialog";
@@ -42,16 +42,16 @@ function parseError(err: unknown): string {
 export default function ManagerCephKeysPage() {
   const { text } = useManagerI18n();
   const {
-    hasS3AccountContext,
-    accountIdForApi,
-    selectedS3AccountName,
-    selectedS3AccountType,
+    hasExecutionContext,
+    contextIdForApi,
+    selectedContextName,
+    selectedContextKind,
     managerCephKeysEnabled,
     managerAccessKeyMetadataEnabled,
     managerAccessKeyExpirationEnabled,
     managerPrivateAccessEnabled,
     accessMode,
-  } = useS3AccountContext();
+  } = useExecutionContext();
 
   const [keys, setKeys] = useState<ManagerCephAccessKey[]>([]);
   const [loading, setLoading] = useState(false);
@@ -65,10 +65,10 @@ export default function ManagerCephKeysPage() {
   const [metadataError, setMetadataError] = useState<string | null>(null);
   const keyConfirmation = useConfirmActionDialog();
 
-  const isS3UserContext = selectedS3AccountType === "s3_user";
-  const canManageCephKeys = Boolean(hasS3AccountContext && isS3UserContext && managerCephKeysEnabled);
+  const isS3UserContext = selectedContextKind === "s3_user";
+  const canManageCephKeys = Boolean(hasExecutionContext && isS3UserContext && managerCephKeysEnabled);
   const canProvisionManagedPrivateAccess = Boolean(
-    hasS3AccountContext && isS3UserContext && managerPrivateAccessEnabled
+    hasExecutionContext && isS3UserContext && managerPrivateAccessEnabled
   );
 
   const loadKeys = useCallback(async () => {
@@ -79,7 +79,7 @@ export default function ManagerCephKeysPage() {
     setLoading(true);
     setError(null);
     try {
-      const data = await listManagerCephAccessKeys(accountIdForApi);
+      const data = await listManagerCephAccessKeys(contextIdForApi);
       setKeys(data);
     } catch (err) {
       setError(parseError(err));
@@ -87,7 +87,7 @@ export default function ManagerCephKeysPage() {
     } finally {
       setLoading(false);
     }
-  }, [accountIdForApi, canManageCephKeys]);
+  }, [contextIdForApi, canManageCephKeys]);
 
   useEffect(() => {
     setCreatedKey(null);
@@ -102,8 +102,8 @@ export default function ManagerCephKeysPage() {
     setActionMessage(null);
     try {
       const key = metadata
-        ? await createManagerCephAccessKey(accountIdForApi, metadata)
-        : await createManagerCephAccessKey(accountIdForApi);
+        ? await createManagerCephAccessKey(contextIdForApi, metadata)
+        : await createManagerCephAccessKey(contextIdForApi);
       setCreatedKey(key);
       setActionMessage(text("Access key created"));
       await loadKeys();
@@ -133,7 +133,7 @@ export default function ManagerCephKeysPage() {
     setBusy(`metadata:${key.access_key_id}`);
     setMetadataError(null);
     try {
-      await updateManagerCephAccessKeyMetadata(accountIdForApi, key.access_key_id, metadata);
+      await updateManagerCephAccessKeyMetadata(contextIdForApi, key.access_key_id, metadata);
       await loadKeys();
       setMetadataDialog(null);
       setActionMessage(text("Access-key details updated"));
@@ -151,7 +151,7 @@ export default function ManagerCephKeysPage() {
     setError(null);
     setActionMessage(null);
     try {
-      await updateManagerCephAccessKeyStatus(accountIdForApi, key.access_key_id, !currentlyActive);
+      await updateManagerCephAccessKeyStatus(contextIdForApi, key.access_key_id, !currentlyActive);
       setActionMessage(text(currentlyActive ? "Access key disabled" : "Access key enabled"));
       await loadKeys();
     } catch (err) {
@@ -167,7 +167,7 @@ export default function ManagerCephKeysPage() {
     setError(null);
     setActionMessage(null);
     try {
-      await deleteManagerCephAccessKey(accountIdForApi, key.access_key_id);
+      await deleteManagerCephAccessKey(contextIdForApi, key.access_key_id);
       setActionMessage(text("Access key deleted"));
       await loadKeys();
     } catch (err) {
@@ -206,7 +206,7 @@ export default function ManagerCephKeysPage() {
       impactLabel: text("Impact"),
       closeLabel: text("Close modal"),
       details: [
-        { label: text("Context"), value: selectedS3AccountName || "Current S3 User" },
+        { label: text("Context"), value: selectedContextName || "Current S3 User" },
         { label: text("Access key"), value: key.access_key_id, mono: true },
       ],
       impacts: [text("Applications using this key will immediately lose access.")],
@@ -373,9 +373,9 @@ export default function ManagerCephKeysPage() {
         />
       )}
 
-      {!hasS3AccountContext ? (
+      {!hasExecutionContext ? (
         <PageEmptyState
-          title={text("Select an account before managing Ceph access keys")}
+          title={text("Select a context before managing Ceph access keys")}
           description={text("Ceph access keys are scoped to the active execution context. Choose a managed S3 user context before opening key inventory.")}
           primaryAction={{ label: text("Open dashboard"), to: "/manager" }}
           tone="warning"
@@ -460,8 +460,8 @@ export default function ManagerCephKeysPage() {
       {canProvisionManagedPrivateAccess && showPrivateAccessModal && (
         <CreateManagedPrivateAccessModal
           variant="rgw_user"
-          accountId={accountIdForApi}
-          contextName={selectedS3AccountName}
+          contextId={contextIdForApi}
+          contextName={selectedContextName}
           onClose={() => setShowPrivateAccessModal(false)}
           onCreated={(name) => {
             setActionMessage(`Private connection ${name} created without exposing its secret.`);

@@ -30,26 +30,26 @@ const secondaryContext = {
 } satisfies ExecutionContext;
 
 let accountContext = {
-  accounts: [primaryContext, secondaryContext],
-  selectedS3AccountId: primaryContext.id as string | null,
-  requiresS3AccountSelection: true,
+  contexts: [primaryContext, secondaryContext],
+  selectedContextId: primaryContext.id as string | null,
+  requiresContextSelection: true,
 };
 
 vi.mock("../../api/managerBuckets", () => ({
   listBuckets: (...args: unknown[]) => listBucketsMock(...args),
 }));
 
-vi.mock("./S3AccountContext", () => ({
-  useS3AccountContext: () => accountContext,
+vi.mock("./ExecutionContextProvider", () => ({
+  useExecutionContext: () => accountContext,
 }));
 
 describe("useManagerBucketSelection", () => {
   beforeEach(() => {
     listBucketsMock.mockReset();
     accountContext = {
-      accounts: [primaryContext, secondaryContext],
-      selectedS3AccountId: primaryContext.id,
-      requiresS3AccountSelection: true,
+      contexts: [primaryContext, secondaryContext],
+      selectedContextId: primaryContext.id,
+      requiresContextSelection: true,
     };
   });
 
@@ -96,7 +96,7 @@ describe("useManagerBucketSelection", () => {
 
     accountContext = {
       ...accountContext,
-      selectedS3AccountId: secondaryContext.id,
+      selectedContextId: secondaryContext.id,
     };
     rerender();
 
@@ -117,7 +117,7 @@ describe("useManagerBucketSelection", () => {
 
     accountContext = {
       ...accountContext,
-      selectedS3AccountId: null,
+      selectedContextId: null,
     };
     rerender();
     expect(result.current.filteredBuckets).toEqual([]);

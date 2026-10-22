@@ -9,7 +9,7 @@ import { useParams } from "react-router-dom";
 import { S3ExecutionContextSelector } from "../../api/accountParams";
 import { IAMUser, listIamUsers } from "../../api/managerIamUsers";
 import { addIamGroupUser, listIamGroupUsers, removeIamGroupUser } from "../../api/managerIamGroups";
-import { useS3AccountContext } from "./S3AccountContext";
+import { useExecutionContext } from "./ExecutionContextProvider";
 import { managerPageBreadcrumbs } from "./managerBreadcrumbs";
 import PageShell from "../../components/PageShell";
 import PageBanner from "../../components/PageBanner";
@@ -24,9 +24,9 @@ import { useManagerI18n } from "./managerI18n";
 export default function ManagerGroupUsersPage({ embedded = false }: { embedded?: boolean }) {
   const { text } = useManagerI18n();
   const { groupName } = useParams<{ groupName: string }>();
-  const { selectedS3AccountType, accountIdForApi, requiresS3AccountSelection, accessMode } = useS3AccountContext();
-  const needsS3AccountSelection = requiresS3AccountSelection && !accountIdForApi;
-  const isS3User = selectedS3AccountType === "s3_user";
+  const { selectedContextKind, contextIdForApi, requiresContextSelection, accessMode } = useExecutionContext();
+  const needsContextSelection = requiresContextSelection && !contextIdForApi;
+  const isS3User = selectedContextKind === "s3_user";
 
   const [users, setUsers] = useState<IAMUser[]>([]);
   const [allUsers, setAllUsers] = useState<IAMUser[]>([]);
@@ -46,13 +46,13 @@ export default function ManagerGroupUsersPage({ embedded = false }: { embedded?:
     }
   }, [groupName]);
 
-  const load = useCallback(async (accountId: S3ExecutionContextSelector, targetGroup: string) => {
+  const load = useCallback(async (contextId: S3ExecutionContextSelector, targetGroup: string) => {
     setLoading(true);
     setError(null);
     try {
       const [members, existingUsers] = await Promise.all([
-        listIamGroupUsers(accountId, targetGroup),
-        listIamUsers(accountId),
+        listIamGroupUsers(contextId, targetGroup),
+        listIamUsers(contextId),
       ]);
       setUsers(members);
       setAllUsers(existingUsers);
@@ -64,16 +64,16 @@ export default function ManagerGroupUsersPage({ embedded = false }: { embedded?:
   }, []);
 
   useEffect(() => {
-    if (isS3User || needsS3AccountSelection) {
+    if (isS3User || needsContextSelection) {
       setUsers([]);
       setAllUsers([]);
       setLoading(false);
       return;
     }
     if (groupName) {
-      load(accountIdForApi, groupName);
+      load(contextIdForApi, groupName);
     }
-  }, [accountIdForApi, isS3User, needsS3AccountSelection, groupName, accessMode, load]);
+  }, [contextIdForApi, isS3User, needsContextSelection, groupName, accessMode, load]);
 
   const availableUsers = useMemo(
     () => allUsers.filter((u) => !users.some((member) => member.name === u.name)),
@@ -89,14 +89,14 @@ export default function ManagerGroupUsersPage({ embedded = false }: { embedded?:
 
   const handleAdd = async (e: FormEvent) => {
     e.preventDefault();
-    if (needsS3AccountSelection || !groupName || !newUser.trim()) return;
+    if (needsContextSelection || !groupName || !newUser.trim()) return;
     setBusy("add");
     setError(null);
     setActionMessage(null);
     try {
-      await addIamGroupUser(accountIdForApi, groupName, newUser.trim());
+      await addIamGroupUser(contextIdForApi, groupName, newUser.trim());
       setNewUser("");
-      await load(accountIdForApi, groupName);
+      await load(contextIdForApi, groupName);
       setActionMessage(text("User added to group"));
     } catch (err) {
       setError(extractApiError(err, "Unexpected error"));
@@ -106,13 +106,13 @@ export default function ManagerGroupUsersPage({ embedded = false }: { embedded?:
   };
 
   const removeUser = async (userName: string) => {
-    if (needsS3AccountSelection || !groupName) return;
+    if (needsContextSelection || !groupName) return;
     setBusy(userName);
     setError(null);
     setActionMessage(null);
     try {
-      await removeIamGroupUser(accountIdForApi, groupName, userName);
-      await load(accountIdForApi, groupName);
+      await removeIamGroupUser(contextIdForApi, groupName, userName);
+      await load(contextIdForApi, groupName);
       setActionMessage(text("User removed from group"));
     } catch (err) {
       setError(extractApiError(err, "Unexpected error"));
@@ -154,14 +154,14 @@ export default function ManagerGroupUsersPage({ embedded = false }: { embedded?:
     return <div className="ui-body text-slate-600">{text("Group not specified.")}</div>;
   }
 
-  if (needsS3AccountSelection) {
-    return <div className="ui-body text-slate-600">{text("Select an account before managing groups.")}</div>;
+  if (needsContextSelection) {
+    return <div className="ui-body text-slate-600">{text("Select a context before managing groups.")}</div>;
   }
 
   const handleRefresh = () => {
-    if (needsS3AccountSelection) return;
+    if (needsContextSelection) return;
     if (groupName) {
-      load(accountIdForApi, groupName);
+      load(contextIdForApi, groupName);
     }
   };
 

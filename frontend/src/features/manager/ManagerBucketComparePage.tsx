@@ -12,7 +12,7 @@ import UiButton from "../../components/ui/UiButton";
 import { useGeneralSettings } from "../../components/GeneralSettingsContext";
 import ManagerBucketCompareModal from "./ManagerBucketCompareModal";
 import ManagerBucketSelectionPanel from "./ManagerBucketSelectionPanel";
-import { useS3AccountContext } from "./S3AccountContext";
+import { useExecutionContext } from "./ExecutionContextProvider";
 import { useManagerContexts } from "./useManagerContexts";
 import { useManagerBucketSelection } from "./useManagerBucketSelection";
 import { managerPageBreadcrumbs } from "./managerBreadcrumbs";
@@ -20,7 +20,7 @@ import { useManagerI18n } from "./managerI18n";
 
 export default function ManagerBucketComparePage() {
   const { text } = useManagerI18n();
-  const { managerBrowserEnabled } = useS3AccountContext();
+  const { managerBrowserEnabled } = useExecutionContext();
   const { generalSettings } = useGeneralSettings();
   const { contexts, contextsLoading, contextsError } = useManagerContexts();
   const {
@@ -29,7 +29,7 @@ export default function ManagerBucketComparePage() {
     filter,
     filteredBuckets,
     loading: bucketsLoading,
-    requiresS3AccountSelection,
+    requiresContextSelection,
     selectedBucketList,
     selectedBuckets,
     selectAllFiltered,
@@ -59,7 +59,7 @@ export default function ManagerBucketComparePage() {
       {contextsError && <PageBanner tone="error">{text(contextsError)}</PageBanner>}
       {bucketsError && <PageBanner tone="error">{text(bucketsError)}</PageBanner>}
 
-      {!requiresS3AccountSelection ? (
+      {!requiresContextSelection ? (
         <PageEmptyState
           title={text("Bucket compare is unavailable in session mode")}
           description={text("This tool needs a persistent execution context so it can load a source inventory and compare it against other manager contexts.")}

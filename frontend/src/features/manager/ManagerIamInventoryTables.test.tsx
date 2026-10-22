@@ -7,15 +7,15 @@ import ManagerGroupsPage from "./ManagerGroupsPage";
 import PoliciesPage from "./PoliciesPage";
 import ManagerRolesPage from "./ManagerRolesPage";
 
-const useS3AccountContextMock = vi.fn();
+const useExecutionContextMock = vi.fn();
 const listIamGroupsMock = vi.fn();
 const listIamRolesMock = vi.fn();
 const listIamPoliciesMock = vi.fn();
 const deleteIamGroupMock = vi.fn();
 const deleteIamRoleMock = vi.fn();
 
-vi.mock("./S3AccountContext", () => ({
-  useS3AccountContext: () => useS3AccountContextMock(),
+vi.mock("./ExecutionContextProvider", () => ({
+  useExecutionContext: () => useExecutionContextMock(),
 }));
 
 vi.mock("../../api/managerIamGroups", async () => {
@@ -57,14 +57,14 @@ function renderManagerPage(element: ReactElement) {
 
 describe("Manager IAM inventory tables", () => {
   beforeEach(() => {
-    useS3AccountContextMock.mockReset();
+    useExecutionContextMock.mockReset();
     listIamGroupsMock.mockReset();
     listIamRolesMock.mockReset();
     listIamPoliciesMock.mockReset();
     deleteIamGroupMock.mockReset();
     deleteIamRoleMock.mockReset();
-    useS3AccountContextMock.mockReturnValue({
-      accounts: [
+    useExecutionContextMock.mockReturnValue({
+      contexts: [
         {
           id: "acc-1",
           kind: "account",
@@ -72,13 +72,13 @@ describe("Manager IAM inventory tables", () => {
           endpoint_name: "Default",
         },
       ],
-      selectedS3AccountId: "acc-1",
-      selectedS3AccountType: "tenant",
-      accountIdForApi: "acc-1",
-      requiresS3AccountSelection: true,
+      selectedContextId: "acc-1",
+      selectedContextKind: "account",
+      contextIdForApi: "acc-1",
+      requiresContextSelection: true,
       accessMode: "default",
       iamIdentity: null,
-      sessionS3AccountName: null,
+      sessionAccountName: null,
     });
     listIamGroupsMock.mockResolvedValue([]);
     listIamRolesMock.mockResolvedValue([]);

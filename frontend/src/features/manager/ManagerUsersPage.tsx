@@ -6,7 +6,7 @@ import { iamNameFormatError } from "../../utils/resourceNames";
 import TableSortControls from "../../components/list/TableSortControls";
 import { ListActions, ListBadge, ListActionLink, ListActionButton } from "../../components/list/ListControls";
 import { FormEvent, useCallback, useEffect, useId, useMemo, useState } from "react";
-import { useS3AccountContext } from "./S3AccountContext";
+import { useExecutionContext } from "./ExecutionContextProvider";
 import { managerPageBreadcrumbs } from "./managerBreadcrumbs";
 import { S3ExecutionContextSelector } from "../../api/accountParams";
 import {
@@ -52,16 +52,16 @@ export default function ManagerUsersPage() {
   const deleteConfirmation = useConfirmActionDialog();
 
   const {
-    selectedS3AccountType,
-    selectedS3AccountName,
-    accountIdForApi,
-    requiresS3AccountSelection,
+    selectedContextKind,
+    selectedContextName,
+    contextIdForApi,
+    requiresContextSelection,
     accessMode,
     managerPrivateAccessEnabled,
     namingValidationProfile,
-  } = useS3AccountContext();
-  const needsS3AccountSelection = requiresS3AccountSelection && !accountIdForApi;
-  const isS3User = selectedS3AccountType === "s3_user";
+  } = useExecutionContext();
+  const needsContextSelection = requiresContextSelection && !contextIdForApi;
+  const isS3User = selectedContextKind === "s3_user";
   const {
     error,
     items: users,
@@ -126,28 +126,28 @@ export default function ManagerUsersPage() {
   });
 
   const loadGroups = useCallback(
-    (accountId: S3ExecutionContextSelector) =>
-      loadRelated(accountId, listIamGroups, setGroups),
+    (contextId: S3ExecutionContextSelector) =>
+      loadRelated(contextId, listIamGroups, setGroups),
     [loadRelated],
   );
 
   const loadPolicies = useCallback(
-    (accountId: S3ExecutionContextSelector) =>
-      loadRelated(accountId, listIamPolicies, setPolicies),
+    (contextId: S3ExecutionContextSelector) =>
+      loadRelated(contextId, listIamPolicies, setPolicies),
     [loadRelated],
   );
 
   useEffect(() => {
-    if (needsS3AccountSelection) {
+    if (needsContextSelection) {
       setUsers([]);
       setGroups([]);
       setPolicies([]);
       setLoading(false);
       return;
     }
-    load(accountIdForApi);
-    loadGroups(accountIdForApi);
-    loadPolicies(accountIdForApi);
+    load(contextIdForApi);
+    loadGroups(contextIdForApi);
+    loadPolicies(contextIdForApi);
     setSelectedGroups([]);
     setSelectedPolicies([]);
     setPolicySearch("");
@@ -155,12 +155,12 @@ export default function ManagerUsersPage() {
     setShowPolicyOptions(false);
     resetInlinePolicyDraftEditor();
   }, [
-    accountIdForApi,
+    contextIdForApi,
     accessMode,
     load,
     loadGroups,
     loadPolicies,
-    needsS3AccountSelection,
+    needsContextSelection,
     resetInlinePolicyDraftEditor,
     setLoading,
     setUsers,
@@ -228,7 +228,7 @@ export default function ManagerUsersPage() {
 
   const handleAdvancedCreate = async (e: FormEvent) => {
     e.preventDefault();
-    if (needsS3AccountSelection || busy !== null) return;
+    if (needsContextSelection || busy !== null) return;
     setAdvancedValidationAttempted(true);
     if (!advancedName.trim() || nameFormatError || !validateInlineDrafts()) {
       focusFirstInvalidField(e.currentTarget as HTMLFormElement);
@@ -241,7 +241,7 @@ export default function ManagerUsersPage() {
     setCreatedForUser(null);
     try {
       const created = await createIamUser(
-        accountIdForApi,
+        contextIdForApi,
         advancedName.trim(),
         createKey,
         selectedGroups,
@@ -261,7 +261,7 @@ export default function ManagerUsersPage() {
         setCreatedForUser(created.name);
       }
       setActionMessage(text("User created"));
-      await load(accountIdForApi);
+      await load(contextIdForApi);
     } catch (err) {
       setError(extractApiError(err, "Unexpected error"));
     } finally {
@@ -270,14 +270,14 @@ export default function ManagerUsersPage() {
   };
 
   const deleteUser = async (name: string) => {
-    if (needsS3AccountSelection) return;
+    if (needsContextSelection) return;
     setBusy(name);
     setError(null);
     setActionMessage(null);
     try {
-      await deleteIamUser(accountIdForApi, name);
+      await deleteIamUser(contextIdForApi, name);
       setActionMessage(text("User deleted"));
-      await load(accountIdForApi);
+      await load(contextIdForApi);
     } catch (err) {
       setError(extractApiError(err, "Unexpected error"));
     } finally {
@@ -286,10 +286,10 @@ export default function ManagerUsersPage() {
   };
 
   const handleDelete = (name: string) => {
-    if (needsS3AccountSelection) return;
+    if (needsContextSelection) return;
     deleteConfirmation.requestConfirmation({
       title: text("Delete IAM user?"),
-      description: text("Permanently remove this IAM user from the selected account."),
+      description: text("Permanently remove this IAM user from the selected context."),
       confirmLabel: text("Delete user"),
       details: [{ label: text("IAM user"), value: name }],
       impacts: ["Credentials and permissions attached to this user will no longer grant access."],
@@ -469,7 +469,7 @@ export default function ManagerUsersPage() {
         title={text("Users")}
         description={text("Create/delete via the account root credentials. Optionally generate an access key on creation.")}
         breadcrumbs={managerPageBreadcrumbs(text, "users")}
-        actions={!needsS3AccountSelection && !isS3User
+        actions={!needsContextSelection && !isS3User
           ? [
               {
                 label: text("Create user"),
@@ -507,10 +507,10 @@ export default function ManagerUsersPage() {
         />
       )}
 
-      {needsS3AccountSelection ? (
+      {needsContextSelection ? (
         <PageEmptyState
-          title={text("Select an account before managing IAM users")}
-          description={text("Users are created within an execution context. Choose an account to list identities, generate keys, and attach policies.")}
+          title={text("Select a context before managing IAM users")}
+          description={text("Users are created within an execution context. Choose a context to list identities, generate keys, and attach policies.")}
           primaryAction={{ label: text("Open dashboard"), to: "/manager" }}
           tone="warning"
         />
@@ -561,7 +561,7 @@ export default function ManagerUsersPage() {
           contentVariant="plain"
           dirty={advancedCurrentSignature !== advancedInitialSignature}
           error={error} onSubmit={handleAdvancedCreate}
-          busy={busy !== null} disabled={needsS3AccountSelection || namingValidationProfile === null}
+          busy={busy !== null} disabled={needsContextSelection || namingValidationProfile === null}
           submitLabel={text("Create user")} busyLabel={text("Creating...")}
         >
           <SettingsSection title={text("Identity")} presentation="compact">
@@ -642,8 +642,8 @@ export default function ManagerUsersPage() {
         <CreateManagedPrivateAccessModal
           namingValidationProfile={namingValidationProfile}
           variant="iam"
-          accountId={accountIdForApi}
-          contextName={selectedS3AccountName}
+          contextId={contextIdForApi}
+          contextName={selectedContextName}
           groups={groups}
           policies={policies}
           onClose={() => setShowPrivateAccessModal(false)}

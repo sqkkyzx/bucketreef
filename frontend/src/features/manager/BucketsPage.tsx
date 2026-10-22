@@ -31,7 +31,7 @@ import type {
   BucketTag,
 } from "../../api/bucketContracts";
 import { S3ExecutionContextSelector } from "../../api/accountParams";
-import { useS3AccountContext } from "./S3AccountContext";
+import { useExecutionContext } from "./ExecutionContextProvider";
 import { managerPageBreadcrumbs } from "./managerBreadcrumbs";
 import PageHeader from "../../components/PageHeader";
 import PageBanner from "../../components/PageBanner";
@@ -202,12 +202,12 @@ const persistVisibleColumns = (value: ColumnId[]) => {
 export default function BucketsPage() {
   const { text, intlLocale } = useManagerI18n();
   const {
-    accounts,
-    selectedS3AccountId,
-    requiresS3AccountSelection,
-    sessionS3AccountName,
-    accountIdForApi,
-  } = useS3AccountContext();
+    contexts,
+    selectedContextId,
+    requiresContextSelection,
+    sessionAccountName,
+    contextIdForApi,
+  } = useExecutionContext();
   const { generalSettings } = useGeneralSettings();
   const storedUser = readStoredUser();
   const managerToolAccess = getManagerToolAccess(storedUser);
@@ -241,15 +241,15 @@ export default function BucketsPage() {
   });
   const [enrichingColumns, setEnrichingColumns] = useState(false);
 
-  const selectedS3Account = useMemo(
-    () => accounts.find((a) => a.id === selectedS3AccountId),
-    [accounts, selectedS3AccountId]
+  const selectedContext = useMemo(
+    () => contexts.find((a) => a.id === selectedContextId),
+    [contexts, selectedContextId]
   );
-  const endpointCaps = selectedS3Account?.storage_endpoint_capabilities ?? null;
+  const endpointCaps = selectedContext?.storage_endpoint_capabilities ?? null;
   const usageFeatureEnabled = endpointCaps ? endpointCaps.metrics !== false : true;
   const snsFeatureEnabled = endpointCaps ? endpointCaps.sns !== false : true;
   const staticWebsiteFeatureEnabled = endpointCaps?.static_website === true;
-  const quotaFeatureEnabled = selectedS3Account?.endpoint_provider === "ceph";
+  const quotaFeatureEnabled = selectedContext?.endpoint_provider === "ceph";
   const metricColumnOptions = useMemo(
     () => [
       { id: "used_bytes" as const, label: text("Used") },
@@ -285,12 +285,12 @@ export default function BucketsPage() {
       ) as Array<{ id: ManagerFeatureKey; label: string; key: ManagerFeatureKey }>),
     [snsFeatureEnabled, staticWebsiteFeatureEnabled, text]
   );
-  const accountLabel = selectedS3Account
-    ? formatAccountLabel(selectedS3Account)
-    : requiresS3AccountSelection
+  const contextLabel = selectedContext
+    ? formatAccountLabel(selectedContext)
+    : requiresContextSelection
       ? "Not selected"
-      : sessionS3AccountName || "S3 session";
-  const needsS3AccountSelection = requiresS3AccountSelection && !accountIdForApi;
+      : sessionAccountName || "S3 session";
+  const needsContextSelection = requiresContextSelection && !contextIdForApi;
   const canDeleteBucketWithPurge =
     isFeaturePolicyAvailable(generalSettings.manager_feature_policies.bucket_purge) && Boolean(managerToolAccess?.bucket_purge);
 
@@ -331,8 +331,8 @@ export default function BucketsPage() {
     if (cached) return cached;
     const inflight = bucketPropertiesInflightRef.current[bucketKey];
     if (inflight) return inflight;
-    const accountId = accountIdForApi ?? null;
-    const promise = getBucketProperties(accountId, bucket.name)
+    const contextId = contextIdForApi;
+    const promise = getBucketProperties(contextId, bucket.name)
       .then((properties) => {
         bucketPropertiesCacheRef.current[bucketKey] = properties;
         return properties;
@@ -345,7 +345,7 @@ export default function BucketsPage() {
   };
 
   const buildFeatureTooltipLines = async (bucket: BucketListRow, featureKey: ManagerFeatureKey): Promise<string[]> => {
-    const accountId = accountIdForApi ?? null;
+    const contextId = contextIdForApi;
 
     if (featureKey === "versioning") {
       const properties = await getBucketPropertiesCached(bucket);
@@ -371,27 +371,27 @@ export default function BucketsPage() {
       const properties = await getBucketPropertiesCached(bucket);
       const inlineRules = Array.isArray(properties.cors_rules) ? properties.cors_rules : null;
       if (inlineRules) return buildCorsRuleSummaryLines(inlineRules);
-      const cors = await getBucketCors(accountId, bucket.name);
+      const cors = await getBucketCors(contextId, bucket.name);
       return buildCorsRuleSummaryLines(cors.rules);
     }
 
     if (featureKey === "static_website") {
-      const website = await getBucketWebsite(accountId, bucket.name);
+      const website = await getBucketWebsite(contextId, bucket.name);
       return buildWebsiteSummaryLines(website as Record<string, unknown>);
     }
 
     if (featureKey === "bucket_policy") {
-      const policy = await getBucketPolicy(accountId, bucket.name);
+      const policy = await getBucketPolicy(contextId, bucket.name);
       return buildBucketPolicySummaryLines(policy.policy);
     }
 
     if (featureKey === "access_logging") {
-      const logging = await getBucketLogging(accountId, bucket.name);
+      const logging = await getBucketLogging(contextId, bucket.name);
       return buildLoggingSummaryLines(logging as Record<string, unknown>);
     }
 
     if (featureKey === "notifications") {
-      const notifications = await getBucketNotifications(accountId, bucket.name);
+      const notifications = await getBucketNotifications(contextId, bucket.name);
       return buildNotificationSummaryLines(notifications.configuration);
     }
 
@@ -399,7 +399,7 @@ export default function BucketsPage() {
   };
 
   const loadFeatureTooltip = (bucket: BucketListRow, featureKey: ManagerFeatureKey) => {
-    if (needsS3AccountSelection) return;
+    if (needsContextSelection) return;
     const key = featureTooltipCacheKey(bucket, featureKey);
     const current = featureTooltipState[key];
     if (current?.status === "ready" || current?.status === "loading") return;
@@ -480,7 +480,7 @@ export default function BucketsPage() {
     );
   };
 
-  const fetchBuckets = useCallback(async (accountId: S3ExecutionContextSelector) => {
+  const fetchBuckets = useCallback(async (contextId: S3ExecutionContextSelector) => {
     fetchAbortRef.current?.abort();
     const controller = new AbortController();
     fetchAbortRef.current = controller;
@@ -490,7 +490,7 @@ export default function BucketsPage() {
     setLoading(true);
     setEnrichingColumns(false);
     try {
-      const baseData = await listBuckets(accountId, {
+      const baseData = await listBuckets(contextId, {
         with_stats: requiresStats,
         signal: controller.signal,
       });
@@ -505,7 +505,7 @@ export default function BucketsPage() {
 
       setEnrichingColumns(true);
       try {
-        const enrichedData = await listBuckets(accountId, {
+        const enrichedData = await listBuckets(contextId, {
           include: includeParams,
           with_stats: requiresStats,
           signal: controller.signal,
@@ -535,7 +535,7 @@ export default function BucketsPage() {
 
   useEffect(() => {
     fetchAbortRef.current?.abort();
-    if (needsS3AccountSelection) {
+    if (needsContextSelection) {
       fetchRequestRef.current += 1;
       setLoading(false);
       setEnrichingColumns(false);
@@ -546,7 +546,7 @@ export default function BucketsPage() {
       lastFetchContextRef.current = null;
       return;
     }
-    const contextKey = accountIdForApi == null ? "session" : String(accountIdForApi);
+    const contextKey = contextIdForApi ?? "session";
     if (lastFetchContextRef.current !== contextKey) {
       setBuckets([]);
       setDataStale(false);
@@ -554,9 +554,9 @@ export default function BucketsPage() {
       setBaseLoadFailed(false);
       lastFetchContextRef.current = contextKey;
     }
-    fetchBuckets(accountIdForApi ?? null);
+    fetchBuckets(contextIdForApi);
     return () => fetchAbortRef.current?.abort();
-  }, [accountIdForApi, fetchBuckets, needsS3AccountSelection]);
+  }, [contextIdForApi, fetchBuckets, needsContextSelection]);
 
   useEffect(() => {
     setActiveFeatureTooltipKey(null);
@@ -565,7 +565,7 @@ export default function BucketsPage() {
     bucketPropertiesCacheRef.current = {};
     bucketPropertiesInflightRef.current = {};
     setActiveTagsTooltipKey(null);
-  }, [accountIdForApi]);
+  }, [contextIdForApi]);
 
   useEffect(() => {
     persistVisibleColumns(visibleColumns);
@@ -614,20 +614,20 @@ export default function BucketsPage() {
     versioning: boolean,
     locationConstraint?: string
   ): Promise<{ created: boolean }> => {
-    if (needsS3AccountSelection) {
-      setActionError(text("Select an account before creating a bucket."));
+    if (needsContextSelection) {
+      setActionError(text("Select a context before creating a bucket."));
       return { created: false };
     }
     setCreating(true);
     setActionError(null);
     setActionMessage(null);
     try {
-      await createBucket(name, accountIdForApi, {
+      await createBucket(name, contextIdForApi, {
         versioning,
         locationConstraint,
       });
       setActionMessage(text("Bucket created"));
-      await fetchBuckets(accountIdForApi ?? null);
+      await fetchBuckets(contextIdForApi);
       return { created: true };
     } catch (err) {
       setActionError(extractApiError(err, text("Unable to create the bucket.")));
@@ -638,7 +638,7 @@ export default function BucketsPage() {
   };
 
   const requestDelete = (name: string) => {
-    if (needsS3AccountSelection) return;
+    if (needsContextSelection) return;
     const targetBucket = buckets.find((b) => b.name === name);
     const objectCount = targetBucket?.object_count;
     if ((objectCount ?? 0) > 0) {
@@ -669,9 +669,9 @@ export default function BucketsPage() {
     setActionError(null);
     setActionMessage(null);
     try {
-      await deleteBucket(name, accountIdForApi);
+      await deleteBucket(name, contextIdForApi);
       setActionMessage(text("Bucket deleted"));
-      await fetchBuckets(accountIdForApi ?? null);
+      await fetchBuckets(contextIdForApi);
       return;
     } catch (err) {
       const msg = extractApiError(err, text("Unable to delete bucket '{name}'.", { name }));
@@ -695,7 +695,7 @@ export default function BucketsPage() {
       count: deletedEntries.toLocaleString(intlLocale),
       entryLabel,
     }));
-    await fetchBuckets(accountIdForApi ?? null);
+    await fetchBuckets(contextIdForApi);
   };
 
   const bucketTableColumns: ColumnDef[] = (() => {
@@ -864,7 +864,7 @@ export default function BucketsPage() {
             </span>
             <ListActionButton
               variant="ghost"
-              onClick={() => fetchBuckets(accountIdForApi ?? null)}
+              onClick={() => fetchBuckets(contextIdForApi)}
             >
               {text("Retry")}
             </ListActionButton>
@@ -874,9 +874,9 @@ export default function BucketsPage() {
       {actionError && <PageBanner tone="error">{text(actionError)}</PageBanner>}
       {actionMessage && <PageBanner tone="success">{actionMessage}</PageBanner>}
 
-      {needsS3AccountSelection ? (
+      {needsContextSelection ? (
         <PageEmptyState
-          title={text("Select an account before managing buckets")}
+          title={text("Select a context before managing buckets")}
           description={text("The bucket list, quota details, and destructive actions stay disabled until a manager execution context is selected.")}
           primaryAction={{ label: text("Open dashboard"), to: "/manager" }}
           tone="warning"
@@ -947,7 +947,7 @@ export default function BucketsPage() {
           confirmLabel={text("Delete bucket")}
           details={[
             { label: text("Bucket"), value: pendingDeleteBucketName, mono: true },
-            { label: text("Context"), value: accountLabel },
+            { label: text("Context"), value: contextLabel },
           ]}
           impacts={[
             text("Deletion is irreversible once the bucket is removed."),
@@ -959,11 +959,11 @@ export default function BucketsPage() {
         />
       )}
 
-      {pendingDeleteWithPurgeBucketName && accountIdForApi && (
+      {pendingDeleteWithPurgeBucketName && contextIdForApi && (
         <BucketPurgeRunModal
           mode="manager-delete"
-          contextId={String(accountIdForApi)}
-          contextName={accountLabel}
+          contextId={contextIdForApi}
+          contextName={contextLabel}
           targets={[{ bucketName: pendingDeleteWithPurgeBucketName }]}
           onFinished={(result) => void handleDeleteWithPurgeFinished(result)}
           onClose={() => setPendingDeleteWithPurgeBucketName(null)}
@@ -971,7 +971,7 @@ export default function BucketsPage() {
       )}
 
       {showCreateForm && (
-        <BucketCreateWorkflow contextLabel={accountLabel} needsContext={needsS3AccountSelection}
+        <BucketCreateWorkflow contextLabel={contextLabel} needsContext={needsContextSelection}
           busy={creating} error={actionError} onCreate={performCreate} onClose={() => setShowCreateForm(false)} />
       )}
     </div>

@@ -15,7 +15,7 @@ import {
   updateIamAccessKeyMetadata,
   updateIamAccessKeyStatus,
 } from "../../api/managerIamUsers";
-import { useS3AccountContext } from "./S3AccountContext";
+import { useExecutionContext } from "./ExecutionContextProvider";
 import { managerPageBreadcrumbs } from "./managerBreadcrumbs";
 import ListPageSection from "../../components/list/ListPageSection";
 import OneTimeSecretPanel from "../../components/OneTimeSecretPanel";
@@ -35,15 +35,15 @@ export default function ManagerUserKeysPage({ embedded = false }: { embedded?: b
   const { text, intlLocale } = useManagerI18n();
   const { userName } = useParams<{ userName: string }>();
   const {
-    selectedS3AccountType,
-    accountIdForApi,
-    requiresS3AccountSelection,
+    selectedContextKind,
+    contextIdForApi,
+    requiresContextSelection,
     accessMode,
     managerAccessKeyMetadataEnabled,
     managerAccessKeyExpirationEnabled,
-  } = useS3AccountContext();
-  const needsS3AccountSelection = requiresS3AccountSelection && !accountIdForApi;
-  const isS3User = selectedS3AccountType === "s3_user";
+  } = useExecutionContext();
+  const needsContextSelection = requiresContextSelection && !contextIdForApi;
+  const isS3User = selectedContextKind === "s3_user";
   const [keys, setKeys] = useState<AccessKey[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -69,11 +69,11 @@ export default function ManagerUserKeysPage({ embedded = false }: { embedded?: b
     return true;
   };
 
-  const load = useCallback(async (accountId: S3ExecutionContextSelector, targetUser: string) => {
+  const load = useCallback(async (contextId: S3ExecutionContextSelector, targetUser: string) => {
     setLoading(true);
     setError(null);
     try {
-      const data = await listIamAccessKeys(accountId, targetUser);
+      const data = await listIamAccessKeys(contextId, targetUser);
       setKeys(data);
     } catch (err) {
       setError(extractApiError(err, "Unexpected error"));
@@ -83,27 +83,27 @@ export default function ManagerUserKeysPage({ embedded = false }: { embedded?: b
   }, []);
 
   useEffect(() => {
-    if (needsS3AccountSelection || isS3User) {
+    if (needsContextSelection || isS3User) {
       setKeys([]);
       setLoading(false);
       return;
     }
     if (userName) {
-      load(accountIdForApi, userName);
+      load(contextIdForApi, userName);
     }
-  }, [accountIdForApi, needsS3AccountSelection, isS3User, userName, accessMode, load]);
+  }, [contextIdForApi, needsContextSelection, isS3User, userName, accessMode, load]);
 
   const createKey = async (metadata?: AccessKeyMetadataInput) => {
-    if (needsS3AccountSelection || !userName) return;
+    if (needsContextSelection || !userName) return;
     setBusy("create");
     setError(null);
     setActionMessage(null);
     try {
       const key = metadata
-        ? await createIamAccessKey(accountIdForApi, userName, metadata)
-        : await createIamAccessKey(accountIdForApi, userName);
+        ? await createIamAccessKey(contextIdForApi, userName, metadata)
+        : await createIamAccessKey(contextIdForApi, userName);
       setCreatedKey(key);
-      await load(accountIdForApi, userName);
+      await load(contextIdForApi, userName);
       setActionMessage(text("Access key created"));
       setMetadataDialog(null);
       setMetadataError(null);
@@ -131,8 +131,8 @@ export default function ManagerUserKeysPage({ embedded = false }: { embedded?: b
     setBusy(`metadata:${key.access_key_id}`);
     setMetadataError(null);
     try {
-      await updateIamAccessKeyMetadata(accountIdForApi, userName, key.access_key_id, metadata);
-      await load(accountIdForApi, userName);
+      await updateIamAccessKeyMetadata(contextIdForApi, userName, key.access_key_id, metadata);
+      await load(contextIdForApi, userName);
       setMetadataDialog(null);
       setActionMessage(text("Access-key details updated"));
     } catch (err) {
@@ -143,13 +143,13 @@ export default function ManagerUserKeysPage({ embedded = false }: { embedded?: b
   };
 
   const deleteKey = async (keyId: string) => {
-    if (needsS3AccountSelection || !userName) return;
+    if (needsContextSelection || !userName) return;
     setBusy(`delete:${keyId}`);
     setError(null);
     setActionMessage(null);
     try {
-      await deleteIamAccessKey(accountIdForApi, userName, keyId);
-      await load(accountIdForApi, userName);
+      await deleteIamAccessKey(contextIdForApi, userName, keyId);
+      await load(contextIdForApi, userName);
       setActionMessage(text("Access key deleted"));
     } catch (err) {
       setError(extractApiError(err, "Unexpected error"));
@@ -159,13 +159,13 @@ export default function ManagerUserKeysPage({ embedded = false }: { embedded?: b
   };
 
   const toggleKey = async (keyId: string, nextActive: boolean) => {
-    if (needsS3AccountSelection || !userName) return;
+    if (needsContextSelection || !userName) return;
     setBusy(`toggle:${keyId}`);
     setError(null);
     setActionMessage(null);
     try {
-      await updateIamAccessKeyStatus(accountIdForApi, userName, keyId, nextActive);
-      await load(accountIdForApi, userName);
+      await updateIamAccessKeyStatus(contextIdForApi, userName, keyId, nextActive);
+      await load(contextIdForApi, userName);
       setActionMessage(text(nextActive ? "Access key enabled" : "Access key disabled"));
     } catch (err) {
       setError(extractApiError(err, "Unexpected error"));
@@ -343,8 +343,8 @@ export default function ManagerUserKeysPage({ embedded = false }: { embedded?: b
     return <div className="ui-body text-slate-600">{text("User not specified.")}</div>;
   }
 
-  if (needsS3AccountSelection) {
-    return <div className="ui-body text-slate-600">{text("Select an account before managing keys.")}</div>;
+  if (needsContextSelection) {
+    return <div className="ui-body text-slate-600">{text("Select a context before managing keys.")}</div>;
   }
 
   const content = <>

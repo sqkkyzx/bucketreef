@@ -14,21 +14,21 @@ import PageBanner from "../../components/PageBanner";
 import DataTableShell, { dataTableDefaultActionProps, type DataTableColumn } from "../../components/list/DataTableShell";
 import { resolveListTableStatus } from "../../components/list/listTableStatus";
 import { extractApiError } from "../../utils/apiError";
-import { useS3AccountContext } from "./S3AccountContext";
+import { useExecutionContext } from "./ExecutionContextProvider";
 import { managerPageBreadcrumbs } from "./managerBreadcrumbs";
 import TopicCreateDialog from "./TopicCreateDialog";
 import TopicDeleteDialog from "./TopicDeleteDialog";
 import { useManagerI18n } from "./managerI18n";
 
-type TopicAction = { kind: "create"; accountId: S3ExecutionContextSelector }
-  | { kind: "delete"; accountId: S3ExecutionContextSelector; topic: Topic };
+type TopicAction = { kind: "create"; contextId: S3ExecutionContextSelector }
+  | { kind: "delete"; contextId: S3ExecutionContextSelector; topic: Topic };
 
 export default function TopicsPage() {
   const { text } = useManagerI18n();
-  const { accounts, selectedS3AccountId, accountIdForApi, requiresS3AccountSelection, accessMode } = useS3AccountContext();
-  const needsS3AccountSelection = requiresS3AccountSelection && !accountIdForApi;
-  const selectedS3Account = accounts.find(account => String(account.id) === String(accountIdForApi ?? selectedS3AccountId));
-  const snsFeatureEnabled = selectedS3Account?.storage_endpoint_capabilities?.sns !== false;
+  const { contexts, contextIdForApi, requiresContextSelection, accessMode } = useExecutionContext();
+  const needsContextSelection = requiresContextSelection && !contextIdForApi;
+  const selectedContext = contexts.find(context => context.id === contextIdForApi);
+  const snsFeatureEnabled = selectedContext?.storage_endpoint_capabilities?.sns !== false;
   const [topics, setTopics] = useState<Topic[]>([]);
   const [topicFilter, setTopicFilter] = useState("");
   const [loading, setLoading] = useState(true);
@@ -36,13 +36,13 @@ export default function TopicsPage() {
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [active, setActive] = useState<TopicAction | null>(null);
   const requestSequence = useRef(0);
-  const currentAccount = useRef(accountIdForApi);
-  currentAccount.current = accountIdForApi;
-  const fetchTopics = useCallback(async (accountId: S3ExecutionContextSelector) => {
+  const currentContext = useRef(contextIdForApi);
+  currentContext.current = contextIdForApi;
+  const fetchTopics = useCallback(async (contextId: S3ExecutionContextSelector) => {
     const request = ++requestSequence.current;
     setLoading(true); setError(null);
     try {
-      const data = await listTopics(accountId);
+      const data = await listTopics(contextId);
       if (request === requestSequence.current) setTopics(data);
     } catch (error) {
       if (request === requestSequence.current) { setTopics([]); setError(extractApiError(error, text("Unable to load topics."))); }
@@ -52,16 +52,16 @@ export default function TopicsPage() {
   }, [text]);
   useEffect(() => {
     setActionMessage(null);
-    if (needsS3AccountSelection) { setTopics([]); setLoading(false); }
-    else void fetchTopics(accountIdForApi ?? null);
+    if (needsContextSelection) { setTopics([]); setLoading(false); }
+    else void fetchTopics(contextIdForApi);
     return () => { requestSequence.current += 1; };
-  }, [accountIdForApi, needsS3AccountSelection, accessMode, fetchTopics]);
+  }, [contextIdForApi, needsContextSelection, accessMode, fetchTopics]);
   const close = () => setActive(null);
-  const refreshAfterMutation = (accountId: S3ExecutionContextSelector, message: string) => {
+  const refreshAfterMutation = (contextId: S3ExecutionContextSelector, message: string) => {
     setActive(null);
-    if (currentAccount.current !== accountId) return;
+    if (currentContext.current !== contextId) return;
     setActionMessage(message);
-    void fetchTopics(accountId);
+    void fetchTopics(contextId);
   };
   const filteredTopics = useMemo(() => {
     const needle = topicFilter.trim().toLowerCase();
@@ -101,7 +101,7 @@ export default function TopicsPage() {
           <ListActionButton
             type="button"
             variant="danger"
-            onClick={() => setActive({ kind: "delete", accountId: accountIdForApi, topic })}
+            onClick={() => setActive({ kind: "delete", contextId: contextIdForApi, topic })}
           >
             {text("Delete")}
           </ListActionButton>
@@ -116,11 +116,11 @@ export default function TopicsPage() {
         description={text("List, create, and secure account-owned SNS topics.")}
         breadcrumbs={managerPageBreadcrumbs(text, "topics")}
         actions={
-          !needsS3AccountSelection && snsFeatureEnabled
+          !needsContextSelection && snsFeatureEnabled
             ? [
                 {
                   label: text("Create topic"),
-                  onClick: () => setActive({ kind: "create", accountId: accountIdForApi }),
+                  onClick: () => setActive({ kind: "create", contextId: contextIdForApi }),
                 },
               ]
             : []
@@ -142,10 +142,10 @@ export default function TopicsPage() {
 
       {error && <PageBanner tone="error">{text(error)}</PageBanner>}
 
-      {needsS3AccountSelection ? (
+      {needsContextSelection ? (
         <PageEmptyState
-          title={text("Select an account before managing SNS topics")}
-          description={text("SNS topics are created within an execution context. Choose an account to list topics and update notification settings.")}
+          title={text("Select a context before managing SNS topics")}
+          description={text("SNS topics are created within an execution context. Choose a context to list topics and update notification settings.")}
           primaryAction={{ label: text("Open dashboard"), to: "/manager" }}
           tone="warning"
         />
@@ -183,10 +183,10 @@ export default function TopicsPage() {
         </ListPageSection>
       )}
 
-    {active?.kind === "create" && <TopicCreateDialog accountId={active.accountId} currentAccountId={accountIdForApi}
-      onClose={close} onCreated={name => refreshAfterMutation(active.accountId, text("Topic '{name}' created.", { name }))} />}
-    {active?.kind === "delete" && <TopicDeleteDialog accountId={active.accountId} currentAccountId={accountIdForApi}
+    {active?.kind === "create" && <TopicCreateDialog contextId={active.contextId} currentContextId={contextIdForApi}
+      onClose={close} onCreated={name => refreshAfterMutation(active.contextId, text("Topic '{name}' created.", { name }))} />}
+    {active?.kind === "delete" && <TopicDeleteDialog contextId={active.contextId} currentContextId={contextIdForApi}
       topic={active.topic} onClose={close}
-      onDeleted={() => refreshAfterMutation(active.accountId, text("Topic '{name}' deleted.", { name: active.topic.name }))} />}
+      onDeleted={() => refreshAfterMutation(active.contextId, text("Topic '{name}' deleted.", { name: active.topic.name }))} />}
   </div>;
 }

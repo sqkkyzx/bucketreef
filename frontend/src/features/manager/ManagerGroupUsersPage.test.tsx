@@ -4,13 +4,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import ManagerGroupUsersPage from "./ManagerGroupUsersPage";
 
-const useS3AccountContextMock = vi.fn();
+const useExecutionContextMock = vi.fn();
 const listIamGroupUsersMock = vi.fn();
 const listIamUsersMock = vi.fn();
 const removeIamGroupUserMock = vi.fn();
 
-vi.mock("./S3AccountContext", () => ({
-  useS3AccountContext: () => useS3AccountContextMock(),
+vi.mock("./ExecutionContextProvider", () => ({
+  useExecutionContext: () => useExecutionContextMock(),
 }));
 
 vi.mock("../../api/managerIamGroups", async () => {
@@ -43,14 +43,14 @@ function renderPage() {
 
 describe("ManagerGroupUsersPage", () => {
   beforeEach(() => {
-    useS3AccountContextMock.mockReset();
+    useExecutionContextMock.mockReset();
     listIamGroupUsersMock.mockReset();
     listIamUsersMock.mockReset();
     removeIamGroupUserMock.mockReset().mockResolvedValue(undefined);
-    useS3AccountContextMock.mockReturnValue({
-      selectedS3AccountType: "tenant",
-      accountIdForApi: "acc-1",
-      requiresS3AccountSelection: false,
+    useExecutionContextMock.mockReturnValue({
+      selectedContextKind: "account",
+      contextIdForApi: "acc-1",
+      requiresContextSelection: false,
       accessMode: "default",
     });
     listIamGroupUsersMock.mockResolvedValue([]);
