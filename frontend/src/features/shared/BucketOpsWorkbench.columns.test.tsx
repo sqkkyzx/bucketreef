@@ -137,8 +137,29 @@ vi.mock("./BucketOpsRowActionsMenu", () => ({
   default: () => null,
 }));
 
+vi.mock("./BucketConfigurationDrawer", () => ({
+  default: ({
+    bucketName,
+    contextId,
+    navigation,
+    onClose,
+  }: {
+    bucketName: string;
+    contextId?: string | null;
+    navigation?: { previous?: () => void; next?: () => void; position?: string };
+    onClose: () => void;
+  }) => (
+    <div data-testid="bucket-configuration-drawer">
+      <span>{contextId ? `${contextId}:` : ""}{bucketName}</span>
+      <span>{navigation?.position ?? "no-navigation"}</span>
+      <button type="button" onClick={navigation?.previous}>Drawer previous</button>
+      <button type="button" onClick={navigation?.next}>Drawer next</button>
+      <button type="button" onClick={onClose}>Drawer close</button>
+    </div>
+  ),
+}));
+
 import BucketOpsWorkbench from "./BucketOpsWorkbench";
-import { saveBucketListReturnContext } from "./bucketListReturnContext";
 
 const STORAGE_OPS_COLUMNS_STORAGE_KEY = "storage-ops.bucket_list.columns.v2";
 const STORAGE_OPS_LIST_STATE_STORAGE_KEY = "storage-ops.bucket_list.state.v2";
@@ -279,21 +300,8 @@ describe("BucketOpsWorkbench atomic quota columns", () => {
     expect(within(row as HTMLElement).getByRole("checkbox", { name: "Select bucket bucket-a in Account A" })).toBeInTheDocument();
 
     fireEvent.click(bucketButton);
-    expect(mocks.navigate).toHaveBeenCalledWith(
-      {
-        pathname: "/storage-ops/buckets/bucket-a",
-        search: "?ctx=account-1",
-      },
-      {
-        state: expect.objectContaining({
-          bucketListOrigin: {
-            surface: "storage-ops",
-            scopeKey: "storage-ops",
-            listUrl: "/storage-ops/buckets",
-          },
-        }),
-      }
-    );
+    expect(screen.getByTestId("bucket-configuration-drawer")).toHaveTextContent("account-1:bucket-a");
+    expect(mocks.navigate).not.toHaveBeenCalled();
   });
 
   it("explains missing Storage Ops summary metrics in the bucket list", async () => {
@@ -319,12 +327,6 @@ describe("BucketOpsWorkbench atomic quota columns", () => {
   });
 
   it("persists the current page and page size before opening a bucket", async () => {
-    let storedAtNavigation: Record<string, { page?: number; pageSize?: number }> | null = null;
-    mocks.navigate.mockImplementation(() => {
-      storedAtNavigation = JSON.parse(
-        window.localStorage.getItem(STORAGE_OPS_LIST_STATE_STORAGE_KEY) ?? "{}"
-      ) as Record<string, { page?: number; pageSize?: number }>;
-    });
     mocks.listStorageOpsBuckets.mockImplementation(async (_endpointId, params) => ({
       items: [baseBucket],
       ...baseResponse,
@@ -357,28 +359,12 @@ describe("BucketOpsWorkbench atomic quota columns", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "bucket-a" }));
 
-    expect(storedAtNavigation?.["1"]).toEqual(expect.objectContaining({ page: 2, pageSize: 10 }));
-  });
-
-  it("restores the list scroll position and focuses the originating bucket", async () => {
-    const scrollTo = vi.fn();
-    Object.defineProperty(window, "scrollTo", { configurable: true, value: scrollTo });
-    mocks.listStorageOpsBuckets.mockResolvedValue({ items: [baseBucket], ...baseResponse });
-    saveBucketListReturnContext(
-      {
-        surface: "storage-ops",
-        scopeKey: "storage-ops",
-        listUrl: "/storage-ops/buckets",
-      },
-      "bucket-a",
-      420
-    );
-
-    renderStorageOps();
-
-    const bucketButton = await screen.findByRole("button", { name: "bucket-a" });
-    await waitFor(() => expect(bucketButton).toHaveFocus(), { timeout: 3000 });
-    expect(scrollTo).toHaveBeenCalledWith({ top: 420, behavior: "auto" });
+    const storedAfterOpen = JSON.parse(
+      window.localStorage.getItem(STORAGE_OPS_LIST_STATE_STORAGE_KEY) ?? "{}"
+    ) as Record<string, { page?: number; pageSize?: number }>;
+    expect(storedAfterOpen["1"]).toEqual(expect.objectContaining({ page: 2, pageSize: 10 }));
+    expect(screen.getByTestId("bucket-configuration-drawer")).toBeInTheDocument();
+    expect(mocks.navigate).not.toHaveBeenCalled();
   });
 
   it("restores list preferences without restoring the previous tab's selection", async () => {
@@ -585,10 +571,10 @@ describe("BucketOpsWorkbench atomic quota columns", () => {
     fireEvent.click(screen.getAllByRole("button", { name: "Deselect filtered" })[0]);
 
     expect(screen.getByRole("button", { name: "Clear" })).toHaveClass("ui-button-base");
-    for (const closeButton of screen.getAllByRole("button", { name: "Close" })) {
-      expect(closeButton).toHaveClass("ui-button-base");
-    }
     const applyButton = screen.getByRole("button", { name: "Apply filters" });
+    expect(
+      within(applyButton.parentElement as HTMLElement).getByRole("button", { name: "Close" }),
+    ).toHaveClass("ui-button-base");
     expect(applyButton).toHaveClass("ui-button-base");
     fireEvent.click(applyButton);
 

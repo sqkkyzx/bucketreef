@@ -24,6 +24,7 @@ const comfortableMetadataLabelClasses =
 type BrowserObjectTableRowProps = {
   item: BrowserItem;
   selected: boolean;
+  viewed?: boolean;
   compactMode: boolean;
   nameColumnWidthPx: number;
   visibleColumns: readonly ColumnDefinition[];
@@ -63,6 +64,7 @@ function resolveObjectTypeLabel(
 export default function BrowserObjectTableRow({
   item,
   selected,
+  viewed = false,
   compactMode,
   nameColumnWidthPx,
   visibleColumns,
@@ -86,16 +88,15 @@ export default function BrowserObjectTableRow({
   return (
     <tr
       data-browser-item
+      data-browser-item-id={item.id}
+      data-viewed={viewed || undefined}
+      data-selected={(!isDeleted && selected) || undefined}
       data-lazy-item-id={
         item.type === "file" && !item.isDeleted ? item.id : undefined
       }
       onClick={onClick}
       onContextMenu={onContextMenu}
-      className={`ui-browser-row ${rowHeightClasses} cursor-pointer transition-colors focus-within:outline focus-within:outline-2 focus-within:outline-offset-[-2px] focus-within:outline-primary ${
-        selected
-          ? "bg-primary-100/90 shadow-[inset_0_1px_0_rgba(255,255,255,0.35)] hover:bg-primary-100 dark:bg-primary-500/30 dark:hover:bg-primary-500/40"
-          : "hover:bg-slate-50/80 dark:hover:bg-slate-800/40"
-      }`}
+      className={`ui-browser-row ui-current-item ${rowHeightClasses} cursor-pointer transition-colors`}
     >
       <td className={`px-2 ${rowCellClasses} !align-middle`}>
         <ListSelectionCheckbox
@@ -118,6 +119,8 @@ export default function BrowserObjectTableRow({
       >
         <button
           type="button"
+          data-browser-open-item
+          aria-current={viewed ? "true" : undefined}
           onClick={onNameClick}
           onDoubleClick={(event) => event.preventDefault()}
           aria-label={resolveBrowserItemOpenLabel(item, text)}

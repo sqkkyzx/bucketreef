@@ -21,6 +21,65 @@ from app.services.bucket_listing_rule_matching import (
 )
 from app.services.bucket_listing_shared import parse_filter, parse_includes, serialize_filter
 from app.services.ceph_admin_bucket_listing_cache import CephAdminBucketListCacheKey
+from app.utils.normalize import normalize_optional_string
+
+
+def _parse_listing_filters(
+    raw_filter: str | None,
+    raw_advanced_filter: str | None,
+) -> tuple[str | None, BucketFilterQuery | None]:
+    if raw_advanced_filter:
+        simple_filter = normalize_optional_string(raw_filter)
+        _, advanced_filter = parse_filter(raw_advanced_filter)
+        return simple_filter, advanced_filter
+    simple_filter, advanced_filter = parse_filter(raw_filter)
+    return normalize_optional_string(simple_filter), advanced_filter
+
+
+def _metadata_requirements(
+    advanced_filter: BucketFilterQuery | None,
+    sort_by: str,
+    simple_filter: str | None,
+    *,
+    with_ui_tags: bool,
+) -> tuple[bool, bool]:
+    metadata_simple_filter = simple_filter if advanced_filter is None else None
+    needs_owner_metadata = request_requires_owner_metadata(
+        advanced_filter,
+        sort_by,
+        metadata_simple_filter,
+    ) or with_ui_tags
+    needs_tenant_metadata = request_requires_tenant_metadata(
+        advanced_filter,
+        sort_by,
+        metadata_simple_filter,
+    ) or with_ui_tags
+    return needs_owner_metadata, needs_tenant_metadata
+
+
+def _normalized_ui_tag_ids(ui_tag_ids: list[int] | None) -> tuple[int, ...]:
+    return tuple(dict.fromkeys(item for item in (ui_tag_ids or []) if item > 0))
+
+
+def _advanced_filter_rule_groups(
+    query: BucketFilterQuery,
+) -> tuple[list[BucketFilterRule], list[BucketFilterRule], list[BucketFilterRule]]:
+    field_rules = [rule for rule in query.rules if rule.field]
+    feature_state_rules = [
+        rule for rule in query.rules if rule.feature and rule.state is not None
+    ]
+    feature_param_rules = [
+        rule for rule in query.rules if rule.feature and rule.param is not None
+    ]
+    return field_rules, feature_state_rules, feature_param_rules
+
+
+def _partition_field_rules(
+    field_rules: list[BucketFilterRule],
+) -> tuple[list[BucketFilterRule], list[BucketFilterRule]]:
+    expensive = [rule for rule in field_rules if rule.field in EXPENSIVE_FIELD_RULES]
+    cheap = [rule for rule in field_rules if rule.field not in EXPENSIVE_FIELD_RULES]
+    return expensive, cheap
 
 
 @dataclass(frozen=True)
@@ -58,19 +117,9 @@ class CephAdminBucketListingRequest:
         ui_tag_match: str = "any",
         with_ui_tags: bool = False,
     ) -> CephAdminBucketListingRequest:
-        if raw_advanced_filter:
-            simple_filter = (
-                raw_filter.strip()
-                if isinstance(raw_filter, str) and raw_filter.strip()
-                else None
-            )
-            _, advanced_filter = parse_filter(raw_advanced_filter)
-        else:
-            simple_filter, advanced_filter = parse_filter(raw_filter)
-        simple_filter = (
-            simple_filter.strip()
-            if isinstance(simple_filter, str) and simple_filter.strip()
-            else None
+        simple_filter, advanced_filter = _parse_listing_filters(
+            raw_filter,
+            raw_advanced_filter,
         )
         stats_required = request_requires_bucket_stats(advanced_filter, sort_by)
         include_set = parse_includes(include)
@@ -79,6 +128,12 @@ class CephAdminBucketListingRequest:
         wants_owner_quota = "owner_quota" in include_set
         wants_owner_quota_usage = "owner_quota_usage" in include_set
         owner_usage_required = wants_owner_quota_usage or filter_requires_owner_usage(advanced_filter)
+        needs_owner_metadata, needs_tenant_metadata = _metadata_requirements(
+            advanced_filter,
+            sort_by,
+            simple_filter,
+            with_ui_tags=with_ui_tags,
+        )
         return cls(
             simple_filter=simple_filter,
             advanced_filter=advanced_filter,
@@ -91,20 +146,12 @@ class CephAdminBucketListingRequest:
             wants_owner_quota=wants_owner_quota,
             wants_owner_quota_usage=wants_owner_quota_usage,
             owner_usage_required=owner_usage_required,
-            needs_owner_metadata=request_requires_owner_metadata(
-                advanced_filter,
-                sort_by,
-                simple_filter if not advanced_filter else None,
-            ) or with_ui_tags,
-            needs_tenant_metadata=request_requires_tenant_metadata(
-                advanced_filter,
-                sort_by,
-                simple_filter if not advanced_filter else None,
-            ) or with_ui_tags,
+            needs_owner_metadata=needs_owner_metadata,
+            needs_tenant_metadata=needs_tenant_metadata,
             requested_features=frozenset(include_set & BUCKET_FEATURE_INCLUDES),
             requested_detail_fields=frozenset(include_set & COLUMN_DETAIL_KEYS),
             include_tags="tags" in include_set,
-            ui_tag_ids=tuple(dict.fromkeys(int(item) for item in (ui_tag_ids or []) if int(item) > 0)),
+            ui_tag_ids=_normalized_ui_tag_ids(ui_tag_ids),
             ui_tag_match="all" if ui_tag_match == "all" else "any",
         )
 
@@ -137,11 +184,9 @@ class CephAdminAdvancedFilterPlan:
 
     @classmethod
     def from_query(cls, query: BucketFilterQuery) -> CephAdminAdvancedFilterPlan:
-        field_rules = [rule for rule in query.rules if rule.field]
-        feature_state_rules = [rule for rule in query.rules if rule.feature and rule.state is not None]
-        feature_param_rules = [rule for rule in query.rules if rule.feature and rule.param is not None]
-        expensive_field_rules = [rule for rule in field_rules if rule.field in EXPENSIVE_FIELD_RULES]
-        cheap_field_rules = [rule for rule in field_rules if rule.field not in EXPENSIVE_FIELD_RULES]
+        field_rules, feature_state_rules, feature_param_rules = _advanced_filter_rule_groups(query)
+        expensive_field_rules, cheap_field_rules = _partition_field_rules(field_rules)
+        expensive_fields = {rule.field for rule in expensive_field_rules if rule.field}
         return cls(
             query=query,
             field_rules=field_rules,
@@ -150,18 +195,14 @@ class CephAdminAdvancedFilterPlan:
             expensive_field_rules=expensive_field_rules,
             cheap_field_rules=cheap_field_rules,
             filter_features={rule.feature for rule in feature_state_rules if rule.feature},
-            requires_tag_lookup=any(rule.field == "tag" for rule in expensive_field_rules),
-            requires_owner_name_lookup=any(rule.field == "owner_name" for rule in expensive_field_rules),
-            requires_owner_suspended_lookup=any(
-                rule.field in OWNER_STATUS_FIELDS for rule in expensive_field_rules
+            requires_tag_lookup="tag" in expensive_fields,
+            requires_owner_name_lookup="owner_name" in expensive_fields,
+            requires_owner_suspended_lookup=bool(expensive_fields & OWNER_STATUS_FIELDS),
+            requires_owner_quota_lookup=bool(
+                expensive_fields & (OWNER_QUOTA_FIELDS | OWNER_USAGE_PERCENT_FIELDS)
             ),
-            requires_owner_quota_lookup=any(
-                rule.field in (OWNER_QUOTA_FIELDS | OWNER_USAGE_PERCENT_FIELDS)
-                for rule in expensive_field_rules
-            ),
-            requires_owner_usage_lookup=any(
-                rule.field in (OWNER_USAGE_FIELDS | OWNER_USAGE_PERCENT_FIELDS)
-                for rule in expensive_field_rules
+            requires_owner_usage_lookup=bool(
+                expensive_fields & (OWNER_USAGE_FIELDS | OWNER_USAGE_PERCENT_FIELDS)
             ),
         )
 

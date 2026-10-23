@@ -164,7 +164,9 @@ class S3ExecutionContext:
         return self.session_token_value
 
 
-def build_ceph_admin_s3_context(context: CephAdminS3ContextSource) -> S3ExecutionContext:
+def build_ceph_admin_s3_context(
+    context: CephAdminS3ContextSource,
+) -> S3ExecutionContext:
     return S3ExecutionContext.from_ceph_admin_endpoint(
         context.endpoint,
         access_key=context.access_key,

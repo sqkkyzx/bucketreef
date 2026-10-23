@@ -204,23 +204,21 @@ export default function ManagerMigrationDetailPage() {
 
   const draft = migration.status === "draft";
   const checking = migration.preparation_status === "checking";
-  const maintenanceBusy = ["queued", "running"].includes(
-    migration.maintenance_status ?? "",
-  );
+  const maintenanceBusy = ["queued", "running"].includes(migration.maintenance_status);
   const allowed = (action: Action) =>
     Boolean(
-      migration.available_actions?.[
+      migration.available_actions[
         action === "active_checks" ? "precheck" : action
       ]?.enabled,
     );
   const report = migration.precheck_report;
-  const reports = new Map(report?.items?.map((item) => [item.item_id, item]));
+  const reports = new Map(report?.items.map((item) => [item.item_id, item]));
   const problems = (entries: api.BucketMigrationPrecheckEntry[] = []) =>
     entries.filter(
       (entry) =>
         entry.blocking || entry.severity === "warning",
     );
-  const otherBlockers = report?.items?.some((item) =>
+  const otherBlockers = report?.items.some((item) =>
     item.checks?.some(
       (check) => check.blocking && check.code !== "active_checks_required",
     ),
@@ -404,7 +402,7 @@ export default function ManagerMigrationDetailPage() {
                   label: text(actionLabels[action]),
                   disabled: busy || !allowed(action),
                   disabledReason:
-                    migration.available_actions?.[
+                    migration.available_actions[
                       action === "active_checks" ? "precheck" : action
                     ]?.reason ?? text("Unavailable in this state."),
                   danger: action.startsWith("cleanup") || action === "delete",
@@ -460,7 +458,7 @@ export default function ManagerMigrationDetailPage() {
           description={text("Read-only analysis comes first. Active permission tests need your confirmation. Passing checks never starts a copy.")}
         >
           <p role="status" aria-live="polite" className="ui-caption">
-            {migration.preparation_completed_items ?? 0} {text("of")}{" "}
+            {migration.preparation_completed_items} {text("of")}{" "}
             {migration.total_items} {text("buckets checked.")} {report?.errors ?? 0}{" "}
             {text("blocking checks,")} {report?.warnings ?? 0} {text("warnings.")}
           </p>
@@ -469,8 +467,7 @@ export default function ManagerMigrationDetailPage() {
               label={text("Buckets checked")}
               value={
                 migration.total_items
-                  ? (100 * (migration.preparation_completed_items ?? 0)) /
-                    migration.total_items
+                  ? (100 * migration.preparation_completed_items) / migration.total_items
                   : null
               }
             />
@@ -650,7 +647,7 @@ export default function ManagerMigrationDetailPage() {
           },
         ]}
       />
-      {report?.items?.length ? (
+      {report?.items.length ? (
         <WorkflowSection
           title={text("Reviewed plan")}
           description={text("Configuration revision {revision}. Checked {date}.", {

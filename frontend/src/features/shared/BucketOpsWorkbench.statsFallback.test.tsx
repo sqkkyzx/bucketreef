@@ -134,6 +134,27 @@ vi.mock("./BucketSelectionActionsBar", () => ({
   default: () => null,
 }));
 
+vi.mock("./BucketConfigurationDrawer", () => ({
+  default: ({
+    bucketName,
+    contextId,
+    navigation,
+    onClose,
+  }: {
+    bucketName: string;
+    contextId?: string | null;
+    navigation?: { next?: () => void; position?: string };
+    onClose: () => void;
+  }) => (
+    <div data-testid="bucket-configuration-drawer">
+      <span>{contextId ? `${contextId}:` : ""}{bucketName}</span>
+      <span>{navigation?.position ?? "no-navigation"}</span>
+      <button type="button" onClick={navigation?.next}>Drawer next</button>
+      <button type="button" onClick={onClose}>Drawer close</button>
+    </div>
+  ),
+}));
+
 import BucketOpsWorkbench from "./BucketOpsWorkbench";
 
 function createDeferred<T>() {
@@ -174,7 +195,7 @@ describe("BucketOpsWorkbench Ceph Admin stats fallback", () => {
     window.sessionStorage.clear();
   });
 
-  it("opens Ceph Admin bucket configuration on the endpoint-scoped detail route", async () => {
+  it("opens Ceph Admin bucket configuration in the endpoint-scoped list drawer", async () => {
     mocks.listCephAdminBuckets.mockResolvedValue({
       items: [{ name: "bucket-a", owner: "owner-a" }],
       total: 1,
@@ -192,21 +213,8 @@ describe("BucketOpsWorkbench Ceph Admin stats fallback", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "bucket-a" }));
 
-    expect(mocks.navigate).toHaveBeenCalledWith(
-      {
-        pathname: "/ceph-admin/buckets/bucket-a",
-        search: "?ep=7",
-      },
-      {
-        state: {
-          bucketListOrigin: {
-            surface: "ceph-admin",
-            scopeKey: "7",
-            listUrl: "/ceph-admin/buckets",
-          },
-        },
-      }
-    );
+    expect(screen.getByTestId("bucket-configuration-drawer")).toHaveTextContent("bucket-a");
+    expect(mocks.navigate).not.toHaveBeenCalled();
   });
 
   it("requests bucket stats by default and surfaces degraded stats warnings", async () => {

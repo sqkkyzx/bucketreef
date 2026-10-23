@@ -194,6 +194,99 @@ def _validate_credentials(
     return None, None, None, None
 
 
+def _normalized_credential_pair(
+    payload: StorageEndpointCreate,
+    kind: str,
+) -> tuple[str | None, str | None]:
+    return (
+        normalize_optional_string(getattr(payload, f"{kind}_access_key")),
+        normalize_optional_string(
+            _secret_value(getattr(payload, f"{kind}_secret_key"))
+        ),
+    )
+
+
+def _normalize_ceph_service_credentials(
+    payload: StorageEndpointCreate,
+    *,
+    provider: StorageProvider,
+    required_identities: set[str],
+    admin_required: bool,
+) -> dict[str, str | None]:
+    admin_access, admin_secret = _normalized_credential_pair(payload, "admin")
+    runtime_access, runtime_secret = _normalized_credential_pair(payload, "runtime")
+    supervision_access, supervision_secret = _normalized_credential_pair(
+        payload, "supervision"
+    )
+    ceph_admin_access, ceph_admin_secret = _normalized_credential_pair(
+        payload, "ceph_admin"
+    )
+
+    (
+        admin_access,
+        admin_secret,
+        supervision_access,
+        supervision_secret,
+    ) = _validate_credentials(
+        provider,
+        admin_access,
+        admin_secret,
+        supervision_access,
+        supervision_secret,
+        admin_required,
+        payload.service_identity_mode == "external"
+        and "supervision" in required_identities,
+    )
+
+    if provider != StorageProvider.CEPH:
+        return {
+            "admin_access_key": None,
+            "admin_secret_key": None,
+            "runtime_access_key": None,
+            "runtime_secret_key": None,
+            "supervision_access_key": None,
+            "supervision_secret_key": None,
+            "ceph_admin_access_key": None,
+            "ceph_admin_secret_key": None,
+        }
+
+    if (
+        payload.service_identity_mode == "external"
+        and "runtime" in required_identities
+        and (not runtime_access or not runtime_secret)
+    ):
+        raise ValueError(
+            "External service identities require Runtime access key and secret key."
+        )
+
+    pairs = {
+        "admin": (admin_access, admin_secret),
+        "runtime": (runtime_access, runtime_secret),
+        "supervision": (supervision_access, supervision_secret),
+        "ceph_admin": (ceph_admin_access, ceph_admin_secret),
+    }
+    for kind, (access, secret) in pairs.items():
+        if bool(access) != bool(secret):
+            raise ValueError(
+                f"External {kind} credentials require a complete pair."
+            )
+    if payload.ceph_admin_allowed and (
+        not ceph_admin_access or not ceph_admin_secret
+    ):
+        raise ValueError("Allowing Ceph Admin requires its access key and secret key.")
+
+    return {
+        "admin_access_key": admin_access,
+        "admin_secret_key": admin_secret,
+        "runtime_access_key": runtime_access,
+        "runtime_secret_key": runtime_secret,
+        "supervision_access_key": supervision_access,
+        "supervision_secret_key": supervision_secret,
+        "ceph_admin_access_key": ceph_admin_access,
+        "ceph_admin_secret_key": ceph_admin_secret,
+    }
+
+
 def normalize_storage_endpoint_state(
     payload: StorageEndpointCreate,
 ) -> NormalizedEndpointState:
@@ -208,9 +301,9 @@ def normalize_storage_endpoint_state(
         payload.features_config,
         region,
     )
-    supervision_access_input = normalize_optional_string(payload.supervision_access_key)
-    supervision_secret_input = normalize_optional_string(
-        _secret_value(payload.supervision_secret_key)
+    supervision_access_input, supervision_secret_input = _normalized_credential_pair(
+        payload,
+        "supervision",
     )
     if (
         provider == StorageProvider.CEPH
@@ -228,34 +321,12 @@ def normalize_storage_endpoint_state(
     admin_required = admin_enabled or (
         payload.service_identity_mode == "managed" and bool(required_identities)
     )
-    (
-        admin_access_key,
-        admin_secret_key,
-        supervision_access_key,
-        supervision_secret_key,
-    ) = _validate_credentials(
-        provider,
-        normalize_optional_string(payload.admin_access_key),
-        normalize_optional_string(_secret_value(payload.admin_secret_key)),
-        supervision_access_input,
-        supervision_secret_input,
-        admin_required,
-        payload.service_identity_mode == "external" and "supervision" in required_identities,
+    credentials = _normalize_ceph_service_credentials(
+        payload,
+        provider=provider,
+        required_identities=required_identities,
+        admin_required=admin_required,
     )
-    runtime_access = normalize_optional_string(payload.runtime_access_key) if provider == StorageProvider.CEPH else None
-    runtime_secret = normalize_optional_string(_secret_value(payload.runtime_secret_key)) if provider == StorageProvider.CEPH else None
-    if provider == StorageProvider.CEPH and payload.service_identity_mode == "external" and "runtime" in required_identities and (not runtime_access or not runtime_secret):
-        raise ValueError("External service identities require Runtime access key and secret key.")
-    if provider == StorageProvider.CEPH:
-        for kind in ("admin", "runtime", "supervision", "ceph_admin"):
-            access, secret = getattr(payload, f"{kind}_access_key"), _secret_value(getattr(payload, f"{kind}_secret_key"))
-            if bool(normalize_optional_string(access)) != bool(normalize_optional_string(secret)):
-                raise ValueError(f"External {kind} credentials require a complete pair.")
-        if payload.ceph_admin_allowed and (
-            not normalize_optional_string(payload.ceph_admin_access_key)
-            or not normalize_optional_string(_secret_value(payload.ceph_admin_secret_key))
-        ):
-            raise ValueError("Allowing Ceph Admin requires its access key and secret key.")
     return NormalizedEndpointState(
         name=name,
         endpoint_url=endpoint_url,
@@ -265,16 +336,16 @@ def normalize_storage_endpoint_state(
         latitude=payload.latitude,
         longitude=payload.longitude,
         provider=provider,
-        admin_access_key=admin_access_key,
-        admin_secret_key=admin_secret_key,
+        admin_access_key=credentials["admin_access_key"],
+        admin_secret_key=credentials["admin_secret_key"],
         service_identity_mode=payload.service_identity_mode,
-        runtime_access_key=runtime_access,
-        runtime_secret_key=runtime_secret,
-        ceph_admin_access_key=normalize_optional_string(payload.ceph_admin_access_key) if provider == StorageProvider.CEPH else None,
-        ceph_admin_secret_key=normalize_optional_string(_secret_value(payload.ceph_admin_secret_key)) if provider == StorageProvider.CEPH else None,
+        runtime_access_key=credentials["runtime_access_key"],
+        runtime_secret_key=credentials["runtime_secret_key"],
+        ceph_admin_access_key=credentials["ceph_admin_access_key"],
+        ceph_admin_secret_key=credentials["ceph_admin_secret_key"],
         ceph_admin_allowed=payload.ceph_admin_allowed if provider == StorageProvider.CEPH else False,
-        supervision_access_key=supervision_access_key,
-        supervision_secret_key=supervision_secret_key,
+        supervision_access_key=credentials["supervision_access_key"],
+        supervision_secret_key=credentials["supervision_secret_key"],
         features_config=features_config,
     )
 
@@ -283,15 +354,65 @@ def normalize_storage_endpoint_update(
     endpoint: StorageEndpoint,
     payload: StorageEndpointUpdate,
 ) -> NormalizedEndpointState:
-    fields_set = set(payload.model_fields_set)
-    ceph_pair = {"ceph_admin_access_key", "ceph_admin_secret_key"}
-    if ceph_pair & fields_set and not normalize_optional_string(payload.ceph_admin_access_key) and not normalize_optional_string(_secret_value(payload.ceph_admin_secret_key)):
-        fields_set -= ceph_pair  # Empty write-only fields preserve the stored pair.
     runtime = endpoint.service_identity("runtime")
     supervision = endpoint.service_identity("supervision")
     ceph_admin = endpoint.service_identity("ceph_admin")
     current_identity_mode = runtime.mode if runtime is not None else "managed"
-    merged = StorageEndpointCreate(
+    fields_set = _effective_storage_endpoint_update_fields(payload)
+    merged = _storage_endpoint_update_base(
+        endpoint,
+        current_identity_mode=current_identity_mode,
+        runtime=runtime,
+        supervision=supervision,
+        ceph_admin=ceph_admin,
+    )
+    switching_to_external = (
+        current_identity_mode == "managed"
+        and payload.service_identity_mode == "external"
+    )
+    if switching_to_external:
+        _clear_managed_identity_credentials(merged)
+    _merge_storage_endpoint_update_fields(merged, payload, fields_set)
+    if switching_to_external:
+        _validate_external_identity_replacements(
+            merged,
+            payload,
+            runtime=runtime,
+            supervision=supervision,
+        )
+
+    if not merged["endpoint_url"]:
+        raise ValueError("Endpoint URL is required.")
+    _validate_storage_endpoint_update_credential_pairs(payload, fields_set)
+    _clear_secrets_for_removed_access_keys(merged, fields_set)
+
+    return normalize_storage_endpoint_state(StorageEndpointCreate.model_validate(merged))
+
+
+def _effective_storage_endpoint_update_fields(
+    payload: StorageEndpointUpdate,
+) -> set[str]:
+    fields_set = set(payload.model_fields_set)
+    ceph_pair = {"ceph_admin_access_key", "ceph_admin_secret_key"}
+    if (
+        ceph_pair & fields_set
+        and not normalize_optional_string(payload.ceph_admin_access_key)
+        and not normalize_optional_string(_secret_value(payload.ceph_admin_secret_key))
+    ):
+        # Empty write-only fields preserve the stored pair.
+        fields_set -= ceph_pair
+    return fields_set
+
+
+def _storage_endpoint_update_base(
+    endpoint: StorageEndpoint,
+    *,
+    current_identity_mode: str,
+    runtime,
+    supervision,
+    ceph_admin,
+) -> dict:
+    return StorageEndpointCreate(
         name=endpoint.name,
         endpoint_url=endpoint.endpoint_url,
         region=endpoint.region,
@@ -312,48 +433,93 @@ def normalize_storage_endpoint_update(
         latitude=endpoint.latitude,
         longitude=endpoint.longitude,
     ).model_dump()
-    if current_identity_mode == "managed" and payload.service_identity_mode == "external":
-        for kind in ("runtime", "supervision"):
-            merged[f"{kind}_access_key"] = None
-            merged[f"{kind}_secret_key"] = None
+
+
+def _clear_managed_identity_credentials(merged: dict) -> None:
+    for kind in ("runtime", "supervision"):
+        merged[f"{kind}_access_key"] = None
+        merged[f"{kind}_secret_key"] = None
+
+
+def _merge_storage_endpoint_update_fields(
+    merged: dict,
+    payload: StorageEndpointUpdate,
+    fields_set: set[str],
+) -> None:
     for field in fields_set:
         value = getattr(payload, field)
-        if (
-            value is None
-            and field in _PRESERVE_EXISTING_ON_NULL_UPDATE_FIELDS
-        ):
+        if value is None and field in _PRESERVE_EXISTING_ON_NULL_UPDATE_FIELDS:
             continue
         merged[field] = value
 
-    if current_identity_mode == "managed" and payload.service_identity_mode == "external":
-        required = required_service_identity_kinds(normalize_features_config(
-            merged["provider"], merged["features_config"], merged["region"],
-        ))
-        for kind, identity in (("runtime", runtime), ("supervision", supervision)):
-            existing_managed = identity is not None and identity.mode == "managed" and any((
-                identity.rgw_uid, identity.access_key, identity.secret_key, identity.provenance,
-            ))
-            if (kind in required or existing_managed) and (
-                not normalize_optional_string(getattr(payload, f"{kind}_access_key"))
-                or not normalize_optional_string(_secret_value(getattr(payload, f"{kind}_secret_key")))
-            ):
-                raise ValueError(f"Switching to external mode requires replacement {kind.title()} credentials.")
 
-    if not merged["endpoint_url"]:
-        raise ValueError("Endpoint URL is required.")
+def _validate_external_identity_replacements(
+    merged: dict,
+    payload: StorageEndpointUpdate,
+    *,
+    runtime,
+    supervision,
+) -> None:
+    required = required_service_identity_kinds(
+        normalize_features_config(
+            merged["provider"],
+            merged["features_config"],
+            merged["region"],
+        )
+    )
+    for kind, identity in (("runtime", runtime), ("supervision", supervision)):
+        existing_managed = (
+            identity is not None
+            and identity.mode == "managed"
+            and any(
+                (
+                    identity.rgw_uid,
+                    identity.access_key,
+                    identity.secret_key,
+                    identity.provenance,
+                )
+            )
+        )
+        if (kind in required or existing_managed) and (
+            not normalize_optional_string(getattr(payload, f"{kind}_access_key"))
+            or not normalize_optional_string(
+                _secret_value(getattr(payload, f"{kind}_secret_key"))
+            )
+        ):
+            raise ValueError(
+                f"Switching to external mode requires replacement {kind.title()} credentials."
+            )
+
+
+def _validate_storage_endpoint_update_credential_pairs(
+    payload: StorageEndpointUpdate,
+    fields_set: set[str],
+) -> None:
     for kind in ("runtime", "supervision", "ceph_admin"):
         access_field, secret_field = f"{kind}_access_key", f"{kind}_secret_key"
         if {access_field, secret_field} & fields_set:
-            if bool(normalize_optional_string(getattr(payload, access_field))) != bool(normalize_optional_string(_secret_value(getattr(payload, secret_field)))):
-                raise ValueError(f"Replacing {kind} credentials requires a complete pair.")
+            has_access = bool(normalize_optional_string(getattr(payload, access_field)))
+            has_secret = bool(
+                normalize_optional_string(
+                    _secret_value(getattr(payload, secret_field))
+                )
+            )
+            if has_access != has_secret:
+                raise ValueError(
+                    f"Replacing {kind} credentials requires a complete pair."
+                )
+
+
+def _clear_secrets_for_removed_access_keys(
+    merged: dict,
+    fields_set: set[str],
+) -> None:
     for access_key_field, secret_key_field in _CREDENTIAL_FIELD_PAIRS:
         if (
             access_key_field in fields_set
             and not normalize_optional_string(merged[access_key_field])
         ):
             merged[secret_key_field] = None
-
-    return normalize_storage_endpoint_state(StorageEndpointCreate.model_validate(merged))
 
 
 def _env_endpoint_identities(

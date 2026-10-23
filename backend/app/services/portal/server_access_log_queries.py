@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from contextlib import closing
 from datetime import date as date_cls
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any, Callable, Optional
 
 from botocore.exceptions import BotoCoreError, ClientError
 from sqlalchemy import select
@@ -54,6 +54,41 @@ def _portal_requester_detail(value: Optional[str]) -> Optional[str]:
     if len(value) <= 8:
         return value
     return f"{value[:4]}...{value[-4:]}"
+
+
+def _first_rgw_identity_value(
+    candidates: list[dict[str, Any]],
+    extractor: Callable[[dict[str, Any]], Any],
+) -> Optional[str]:
+    for candidate in candidates:
+        value = dash_to_none(extractor(candidate))
+        if value:
+            return value
+    return None
+
+
+def _rgw_user_requester_identity(
+    uid: str,
+    account_id: Optional[str],
+    display_name: Optional[str],
+) -> PortalServerAccessRequesterIdentity:
+    return PortalServerAccessRequesterIdentity(
+        label=display_name or uid,
+        kind="rgw_user",
+        detail=f"RGW user {uid}" + (f" · account {account_id}" if account_id else ""),
+        iam_username=uid,
+        email=display_name if isinstance(display_name, str) and "@" in display_name else None,
+        resolved=True,
+    )
+
+
+def _rgw_account_requester_identity(account_id: str) -> PortalServerAccessRequesterIdentity:
+    return PortalServerAccessRequesterIdentity(
+        label=account_id,
+        kind="rgw_account",
+        detail="RGW account",
+        resolved=True,
+    )
 
 
 class PortalServerAccessLogQueriesMixin:
@@ -166,62 +201,45 @@ class PortalServerAccessLogQueriesMixin:
         user_payload = payload.get("user")
         if isinstance(user_payload, dict):
             candidates.append(user_payload)
-        uid = None
-        account_id = None
-        display_name = None
-        for candidate in candidates:
-            uid = dash_to_none(candidate.get("uid") or candidate.get("user_id") or (candidate.get("user") if isinstance(candidate.get("user"), str) else None))
-            if uid:
-                break
-        for candidate in candidates:
-            account_id = dash_to_none(candidate.get("account_id") or candidate.get("account"))
-            if account_id:
-                break
-        for candidate in candidates:
-            display_name = dash_to_none(candidate.get("display_name") or candidate.get("name") or candidate.get("email"))
-            if display_name:
-                break
+        uid = _first_rgw_identity_value(
+            candidates,
+            lambda candidate: candidate.get("uid")
+            or candidate.get("user_id")
+            or (candidate.get("user") if isinstance(candidate.get("user"), str) else None),
+        )
+        account_id = _first_rgw_identity_value(
+            candidates,
+            lambda candidate: candidate.get("account_id") or candidate.get("account"),
+        )
+        display_name = _first_rgw_identity_value(
+            candidates,
+            lambda candidate: candidate.get("display_name") or candidate.get("name") or candidate.get("email"),
+        )
         if uid:
-            return PortalServerAccessRequesterIdentity(
-                label=display_name or uid,
-                kind="rgw_user",
-                detail=f"RGW user {uid}" + (f" · account {account_id}" if account_id else ""),
-                iam_username=uid,
-                email=display_name if isinstance(display_name, str) and "@" in display_name else None,
-                resolved=True,
-            )
+            return _rgw_user_requester_identity(uid, account_id, display_name)
         if account_id:
-            return PortalServerAccessRequesterIdentity(
-                label=account_id,
-                kind="rgw_account",
-                detail="RGW account",
-                resolved=True,
-            )
+            return _rgw_account_requester_identity(account_id)
         return None
 
-    def _resolve_portal_server_access_requester_identities(
+    def _portal_server_access_external_identities(
         self,
         account: S3Account,
-        entries: list[PortalServerAccessLogEntry],
-    ) -> None:
-        requesters = sorted({entry.requester for entry in entries if entry.requester})
-        if not requesters:
-            return
-        identity_by_requester: dict[str, PortalServerAccessRequesterIdentity] = {}
-
-        external_rows = self.db.scalars(
+        requesters: list[str],
+    ) -> dict[str, PortalServerAccessRequesterIdentity]:
+        identities: dict[str, PortalServerAccessRequesterIdentity] = {}
+        rows = self.db.scalars(
             select(PortalExternalAccessCredential).where(
                 PortalExternalAccessCredential.account_id == account.id,
                 PortalExternalAccessCredential.iam_user_id.in_(requesters),
             )
         ).all()
-        for credential in external_rows:
+        for credential in rows:
             if not credential.iam_user_id:
                 continue
             metadata = credential.storage_space
             space_name = self._display_storage_space_name(credential.bucket_name, metadata)
             permission_label = "read/write" if credential.permission == "read_write" else "read-only"
-            identity_by_requester[credential.iam_user_id] = PortalServerAccessRequesterIdentity(
+            identities[credential.iam_user_id] = PortalServerAccessRequesterIdentity(
                 label=credential.external_email,
                 kind="external_access",
                 detail=f"External access · {credential.iam_username} · {space_name} · {permission_label}",
@@ -230,24 +248,35 @@ class PortalServerAccessLogQueriesMixin:
                 email=credential.external_email,
                 resolved=True,
             )
+        return identities
 
-        portal_rows = self.db.execute(
+    def _portal_server_access_portal_user_identities(
+        self,
+        account: S3Account,
+        requesters: list[str],
+        resolved_requesters: set[str],
+    ) -> dict[str, PortalServerAccessRequesterIdentity]:
+        unresolved = [requester for requester in requesters if requester not in resolved_requesters]
+        if not unresolved:
+            return {}
+        identities: dict[str, PortalServerAccessRequesterIdentity] = {}
+        rows = self.db.execute(
             select(AccountIAMUser, User)
             .join(User, AccountIAMUser.user_id == User.id)
             .where(
                 AccountIAMUser.account_id == account.id,
-                AccountIAMUser.iam_user_id.in_(requesters),
+                AccountIAMUser.iam_user_id.in_(unresolved),
             )
         ).all()
-        for link, linked_user in portal_rows:
-            if not link.iam_user_id or link.iam_user_id in identity_by_requester:
+        for link, linked_user in rows:
+            if not link.iam_user_id:
                 continue
             label = link.iam_username or linked_user.full_name or linked_user.email
             detail_parts = ["Portal user"]
             user_label = linked_user.full_name or linked_user.email
             if user_label and user_label != label:
                 detail_parts.append(user_label)
-            identity_by_requester[link.iam_user_id] = PortalServerAccessRequesterIdentity(
+            identities[link.iam_user_id] = PortalServerAccessRequesterIdentity(
                 label=label,
                 kind="portal_user",
                 detail=" · ".join(detail_parts),
@@ -257,37 +286,88 @@ class PortalServerAccessLogQueriesMixin:
                 email=linked_user.email,
                 resolved=True,
             )
+        return identities
 
-        unknown_requesters = [requester for requester in requesters if requester not in identity_by_requester]
-        if unknown_requesters:
-            rgw_cache: dict[str, PortalServerAccessRequesterIdentity] = {}
-            try:
-                rgw_admin = self._portal_server_access_rgw_admin_client(account)
-            except Exception as exc:
-                logger.debug("Unable to prepare RGW Admin requester identity resolver for account %s: %s", account.id, exc)
-                rgw_admin = None
-            if rgw_admin is not None:
-                for requester in unknown_requesters:
-                    try:
-                        if "$" in requester:
-                            tenant, uid = requester.split("$", 1)
-                        else:
-                            tenant, uid = resolve_target_tenant(account), requester
-                        payload = rgw_admin.get_user(uid, tenant=tenant or None, allow_not_found=True)
-                        if payload:
-                            require_rgw_user_identity(payload, uid, tenant)
-                        identity = self._portal_server_access_identity_from_rgw_payload(payload)
-                    except Exception as exc:
-                        logger.debug("Unable to resolve requester identity for %s: %s", requester, exc)
-                        identity = None
-                    rgw_cache[requester] = identity or self._unknown_portal_server_access_identity(requester)
-                identity_by_requester.update(rgw_cache)
+    def _portal_server_access_rgw_identity(
+        self,
+        account: S3Account,
+        rgw_admin: RGWAdminClient,
+        requester: str,
+    ) -> PortalServerAccessRequesterIdentity:
+        try:
+            if "$" in requester:
+                tenant, uid = requester.split("$", 1)
+            else:
+                tenant, uid = resolve_target_tenant(account), requester
+            payload = rgw_admin.get_user(uid, tenant=tenant or None, allow_not_found=True)
+            if payload:
+                require_rgw_user_identity(payload, uid, tenant)
+            identity = self._portal_server_access_identity_from_rgw_payload(payload)
+        except Exception as exc:
+            logger.debug("Unable to resolve requester identity for %s: %s", requester, exc)
+            identity = None
+        return identity or self._unknown_portal_server_access_identity(requester)
 
+    def _portal_server_access_rgw_identities(
+        self,
+        account: S3Account,
+        requesters: list[str],
+    ) -> dict[str, PortalServerAccessRequesterIdentity]:
+        if not requesters:
+            return {}
+        try:
+            rgw_admin = self._portal_server_access_rgw_admin_client(account)
+        except Exception as exc:
+            logger.debug(
+                "Unable to prepare RGW Admin requester identity resolver for account %s: %s",
+                account.id,
+                exc,
+            )
+            return {}
+        if rgw_admin is None:
+            return {}
+        return {
+            requester: self._portal_server_access_rgw_identity(account, rgw_admin, requester)
+            for requester in requesters
+        }
+
+    def _assign_portal_server_access_requester_identities(
+        self,
+        entries: list[PortalServerAccessLogEntry],
+        identity_by_requester: dict[str, PortalServerAccessRequesterIdentity],
+    ) -> None:
         for entry in entries:
-            if not entry.requester:
-                entry.requester_identity = self._unknown_portal_server_access_identity(None)
-                continue
-            entry.requester_identity = identity_by_requester.get(entry.requester) or self._unknown_portal_server_access_identity(entry.requester)
+            entry.requester_identity = (
+                identity_by_requester.get(entry.requester)
+                if entry.requester
+                else None
+            ) or self._unknown_portal_server_access_identity(entry.requester)
+
+    def _resolve_portal_server_access_requester_identities(
+        self,
+        account: S3Account,
+        entries: list[PortalServerAccessLogEntry],
+    ) -> None:
+        requesters = sorted({entry.requester for entry in entries if entry.requester})
+        if not requesters:
+            return
+        identity_by_requester = self._portal_server_access_external_identities(account, requesters)
+        identity_by_requester.update(
+            self._portal_server_access_portal_user_identities(
+                account,
+                requesters,
+                set(identity_by_requester),
+            )
+        )
+        unknown_requesters = [
+            requester
+            for requester in requesters
+            if requester not in identity_by_requester
+        ]
+        identity_by_requester.update(
+            self._portal_server_access_rgw_identities(account, unknown_requesters)
+        )
+        self._assign_portal_server_access_requester_identities(entries, identity_by_requester)
 
     def _collect_portal_server_access_logs(
         self,

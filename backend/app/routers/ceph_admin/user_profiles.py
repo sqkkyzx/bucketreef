@@ -40,6 +40,7 @@ from app.utils.quota_stats import extract_quota_limits
 from app.utils.rgw_payloads import (
     extract_bucket_list,
     extract_rgw_account_tenant,
+    extract_rgw_quota_enabled,
     extract_rgw_user_payload,
     parse_rgw_bool,
     parse_rgw_int,
@@ -76,16 +77,6 @@ def _extract_user_setting(payload: dict[str, Any], user_payload: dict[str, Any],
         value = normalize_optional_scalar(payload.get(key))
         if value is not None:
             return value
-    return None
-
-
-def _extract_quota_enabled(payload: dict[str, Any], keys: tuple[str, ...] = ("user_quota", "quota")) -> Optional[bool]:
-    for key in keys:
-        value = payload.get(key)
-        if isinstance(value, dict):
-            parsed = parse_rgw_bool(value.get("enabled"))
-            if parsed is not None:
-                return parsed
     return None
 
 
@@ -147,7 +138,10 @@ def _build_user_detail(
     tenant, uid = _resolve_user_identity(payload, uid_fallback=uid_fallback, tenant_fallback=tenant_fallback)
     account_id = normalize_optional_scalar(payload.get("account_id") or user_payload.get("account_id"))
     quota_size, quota_objects = extract_quota_limits(payload, keys=("user_quota", "quota"))
-    quota_enabled = _extract_quota_enabled(payload)
+    quota_enabled = extract_rgw_quota_enabled(
+        payload,
+        keys=("user_quota", "quota"),
+    )
     quota = None
     if quota_enabled is not None or quota_size is not None or quota_objects is not None:
         quota = CephAdminRgwQuotaConfig(
@@ -320,30 +314,38 @@ def _apply_caps_update(
         raise_http_exception_from_exception(status.HTTP_502_BAD_GATEWAY, exc)
 
 
-@router.post("", response_model=CephAdminRgwUserCreateResponse, status_code=status.HTTP_201_CREATED)
-def create_rgw_user(
+def _resolve_create_user_scope(
     payload: CephAdminRgwUserCreate,
-    ctx: CephAdminContext = Depends(get_ceph_admin_context),
-) -> CephAdminRgwUserCreateResponse:
+    ctx: CephAdminContext,
+) -> tuple[str, Optional[str], Optional[str]]:
     uid = payload.uid.strip()
     if not uid:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="uid is required")
+
     tenant = payload.tenant.strip() if isinstance(payload.tenant, str) else None
     tenant = tenant or None
     account_id = payload.account_id.strip() if isinstance(payload.account_id, str) else None
     account_id = account_id or None
-    if account_id:
-        account_tenant = extract_rgw_account_tenant(
-            load_account_payload(account_id, ctx.rgw_admin)
-        )
-        if tenant and tenant != account_tenant:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="tenant does not match the selected RGW account",
-            )
-        tenant = account_tenant or None
+    if not account_id:
+        return uid, tenant, None
 
-    # A manual create must never reuse another principal (even within the same account).
+    account_tenant = extract_rgw_account_tenant(
+        load_account_payload(account_id, ctx.rgw_admin)
+    )
+    if tenant and tenant != account_tenant:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="tenant does not match the selected RGW account",
+        )
+    return uid, account_tenant or None, account_id
+
+
+def _require_create_user_uid_available(
+    uid: str,
+    tenant: Optional[str],
+    ctx: CephAdminContext,
+) -> None:
+    # A manual create must never reuse another principal, even within the same account.
     try:
         existing = ctx.rgw_admin.get_user(uid, tenant=tenant, allow_not_found=True)
     except RGWAdminError as exc:
@@ -351,9 +353,18 @@ def create_rgw_user(
     if existing and not existing.get("not_found"):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="RGW user UID already exists")
 
+
+def _create_rgw_user_record(
+    payload: CephAdminRgwUserCreate,
+    *,
+    uid: str,
+    tenant: Optional[str],
+    account_id: Optional[str],
+    ctx: CephAdminContext,
+) -> Any:
     try:
         if account_id:
-            create_result = ctx.rgw_admin.create_user_with_account_id(
+            result = ctx.rgw_admin.create_user_with_account_id(
                 uid=uid,
                 account_id=account_id,
                 display_name=payload.display_name or uid,
@@ -363,9 +374,8 @@ def create_rgw_user(
                 extra_params=payload.extra_params or None,
                 tenant=tenant,
             )
-            lookup_tenant = tenant
         else:
-            create_result = ctx.rgw_admin.create_user(
+            result = ctx.rgw_admin.create_user(
                 uid=uid,
                 display_name=payload.display_name or uid,
                 email=payload.email,
@@ -373,51 +383,80 @@ def create_rgw_user(
                 generate_key=bool(payload.generate_key),
                 extra_params=payload.extra_params or None,
             )
-            lookup_tenant = tenant
     except RGWAdminError as exc:
         raise_http_exception_from_exception(status.HTTP_502_BAD_GATEWAY, exc)
 
-    if isinstance(create_result, dict) and create_result.get("conflict"):
+    if isinstance(result, dict) and result.get("conflict"):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="RGW user already exists")
-    raise_if_unsupported(create_result, "RGW user creation is not supported on this cluster")
+    raise_if_unsupported(result, "RGW user creation is not supported on this cluster")
+    return result
 
-    # RGW can resolve the bare UID to another account. Verify the fresh record
-    # before any profile, quota, or capability updates and before exposing a key.
-    require_user_scope(uid, lookup_tenant, account_id, ctx.rgw_admin)
 
+def _apply_created_user_configuration(
+    payload: CephAdminRgwUserCreate,
+    *,
+    uid: str,
+    tenant: Optional[str],
+    ctx: CephAdminContext,
+) -> set[str]:
     field_set = set(payload.model_fields_set)
     if USER_UPDATE_FIELD_SET & field_set:
         _apply_user_update(
             uid,
-            lookup_tenant,
+            tenant,
             _user_update_params(payload, field_set, clear_nulls=False),
             ctx,
         )
-
     if payload.caps is not None:
-        _apply_caps_update(uid, lookup_tenant, payload.caps.mode, payload.caps.values, ctx)
-
+        _apply_caps_update(uid, tenant, payload.caps.mode, payload.caps.values, ctx)
     if any(getattr(payload, field) is not None for field in USER_QUOTA_FIELDS):
         _apply_user_quota_update(
             uid,
-            lookup_tenant,
+            tenant,
             max_size_bytes=payload.quota_max_size_bytes,
             max_objects=payload.quota_max_objects,
             enabled=payload.quota_enabled,
             ctx=ctx,
         )
+    return field_set
+
+
+@router.post("", response_model=CephAdminRgwUserCreateResponse, status_code=status.HTTP_201_CREATED)
+def create_rgw_user(
+    payload: CephAdminRgwUserCreate,
+    ctx: CephAdminContext = Depends(get_ceph_admin_context),
+) -> CephAdminRgwUserCreateResponse:
+    uid, tenant, account_id = _resolve_create_user_scope(payload, ctx)
+    _require_create_user_uid_available(uid, tenant, ctx)
+    create_result = _create_rgw_user_record(
+        payload,
+        uid=uid,
+        tenant=tenant,
+        account_id=account_id,
+        ctx=ctx,
+    )
+
+    # RGW can resolve the bare UID to another account. Verify the fresh record
+    # before any profile, quota, or capability updates and before exposing a key.
+    require_user_scope(uid, tenant, account_id, ctx.rgw_admin)
+    field_set = _apply_created_user_configuration(
+        payload,
+        uid=uid,
+        tenant=tenant,
+        ctx=ctx,
+    )
 
     invalidate_users_listing_cache(ctx.endpoint.id)
-    detail = _load_user_detail(uid, lookup_tenant, ctx)
+    detail = _load_user_detail(uid, tenant, ctx)
     generated_key = _extract_generated_key_from_payload(create_result, ctx.rgw_admin)
     record_ceph_admin_action(
         ctx,
         action="rgw_user.create",
         entity_type="rgw_user",
-        entity_id=f"{lookup_tenant}${uid}" if lookup_tenant else uid,
+        entity_id=f"{tenant}${uid}" if tenant else uid,
         metadata={
             "account_id": account_id,
-            "tenant": lookup_tenant,
+            "tenant": tenant,
             "generate_key": bool(payload.generate_key),
             "fields": sorted(field_set),
         },

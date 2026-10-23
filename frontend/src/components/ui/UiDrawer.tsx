@@ -12,14 +12,17 @@ import {
 import { getFocusableElements, trapFocusWithin } from "./focusTrap";
 import { hasOpenModal } from "./modalStack";
 import { cx, uiDividerClass } from "./styles";
+import UiIconButton from "./UiIconButton";
 
 type UiDrawerProps = {
   ariaLabelledBy: string;
   children: ReactNode;
   modal?: boolean;
   onClose: () => void;
+  returnFocus?: () => HTMLElement | null;
   onEscape?: () => void;
   placement?: "left" | "right";
+  workspace?: boolean;
   rootClassName?: string;
   showBackdrop?: boolean;
   backdropLabel?: string;
@@ -35,8 +38,10 @@ export default function UiDrawer({
   children,
   modal = true,
   onClose,
+  returnFocus,
   onEscape,
   placement = "right",
+  workspace = false,
   rootClassName = "inset-0",
   showBackdrop = false,
   backdropLabel = "Close drawer",
@@ -45,13 +50,16 @@ export default function UiDrawer({
 }: UiDrawerProps) {
   const drawerRef = useRef<HTMLElement | null>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
+  const returnFocusRef = useRef(returnFocus);
+  useEffect(() => {
+    returnFocusRef.current = returnFocus;
+  }, [returnFocus]);
 
   useEffect(() => {
     previousFocusRef.current = document.activeElement as HTMLElement | null;
     return () => {
-      if (previousFocusRef.current?.isConnected) {
-        previousFocusRef.current.focus();
-      }
+      const target = returnFocusRef.current?.() ?? previousFocusRef.current;
+      if (target?.isConnected) target.focus({ preventScroll: true });
     };
   }, []);
 
@@ -80,8 +88,10 @@ export default function UiDrawer({
 
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-    const focusable = getFocusableElements(drawer);
-    (focusable[0] ?? drawer).focus();
+    if (!drawer.contains(document.activeElement)) {
+      const focusable = getFocusableElements(drawer);
+      (focusable[0] ?? drawer).focus();
+    }
 
     return () => {
       document.body.style.overflow = previousOverflow;
@@ -91,8 +101,10 @@ export default function UiDrawer({
   return (
     <div
       role="presentation"
+      data-modal={modal}
       className={cx(
-        "fixed z-[46]",
+        "fixed z-[46] !m-0",
+        workspace && "ui-workspace-drawer",
         !showBackdrop && "pointer-events-none",
         rootClassName,
       )}
@@ -129,6 +141,17 @@ export function UiDrawerHeader({ className, ...props }: HTMLAttributes<HTMLEleme
     <header
       {...props}
       className={cx("shrink-0 border-b px-4 py-3", uiDividerClass, className)}
+    />
+  );
+}
+
+export function UiDrawerCloseButton({ label, onClose }: { label: string; onClose: () => void }) {
+  return (
+    <UiIconButton
+      variant="ghost"
+      label={label}
+      onClick={onClose}
+      icon={<svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg>}
     />
   );
 }

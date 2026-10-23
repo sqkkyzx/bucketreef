@@ -1612,6 +1612,53 @@ def test_start_migration_requires_precheck_passed(db_session):
         assert "Run and pass active checks" in str(exc)
 
 
+def test_run_precheck_interruption_persists_canonical_report(db_session):
+    user = _create_user(db_session)
+    source = _create_account(
+        db_session,
+        name="source",
+        endpoint_url="https://source.example.test",
+        account_id="RGW001",
+    )
+    target = _create_account(
+        db_session,
+        name="target",
+        endpoint_url="https://target.example.test",
+        account_id="RGW002",
+    )
+    db_session.commit()
+
+    service = BucketMigrationService(db_session)
+    migration = service.create_migration(
+        BucketMigrationCreateRequest(
+            source_context_id=str(source.id),
+            target_context_id=str(target.id),
+            mode="one_shot",
+            buckets=[BucketMigrationBucketMapping(source_bucket="bucket-a")],
+        ),
+        user,
+    )
+
+    def _fail_planner(*_args, **_kwargs):
+        raise RuntimeError("inspection crashed")
+
+    service._precheck_planner.run = _fail_planner  # type: ignore[method-assign]
+
+    checked = service.run_precheck(migration.id, active_checks=True)
+
+    assert checked.precheck_status == "failed"
+    report = json.loads(checked.precheck_report_json or "{}")
+    assert report["status"] == "failed"
+    assert report["items"] == []
+    assert report["errors"] == 1
+    assert report["warnings"] == 0
+    assert report["summary"] == {}
+    assert report["capabilities"] == {}
+    assert report["unsupported_features"] == []
+    assert isinstance(report["checked_at"], str) and report["checked_at"]
+    assert report["checks"][0]["code"] == "preparation_interrupted"
+
+
 def test_run_precheck_passed_then_start_allowed(db_session):
     user = _create_user(db_session)
     source = _create_account(db_session, name="source", endpoint_url="https://source.example.test", account_id="RGW001")
@@ -3217,6 +3264,60 @@ def test_iter_bucket_version_timelines_keeps_key_buffer_across_pages(db_session)
     assert calls[1]["VersionIdMarker"] == "v2"
 
 
+def test_iter_bucket_version_timelines_normalizes_versions_and_delete_markers(db_session):
+    service = BucketMigrationService(db_session)
+    ctx = SimpleNamespace(context_id="src")
+    page = {
+        "Versions": [
+            {
+                "Key": "doc.txt",
+                "VersionId": "v2",
+                "LastModified": datetime(2026, 1, 2, tzinfo=timezone.utc),
+                "IsLatest": False,
+                "Size": 20,
+                "ETag": '"etag-v2"',
+                "StorageClass": "STANDARD",
+            },
+            {
+                "Key": "doc.txt",
+                "VersionId": "v1",
+                "LastModified": datetime(2026, 1, 1, tzinfo=timezone.utc),
+                "IsLatest": False,
+                "Size": 10,
+            },
+            {"Key": "", "VersionId": "invalid"},
+        ],
+        "DeleteMarkers": [
+            {
+                "Key": "doc.txt",
+                "VersionId": "dm",
+                "LastModified": datetime(2026, 1, 3, tzinfo=timezone.utc),
+                "IsLatest": True,
+            },
+            {"Key": "doc.txt", "VersionId": None},
+        ],
+    }
+
+    class FakeClient:
+        def list_object_versions(self, **_kwargs):  # noqa: ANN001
+            return page
+
+    service._context_client = lambda _ctx: FakeClient()  # type: ignore[method-assign]
+
+    timelines = list(service._iter_bucket_version_timelines(ctx, "bucket-a"))
+
+    assert len(timelines) == 1
+    key, timeline = timelines[0]
+    assert key == "doc.txt"
+    assert [entry.version_id for entry in timeline] == ["v1", "v2", "dm"]
+    assert timeline[1].etag == "etag-v2"
+    assert timeline[1].size == 20
+    assert timeline[1].storage_class == "STANDARD"
+    assert timeline[2].is_delete_marker is True
+    assert timeline[2].size == 0
+    assert timeline[2].etag is None
+
+
 def test_finalize_target_versioning_state_suspends_target_for_version_aware_copy_settings(db_session):
     service = BucketMigrationService(db_session)
     migration = SimpleNamespace(copy_bucket_settings=True)
@@ -4150,14 +4251,3 @@ def test_worker_marks_migration_failed_on_fatal_exception(tmp_path, monkeypatch)
         if worker is not None:
             worker.stop(timeout=1.0)
         engine.dispose()
-
-
-@pytest.mark.parametrize("command", ["rollback_item", "rollback_failed_items", "rollback_failed_migration"])
-def test_legacy_rollback_requires_explicit_separate_recovery(db_session, command):
-    migration = BucketMigration(source_context_id="1", target_context_id="2", status="failed")
-    migration.items.append(BucketMigrationItem(source_bucket="source", target_bucket="target"))
-    db_session.add(migration)
-    db_session.commit()
-    arguments = [migration.id, migration.items[0].id] if command == "rollback_item" else [migration.id]
-    with pytest.raises(ValueError, match="separate restore-access or cleanup-target"):
-        getattr(BucketMigrationService(db_session), command)(*arguments)

@@ -23,37 +23,54 @@ from app.services.rgw_bucket_metadata import owner_kind_from_owner
 from app.utils.usage_stats import compute_usage_ratio_percent
 
 EXPENSIVE_FIELD_RULES = {"tag"} | OWNER_DETAIL_FIELDS
+_TAG_FILTER_OPS = frozenset({"eq", "neq", "contains", "starts_with", "ends_with", "in", "not_in"})
+_TAG_TEXT_MATCHERS = {
+    "eq": lambda value, candidate: value == candidate,
+    "contains": lambda value, candidate: candidate in value,
+    "starts_with": lambda value, candidate: value.startswith(candidate),
+    "ends_with": lambda value, candidate: value.endswith(candidate),
+}
+_NEGATED_TAG_OPS = frozenset({"neq", "not_in"})
+_EXACT_FEATURE_STATES = frozenset(
+    {"partial", "suspended", "configured", "not_set", "unavailable"}
+)
+
+
+def _exact_name_rule_values(rule: BucketFilterRule) -> set[str] | None:
+    if rule.op == "in" and isinstance(rule.value, list):
+        return {
+            value
+            for item in rule.value
+            if (value := str(item or "").strip())
+        }
+    if rule.op == "eq" and rule.value is not None:
+        value = str(rule.value).strip()
+        return {value} if value else set()
+    return None
 
 
 def extract_name_candidates(query: BucketFilterQuery | None) -> list[str] | None:
-    if not query:
+    if not query or not query.rules:
         return None
-    candidates: set[str] | None = None
-    saw_name_rule = False
+
+    exact_rules: list[set[str]] = []
     for rule in query.rules:
         if rule.field != "name":
+            if query.match == "any":
+                return None
             continue
-        saw_name_rule = True
-        names: set[str] = set()
-        if rule.op == "in" and isinstance(rule.value, list):
-            for item in rule.value:
-                value = str(item or "").strip()
-                if value:
-                    names.add(value)
-        elif rule.op == "eq" and rule.value is not None:
-            value = str(rule.value).strip()
-            if value:
-                names.add(value)
-        if candidates is None:
-            candidates = names
-        elif query.match == "all":
-            candidates = candidates & names
-        else:
-            candidates = candidates | names
-    if not saw_name_rule:
+        values = _exact_name_rule_values(rule)
+        if values is None:
+            if query.match == "any":
+                return None
+            continue
+        exact_rules.append(values)
+
+    if not exact_rules:
         return None
-    if not candidates:
-        return []
+    candidates = set(exact_rules[0])
+    for values in exact_rules[1:]:
+        candidates = candidates & values if query.match == "all" else candidates | values
     return sorted(candidates)
 
 
@@ -63,26 +80,26 @@ def _match_tag_expression(tag_key: str, tag_value: str, expression: str, op: str
         return False
     key = tag_key.strip().lower()
     value = tag_value.strip().lower()
+    matcher = _TAG_TEXT_MATCHERS.get(op, _TAG_TEXT_MATCHERS["eq"])
     sep = "=" if "=" in expr else (":" if ":" in expr else None)
     if sep:
         expr_key, expr_value = expr.split(sep, 1)
         expr_key = expr_key.strip()
         expr_value = expr_value.strip()
-        if op == "contains":
-            return (expr_key in key) and (expr_value in value)
-        if op == "starts_with":
-            return key.startswith(expr_key) and value.startswith(expr_value)
-        if op == "ends_with":
-            return key.endswith(expr_key) and value.endswith(expr_value)
-        return key == expr_key and value == expr_value
+        return matcher(key, expr_key) and matcher(value, expr_value)
+    return matcher(key, expr) or matcher(value, expr)
 
-    if op == "contains":
-        return expr in key or expr in value
-    if op == "starts_with":
-        return key.startswith(expr) or value.startswith(expr)
-    if op == "ends_with":
-        return key.endswith(expr) or value.endswith(expr)
-    return key == expr or value == expr
+
+def _tag_rule_expressions(rule: BucketFilterRule) -> tuple[list[str], str]:
+    op = rule.op or "contains"
+    if op in {"in", "not_in"}:
+        values = rule.value if isinstance(rule.value, list) else []
+        match_op = "eq"
+    else:
+        values = [rule.value]
+        match_op = "eq" if op == "neq" else op
+    expressions = [str(item or "").strip() for item in values]
+    return [expression for expression in expressions if expression], match_op
 
 
 def _match_tag_rule(bucket: BucketListingSummary, rule: BucketFilterRule) -> bool:
@@ -90,30 +107,17 @@ def _match_tag_rule(bucket: BucketListingSummary, rule: BucketFilterRule) -> boo
     if not tags:
         return False
     op = rule.op or "contains"
-    allowed_ops = {"eq", "neq", "contains", "starts_with", "ends_with", "in", "not_in"}
-    if op not in allowed_ops:
+    if op not in _TAG_FILTER_OPS:
         return False
-    if op in {"in", "not_in"}:
-        if not isinstance(rule.value, list):
-            return False
-        expressions = [str(item or "").strip() for item in rule.value]
-        expressions = [expr for expr in expressions if expr]
-        if not expressions:
-            return False
-        matched = any(
-            _match_tag_expression(tag.key, tag.value, expr, "eq")
-            for tag in tags
-            for expr in expressions
-        )
-        return matched if op == "in" else not matched
-
-    expression = str(rule.value or "").strip()
-    if not expression:
+    expressions, match_op = _tag_rule_expressions(rule)
+    if not expressions:
         return False
-    matched = any(_match_tag_expression(tag.key, tag.value, expression, op) for tag in tags)
-    if op == "neq":
-        return not matched
-    return matched
+    matched = any(
+        _match_tag_expression(tag.key, tag.value, expression, match_op)
+        for tag in tags
+        for expression in expressions
+    )
+    return not matched if op in _NEGATED_TAG_OPS else matched
 
 
 def match_bucket_field_rule(bucket: BucketListingSummary, rule: BucketFilterRule) -> bool:
@@ -182,6 +186,19 @@ def match_bucket_field_rule(bucket: BucketListingSummary, rule: BucketFilterRule
     )
 
 
+def _matches_disabled_feature(feature: str, state: str, tone: str) -> bool:
+    if feature == "versioning":
+        # Keep disabled distinct from suspended for versioning filters.
+        return state == "disabled" or (tone == "inactive" and state != "suspended")
+    return tone == "inactive" or state == "suspended"
+
+
+def _matches_disabled_or_suspended_feature(feature: str, state: str, tone: str) -> bool:
+    if feature == "versioning":
+        return state in {"disabled", "suspended"} or tone == "inactive"
+    return _matches_disabled_feature(feature, state, tone)
+
+
 def match_bucket_feature_rule(bucket: BucketListingSummary, rule: BucketFilterRule) -> bool:
     feature = rule.feature
     desired = (rule.state or "").strip().lower()
@@ -191,38 +208,15 @@ def match_bucket_feature_rule(bucket: BucketListingSummary, rule: BucketFilterRu
     if status is None:
         return desired in {"unknown", "unavailable"}
     state_norm = status.state.strip().lower().replace(" ", "_")
-    if desired in {"enabled", "active"}:
-        if status.tone == "active":
-            return True
-        if state_norm == "suspended":
-            return False
-        return False
-    if desired in {"disabled", "inactive"}:
-        if feature == "versioning":
-            # Keep disabled distinct from suspended for versioning filters.
-            return state_norm == "disabled" or (status.tone == "inactive" and state_norm != "suspended")
-        if status.tone == "inactive":
-            return True
-        if state_norm == "suspended":
-            return True
-        return False
+    if desired == "enabled":
+        return status.tone == "active"
+    if desired == "disabled":
+        return _matches_disabled_feature(feature, state_norm, status.tone)
     if desired == "disabled_or_suspended":
-        if feature == "versioning":
-            return state_norm in {"disabled", "suspended"} or status.tone == "inactive"
-        return status.tone == "inactive" or state_norm == "suspended"
+        return _matches_disabled_or_suspended_feature(feature, state_norm, status.tone)
     if desired == "unknown":
         return status.tone == "unknown"
-    if desired == "partial":
-        return state_norm == "partial"
-    if desired == "suspended":
-        return state_norm == "suspended"
-    if desired == "configured":
-        return state_norm == "configured"
-    if desired == "not_set":
-        return state_norm == "not_set"
-    if desired == "unavailable":
-        return state_norm == "unavailable"
-    return False
+    return desired in _EXACT_FEATURE_STATES and state_norm == desired
 
 
 def request_requires_bucket_stats(query: BucketFilterQuery | None, sort_by: str) -> bool:

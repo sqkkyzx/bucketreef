@@ -2,7 +2,7 @@
 # Licensed under the Apache License, Version 2.0
 from __future__ import annotations
 
-from typing import Any, Callable, TypeVar
+from typing import Any, Callable, TypeVar, cast
 
 from app.models.bucket import (
     BucketLoggingConfiguration,
@@ -426,6 +426,40 @@ def _apply_scalar_quantifier(rule: BucketFilterRule, result: bool) -> bool:
     return result if _feature_param_quantifier(rule) == "any" else not result
 
 
+_PropertyValueGetter = Callable[[BucketProperties], object]
+_PROPERTY_SCALAR_SPECS: dict[str, tuple[str, _PropertyValueGetter]] = {
+    "object_lock_mode": ("text", lambda props: props.object_lock.mode if props.object_lock else None),
+    "object_lock_retention_days": ("number", lambda props: props.object_lock.days if props.object_lock else None),
+    "object_lock_retention_years": ("number", lambda props: props.object_lock.years if props.object_lock else None),
+    "bpa_block_public_acls": (
+        "bool",
+        lambda props: props.public_access_block.block_public_acls if props.public_access_block else None,
+    ),
+    "bpa_ignore_public_acls": (
+        "bool",
+        lambda props: props.public_access_block.ignore_public_acls if props.public_access_block else None,
+    ),
+    "bpa_block_public_policy": (
+        "bool",
+        lambda props: props.public_access_block.block_public_policy if props.public_access_block else None,
+    ),
+    "bpa_restrict_public_buckets": (
+        "bool",
+        lambda props: props.public_access_block.restrict_public_buckets if props.public_access_block else None,
+    ),
+}
+
+
+def _match_scalar_value(kind: str, value: object, op: str, expected: object) -> bool:
+    if kind == "text":
+        return _match_text_value(cast(str | None, value), op, expected)
+    if kind == "number":
+        return _match_numeric_value(coerce_filter_number(value), op, expected)
+    if kind == "bool":
+        return _match_bool_value(cast(bool | None, value), op, expected)
+    return False
+
+
 def _match_properties_param_rule(
     rule: BucketFilterRule,
     source_data: object,
@@ -433,35 +467,31 @@ def _match_properties_param_rule(
 ) -> bool:
     if not isinstance(source_data, BucketProperties):
         return False
-    props = source_data
     param = rule.param
-    if param == "object_lock_mode":
-        value = props.object_lock.mode if props.object_lock else None
-        result = _match_text_value(value, op, rule.value)
-    elif param == "object_lock_retention_days":
-        value = props.object_lock.days if props.object_lock else None
-        result = _match_numeric_value(coerce_filter_number(value), op, rule.value)
-    elif param == "object_lock_retention_years":
-        value = props.object_lock.years if props.object_lock else None
-        result = _match_numeric_value(coerce_filter_number(value), op, rule.value)
-    elif param == "bpa_block_public_acls":
-        value = props.public_access_block.block_public_acls if props.public_access_block else None
-        result = _match_bool_value(value, op, rule.value)
-    elif param == "bpa_ignore_public_acls":
-        value = props.public_access_block.ignore_public_acls if props.public_access_block else None
-        result = _match_bool_value(value, op, rule.value)
-    elif param == "bpa_block_public_policy":
-        value = props.public_access_block.block_public_policy if props.public_access_block else None
-        result = _match_bool_value(value, op, rule.value)
-    elif param == "bpa_restrict_public_buckets":
-        value = props.public_access_block.restrict_public_buckets if props.public_access_block else None
-        result = _match_bool_value(value, op, rule.value)
-    elif param in _CORS_PARAMS:
-        rules = props.cors_rules if isinstance(props.cors_rules, list) else []
-        return _match_cors_param_rule_individual(rule, [item for item in rules if isinstance(item, dict)])
-    else:
+    if param in _CORS_PARAMS:
+        return _match_cors_param_rule_individual(rule, source_data.cors_rules or [])
+    spec = _PROPERTY_SCALAR_SPECS.get(param or "")
+    if spec is None:
         return False
+    kind, getter = spec
+    result = _match_scalar_value(kind, getter(source_data), op, rule.value)
     return _apply_scalar_quantifier(rule, result)
+
+
+def _trimmed_text(value: str | None) -> str | None:
+    normalized = (value or "").strip()
+    return normalized or None
+
+
+_LoggingValueGetter = Callable[[BucketLoggingConfiguration], object]
+_LOGGING_SCALAR_SPECS: dict[str, tuple[str, _LoggingValueGetter]] = {
+    "logging_enabled": (
+        "bool",
+        lambda logging: bool(logging.enabled and _trimmed_text(logging.target_bucket)),
+    ),
+    "logging_target_bucket": ("text", lambda logging: _trimmed_text(logging.target_bucket)),
+    "logging_target_prefix": ("text", lambda logging: _trimmed_text(logging.target_prefix)),
+}
 
 
 def _match_logging_param_rule(
@@ -471,17 +501,28 @@ def _match_logging_param_rule(
 ) -> bool:
     if not isinstance(source_data, BucketLoggingConfiguration):
         return False
-    target_bucket = (source_data.target_bucket or "").strip()
-    target_prefix = (source_data.target_prefix or "").strip()
-    if rule.param == "logging_enabled":
-        result = _match_bool_value(bool(source_data.enabled and target_bucket), op, rule.value)
-    elif rule.param == "logging_target_bucket":
-        result = _match_text_value(target_bucket or None, op, rule.value)
-    elif rule.param == "logging_target_prefix":
-        result = _match_text_value(target_prefix or None, op, rule.value)
-    else:
+    spec = _LOGGING_SCALAR_SPECS.get(rule.param or "")
+    if spec is None:
         return False
+    kind, getter = spec
+    result = _match_scalar_value(kind, getter(source_data), op, rule.value)
     return _apply_scalar_quantifier(rule, result)
+
+
+def _website_redirect_host(configuration: BucketWebsiteConfiguration) -> str | None:
+    redirect = configuration.redirect_all_requests_to
+    return _trimmed_text(redirect.host_name if redirect else None)
+
+
+_WebsiteValueGetter = Callable[[BucketWebsiteConfiguration], object]
+_WEBSITE_SCALAR_SPECS: dict[str, tuple[str, _WebsiteValueGetter]] = {
+    "website_index_present": ("bool", lambda website: bool(_trimmed_text(website.index_document))),
+    "website_index_document": ("text", lambda website: _trimmed_text(website.index_document)),
+    "website_error_document": ("text", lambda website: _trimmed_text(website.error_document)),
+    "website_redirect_host_present": ("bool", lambda website: bool(_website_redirect_host(website))),
+    "website_redirect_host": ("text", _website_redirect_host),
+    "website_routing_rule_count": ("number", lambda website: len(website.routing_rules)),
+}
 
 
 def _match_website_param_rule(
@@ -491,28 +532,11 @@ def _match_website_param_rule(
 ) -> bool:
     if not isinstance(source_data, BucketWebsiteConfiguration):
         return False
-    index_document = (source_data.index_document or "").strip()
-    error_document = (source_data.error_document or "").strip()
-    redirect_host = (
-        (source_data.redirect_all_requests_to.host_name or "").strip()
-        if source_data.redirect_all_requests_to
-        else ""
-    )
-    routing_rules = source_data.routing_rules if isinstance(source_data.routing_rules, list) else []
-    if rule.param == "website_index_present":
-        result = _match_bool_value(bool(index_document), op, rule.value)
-    elif rule.param == "website_index_document":
-        result = _match_text_value(index_document or None, op, rule.value)
-    elif rule.param == "website_error_document":
-        result = _match_text_value(error_document or None, op, rule.value)
-    elif rule.param == "website_redirect_host_present":
-        result = _match_bool_value(bool(redirect_host), op, rule.value)
-    elif rule.param == "website_redirect_host":
-        result = _match_text_value(redirect_host or None, op, rule.value)
-    elif rule.param == "website_routing_rule_count":
-        result = _match_numeric_value(float(len(routing_rules)), op, rule.value)
-    else:
+    spec = _WEBSITE_SCALAR_SPECS.get(rule.param or "")
+    if spec is None:
         return False
+    kind, getter = spec
+    result = _match_scalar_value(kind, getter(source_data), op, rule.value)
     return _apply_scalar_quantifier(rule, result)
 
 

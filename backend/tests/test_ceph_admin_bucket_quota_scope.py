@@ -9,8 +9,16 @@ from app.routers.ceph_admin import bucket_config_core as buckets_router
 class _FakeRGWAdmin:
     def __init__(self, bucket_info: dict) -> None:
         self.bucket_info = bucket_info
+        self.last_tenant: str | None = None
 
-    def get_bucket_info(self, bucket_name: str, stats: bool = True, allow_not_found: bool = False):
+    def get_bucket_info(
+        self,
+        bucket_name: str,
+        tenant: str | None = None,
+        stats: bool = True,
+        allow_not_found: bool = False,
+    ):
+        self.last_tenant = tenant
         return self.bucket_info
 
 
@@ -33,11 +41,12 @@ def _build_ctx(bucket_info: dict) -> SimpleNamespace:
 def test_update_quota_builds_tenant_qualified_owner_uid(monkeypatch):
     captured: dict = {}
 
-    def fake_set_bucket_quota(self, name, account, payload, rgw_admin=None):
+    def fake_set_bucket_quota(self, name, account, payload, rgw_admin=None, rgw_tenant=None):
         captured["name"] = name
         captured["uid"] = account.rgw_user_uid
         captured["account_id"] = account.rgw_account_id
         captured["has_rgw_admin"] = rgw_admin is not None
+        captured["rgw_tenant"] = rgw_tenant
 
     monkeypatch.setattr(buckets_router.BucketConfigurationService, "set_bucket_quota", fake_set_bucket_quota)
 
@@ -59,17 +68,19 @@ def test_update_quota_builds_tenant_qualified_owner_uid(monkeypatch):
         "uid": "RGW00000000000000001$tests3user",
         "account_id": None,
         "has_rgw_admin": True,
+        "rgw_tenant": None,
     }
 
 
 def test_update_quota_uses_account_owner_identifier_as_uid(monkeypatch):
     captured: dict = {}
 
-    def fake_set_bucket_quota(self, name, account, payload, rgw_admin=None):
+    def fake_set_bucket_quota(self, name, account, payload, rgw_admin=None, rgw_tenant=None):
         captured["name"] = name
         captured["uid"] = account.rgw_user_uid
         captured["account_id"] = account.rgw_account_id
         captured["has_rgw_admin"] = rgw_admin is not None
+        captured["rgw_tenant"] = rgw_tenant
 
     monkeypatch.setattr(buckets_router.BucketConfigurationService, "set_bucket_quota", fake_set_bucket_quota)
 
@@ -90,4 +101,45 @@ def test_update_quota_uses_account_owner_identifier_as_uid(monkeypatch):
         "uid": None,
         "account_id": "RGW00000000000000009",
         "has_rgw_admin": True,
+        "rgw_tenant": None,
+    }
+
+
+def test_update_quota_preserves_explicit_bucket_tenant(monkeypatch):
+    captured: dict = {}
+    ctx = _build_ctx(
+        {
+            "bucket": "bucket-a",
+            "tenant": "tenant_a",
+            "owner": "owner-a",
+        }
+    )
+
+    def fake_set_bucket_quota(
+        self,
+        name,
+        account,
+        payload,
+        rgw_admin=None,
+        rgw_tenant=None,
+    ):  # noqa: ANN001
+        captured["name"] = name
+        captured["context_tenant"] = account.rgw_tenant
+        captured["target_tenant"] = rgw_tenant
+
+    monkeypatch.setattr(buckets_router.BucketConfigurationService, "set_bucket_quota", fake_set_bucket_quota)
+
+    response = buckets_router.update_quota(
+        "bucket-a",
+        BucketQuotaUpdate(max_objects=10),
+        tenant="tenant_a",
+        ctx=ctx,
+    )
+
+    assert response == {"message": "Bucket quota updated"}
+    assert ctx.rgw_admin.last_tenant == "tenant_a"
+    assert captured == {
+        "name": "bucket-a",
+        "context_tenant": None,
+        "target_tenant": "tenant_a",
     }

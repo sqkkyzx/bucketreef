@@ -53,8 +53,13 @@ class _BucketProgressEmitter(Protocol):
 class BucketIntegrityResolvedTarget:
     context: S3ExecutionTarget
     bucket_name: str
+    request_bucket_name: str | None = None
     context_id: str | None = None
     context_name: str | None = None
+
+    @property
+    def s3_bucket_name(self) -> str:
+        return self.request_bucket_name or self.bucket_name
 
 
 @dataclass(frozen=True)
@@ -125,6 +130,28 @@ def _object_request_kwargs(bucket_name: str, obj: _ObjectRef) -> dict[str, Any]:
     return kwargs
 
 
+def _listed_object_ref(
+    entry: dict[str, Any],
+    *,
+    since_utc: datetime | None,
+    include_version: bool,
+) -> _ObjectRef | None:
+    key = entry.get("Key")
+    if not isinstance(key, str) or not key:
+        return None
+    last_modified = entry.get("LastModified")
+    if since_utc and isinstance(last_modified, datetime):
+        entry_time = assume_utc(last_modified)
+        if entry_time and entry_time < since_utc:
+            return None
+    version_id = entry.get("VersionId") if include_version else None
+    return _ObjectRef(
+        key=key,
+        version_id=version_id if isinstance(version_id, str) and version_id else None,
+        last_modified=last_modified if isinstance(last_modified, datetime) else None,
+    )
+
+
 class BucketIntegrityCheckService(LongRunningS3ClientMixin):
     s3_user_agent_extra = "bucketreef-bucket-integrity"
 
@@ -138,45 +165,20 @@ class BucketIntegrityCheckService(LongRunningS3ClientMixin):
         cancel_check: CancelCheck | None,
     ):
         since_utc = assume_utc(since)
-        if all_versions:
-            paginator = client.get_paginator("list_object_versions")
-            for page in paginator.paginate(Bucket=bucket_name):
-                if cancel_check:
-                    cancel_check()
-                for entry in page.get("Versions", []) or []:
-                    key = entry.get("Key")
-                    if not isinstance(key, str) or not key:
-                        continue
-                    last_modified = entry.get("LastModified")
-                    if since_utc and isinstance(last_modified, datetime):
-                        entry_time = assume_utc(last_modified)
-                        if entry_time and entry_time < since_utc:
-                            continue
-                    version_id = entry.get("VersionId")
-                    yield _ObjectRef(
-                        key=key,
-                        version_id=version_id if isinstance(version_id, str) and version_id else None,
-                        last_modified=last_modified if isinstance(last_modified, datetime) else None,
-                    )
-            return
-
-        paginator = client.get_paginator("list_objects_v2")
+        paginator_name = "list_object_versions" if all_versions else "list_objects_v2"
+        page_entry_key = "Versions" if all_versions else "Contents"
+        paginator = client.get_paginator(paginator_name)
         for page in paginator.paginate(Bucket=bucket_name):
             if cancel_check:
                 cancel_check()
-            for entry in page.get("Contents", []) or []:
-                key = entry.get("Key")
-                if not isinstance(key, str) or not key:
-                    continue
-                last_modified = entry.get("LastModified")
-                if since_utc and isinstance(last_modified, datetime):
-                    entry_time = assume_utc(last_modified)
-                    if entry_time and entry_time < since_utc:
-                        continue
-                yield _ObjectRef(
-                    key=key,
-                    last_modified=last_modified if isinstance(last_modified, datetime) else None,
+            for entry in page.get(page_entry_key, []) or []:
+                obj = _listed_object_ref(
+                    entry,
+                    since_utc=since_utc,
+                    include_version=all_versions,
                 )
+                if obj is not None:
+                    yield obj
 
     def _read_object(
         self,
@@ -488,12 +490,12 @@ class BucketIntegrityCheckService(LongRunningS3ClientMixin):
         worker_count = max(1, min(int(options.parallelism), 64))
         pending: set[Future[_ObjectCheckResult]] = set()
         with (
-            self._open_client(target.context) as client,
+            self._open_client(target.context, bucket_name=target.s3_bucket_name) as client,
             ThreadPoolExecutor(max_workers=worker_count, thread_name_prefix="bucket-integrity") as executor,
         ):
             for obj in self._iter_objects(
                 client,
-                target.bucket_name,
+                target.s3_bucket_name,
                 all_versions=options.all_versions,
                 since=options.since,
                 cancel_check=cancel_check,
@@ -505,7 +507,7 @@ class BucketIntegrityCheckService(LongRunningS3ClientMixin):
                     executor.submit(
                         self._check_object,
                         client,
-                        target.bucket_name,
+                        target.s3_bucket_name,
                         obj,
                         check_mode=options.check_mode,
                         max_bytes=max_bytes,

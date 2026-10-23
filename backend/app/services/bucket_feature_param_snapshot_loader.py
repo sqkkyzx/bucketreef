@@ -21,10 +21,26 @@ from app.services.listing_progress import (
 from app.services.s3_execution_context import S3ExecutionTarget
 
 BUCKET_FEATURE_PARAM_MAX_WORKERS = 6
+_FEATURE_PARAM_SOURCE_ORDER = (
+    "props",
+    "lifecycle",
+    "logging",
+    "website",
+    "policy",
+    "notifications",
+    "encryption",
+)
 
 
 def bucket_identity_key(bucket: BucketListingSummary) -> str:
     return f"{bucket.tenant or ''}:{bucket.name}"
+
+
+def _load_feature_param_source(loader: Callable[[], object]) -> object:
+    try:
+        return loader()
+    except RuntimeError:
+        return FEATURE_PARAM_UNAVAILABLE
 
 
 def _load_feature_param_snapshot_for_bucket(
@@ -32,48 +48,27 @@ def _load_feature_param_snapshot_for_bucket(
     required_sources: set[str],
     service: BucketConfigurationService,
     execution_context: S3ExecutionTarget,
+    *,
+    request_bucket_name: str | None = None,
 ) -> dict[str, object]:
+    effective_bucket_name = request_bucket_name or bucket.name
     snapshot: dict[str, object] = {}
-    if "props" in required_sources:
-        try:
-            snapshot["props"] = service.get_bucket_properties(bucket.name, execution_context)
-        except RuntimeError:
-            snapshot["props"] = FEATURE_PARAM_UNAVAILABLE
-    if "lifecycle" in required_sources:
-        try:
-            snapshot["lifecycle"] = service.get_lifecycle(bucket.name, execution_context).rules or []
-        except RuntimeError:
-            snapshot["lifecycle"] = FEATURE_PARAM_UNAVAILABLE
-    if "logging" in required_sources:
-        try:
-            snapshot["logging"] = service.get_bucket_logging(bucket.name, execution_context)
-        except RuntimeError:
-            snapshot["logging"] = FEATURE_PARAM_UNAVAILABLE
-    if "website" in required_sources:
-        try:
-            snapshot["website"] = service.get_bucket_website(bucket.name, execution_context)
-        except RuntimeError:
-            snapshot["website"] = FEATURE_PARAM_UNAVAILABLE
-    if "policy" in required_sources:
-        try:
-            snapshot["policy"] = service.get_policy(bucket.name, execution_context)
-        except RuntimeError:
-            snapshot["policy"] = FEATURE_PARAM_UNAVAILABLE
-    if "notifications" in required_sources:
-        if not execution_context_sns_feature_enabled(execution_context):
-            snapshot["notifications"] = FEATURE_PARAM_UNAVAILABLE
-        else:
-            try:
-                snapshot["notifications"] = (
-                    service.get_bucket_notifications(bucket.name, execution_context).configuration or {}
-                )
-            except RuntimeError:
-                snapshot["notifications"] = FEATURE_PARAM_UNAVAILABLE
-    if "encryption" in required_sources:
-        try:
-            snapshot["encryption"] = service.get_bucket_encryption(bucket.name, execution_context)
-        except RuntimeError:
-            snapshot["encryption"] = FEATURE_PARAM_UNAVAILABLE
+    source_loaders: dict[str, Callable[[], object]] = {
+        "props": lambda: service.get_bucket_properties(effective_bucket_name, execution_context),
+        "lifecycle": lambda: service.get_lifecycle(effective_bucket_name, execution_context).rules or [],
+        "logging": lambda: service.get_bucket_logging(effective_bucket_name, execution_context),
+        "website": lambda: service.get_bucket_website(effective_bucket_name, execution_context),
+        "policy": lambda: service.get_policy(effective_bucket_name, execution_context),
+        "notifications": lambda: service.get_bucket_notifications(effective_bucket_name, execution_context).configuration or {},
+        "encryption": lambda: service.get_bucket_encryption(effective_bucket_name, execution_context),
+    }
+    for source in _FEATURE_PARAM_SOURCE_ORDER:
+        if source not in required_sources:
+            continue
+        if source == "notifications" and not execution_context_sns_feature_enabled(execution_context):
+            snapshot[source] = FEATURE_PARAM_UNAVAILABLE
+            continue
+        snapshot[source] = _load_feature_param_source(source_loaders[source])
     return snapshot
 
 
@@ -89,6 +84,7 @@ def load_bucket_feature_param_snapshots(
     progress_start: int = 82,
     progress_end: int = 88,
     cancel_check: Callable[[], None] | None = None,
+    bucket_name_resolver: Callable[[BucketListingSummary], str] | None = None,
 ) -> tuple[dict[str, dict[str, object]], set[str]]:
     snapshots: dict[str, dict[str, object]] = {}
     if not buckets:
@@ -99,11 +95,15 @@ def load_bucket_feature_param_snapshots(
         return snapshots, available
 
     def load_one(bucket: BucketListingSummary) -> tuple[str, dict[str, object]]:
+        request_bucket_name = (
+            bucket_name_resolver(bucket) if bucket_name_resolver is not None else bucket.name
+        )
         snapshot = _load_feature_param_snapshot_for_bucket(
             bucket,
             required_sources,
             service,
             execution_context,
+            request_bucket_name=request_bucket_name,
         )
         return bucket_identity_key(bucket), snapshot
 

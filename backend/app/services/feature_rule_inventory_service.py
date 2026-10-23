@@ -113,6 +113,35 @@ def _join_parts(parts: list[str | None], *, fallback: str) -> str:
     return " · ".join(cleaned) if cleaned else fallback
 
 
+def _tag_filter_summary(tag: dict[str, Any] | None) -> str | None:
+    if not tag:
+        return None
+    key = _string_value(tag.get("Key"))
+    if not key:
+        return None
+    value = _string_value(tag.get("Value"))
+    return f"Tag: {key}={value}" if value else f"Tag: {key}"
+
+
+def _and_filter_summary(and_filter: dict[str, Any] | None) -> str | None:
+    if not and_filter:
+        return None
+    prefix = _string_value(and_filter.get("Prefix"))
+    tags: list[str] = []
+    for entry in _list_value(and_filter.get("Tags")):
+        tag = _as_record(entry)
+        if not tag:
+            continue
+        key = _string_value(tag.get("Key"))
+        value = _string_value(tag.get("Value"))
+        if key:
+            tags.append(f"{key}={value}" if value else key)
+    return _join_parts(
+        [f"Prefix: {prefix}" if prefix else None, f"Tags: {', '.join(tags)}" if tags else None],
+        fallback="Combined filter",
+    )
+
+
 def _rule_filter_summary(rule: dict[str, Any]) -> str | None:
     top_level_prefix = _string_value(rule.get("Prefix"))
     if top_level_prefix:
@@ -126,35 +155,10 @@ def _rule_filter_summary(rule: dict[str, Any]) -> str | None:
     if prefix:
         return f"Prefix: {prefix}"
 
-    tag = _as_record(filter_value.get("Tag"))
-    if tag:
-        key = _string_value(tag.get("Key"))
-        value = _string_value(tag.get("Value"))
-        if key and value:
-            return f"Tag: {key}={value}"
-        if key:
-            return f"Tag: {key}"
-
-    and_filter = _as_record(filter_value.get("And"))
-    if and_filter:
-        and_prefix = _string_value(and_filter.get("Prefix"))
-        tags = []
-        for entry in _list_value(and_filter.get("Tags")):
-            tag_entry = _as_record(entry)
-            if not tag_entry:
-                continue
-            key = _string_value(tag_entry.get("Key"))
-            value = _string_value(tag_entry.get("Value"))
-            if key and value:
-                tags.append(f"{key}={value}")
-            elif key:
-                tags.append(key)
-        return _join_parts(
-            [f"Prefix: {and_prefix}" if and_prefix else None, f"Tags: {', '.join(tags)}" if tags else None],
-            fallback="Combined filter",
-        )
-
-    return None
+    tag_summary = _tag_filter_summary(_as_record(filter_value.get("Tag")))
+    if tag_summary:
+        return tag_summary
+    return _and_filter_summary(_as_record(filter_value.get("And")))
 
 
 def _lifecycle_action_summary(rule: dict[str, Any]) -> str:
@@ -231,48 +235,50 @@ def _statement_field(statement: dict[str, Any], field: str) -> Any:
     return statement.get(field) or statement.get(lower_camel) or statement.get(field.lower())
 
 
+def _statement_positive_or_negative_field(
+    statement: dict[str, Any],
+    positive_field: str,
+    negative_field: str,
+) -> tuple[str, Any]:
+    positive_value = _statement_field(statement, positive_field)
+    if positive_value is not None:
+        return positive_field, positive_value
+    return negative_field, _statement_field(statement, negative_field)
+
+
+def _normalize_policy_statement(
+    statement: dict[str, Any],
+    index: int,
+) -> FeatureRuleInventoryRule:
+    sid = _string_value(statement.get("Sid")) or _string_value(statement.get("sid")) or f"Statement {index + 1}"
+    effect = _string_value(statement.get("Effect")) or _string_value(statement.get("effect")) or "-"
+    _, principal = _statement_positive_or_negative_field(statement, "Principal", "NotPrincipal")
+    action_label, action_value = _statement_positive_or_negative_field(statement, "Action", "NotAction")
+    resource_label, resource_value = _statement_positive_or_negative_field(statement, "Resource", "NotResource")
+    has_condition = _is_record(statement.get("Condition") or statement.get("condition"))
+    chips = [effect] + (["Condition"] if has_condition else [])
+    return FeatureRuleInventoryRule(
+        id=sid,
+        type="policy",
+        title=f"{effect} {sid}",
+        summary=_join_parts(
+            [
+                f"Principal: {_display_value(principal)}" if principal is not None else None,
+                f"{action_label}: {_display_value(action_value)}" if action_value is not None else None,
+                f"{resource_label}: {_display_value(resource_value)}" if resource_value is not None else None,
+            ],
+            fallback="Bucket policy statement",
+        ),
+        chips=chips,
+        raw=_sanitize_raw_payload(statement),
+    )
+
+
 def _normalize_policy_rules(policy: dict[str, Any] | None) -> list[FeatureRuleInventoryRule]:
-    normalized: list[FeatureRuleInventoryRule] = []
-    for index, statement in enumerate(_policy_statements(policy)):
-        sid = _string_value(statement.get("Sid")) or _string_value(statement.get("sid")) or f"Statement {index + 1}"
-        effect = _string_value(statement.get("Effect")) or _string_value(statement.get("effect")) or "-"
-        principal = (
-            statement.get("Principal")
-            or statement.get("principal")
-            or statement.get("NotPrincipal")
-            or statement.get("notPrincipal")
-            or statement.get("notprincipal")
-        )
-        action = _statement_field(statement, "Action")
-        not_action = _statement_field(statement, "NotAction")
-        resource = _statement_field(statement, "Resource")
-        not_resource = _statement_field(statement, "NotResource")
-        action_label = "NotAction" if action is None and not_action is not None else "Action"
-        resource_label = "NotResource" if resource is None and not_resource is not None else "Resource"
-        action_value = action if action is not None else not_action
-        resource_value = resource if resource is not None else not_resource
-        has_condition = _is_record(statement.get("Condition") or statement.get("condition"))
-        chips = [effect]
-        if has_condition:
-            chips.append("Condition")
-        normalized.append(
-            FeatureRuleInventoryRule(
-                id=sid,
-                type="policy",
-                title=f"{effect} {sid}",
-                summary=_join_parts(
-                    [
-                        f"Principal: {_display_value(principal)}" if principal is not None else None,
-                        f"{action_label}: {_display_value(action_value)}" if action_value is not None else None,
-                        f"{resource_label}: {_display_value(resource_value)}" if resource_value is not None else None,
-                    ],
-                    fallback="Bucket policy statement",
-                ),
-                chips=chips,
-                raw=_sanitize_raw_payload(statement),
-            )
-        )
-    return normalized
+    return [
+        _normalize_policy_statement(statement, index)
+        for index, statement in enumerate(_policy_statements(policy))
+    ]
 
 
 def _normalize_cors_rules(rules: list[dict[str, Any]]) -> list[FeatureRuleInventoryRule]:

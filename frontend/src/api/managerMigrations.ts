@@ -58,15 +58,15 @@ type BucketMigrationPrecheckItemReport = {
 };
 
 export type BucketMigrationPrecheckReport = {
-  status?: string;
-  checked_at?: string;
+  status: BucketMigrationPrecheckStatus;
+  checked_at: string;
   checks?: BucketMigrationPrecheckEntry[];
-  items?: BucketMigrationPrecheckItemReport[];
-  errors?: number;
-  warnings?: number;
-  summary?: Record<string, unknown> | null;
-  capabilities?: Record<string, unknown> | null;
-  unsupported_features?: string[] | null;
+  items: BucketMigrationPrecheckItemReport[];
+  errors: number;
+  warnings: number;
+  summary: Record<string, unknown>;
+  capabilities: Record<string, unknown>;
+  unsupported_features: string[];
   delete_source_safe?: boolean;
   rollback_safe?: boolean;
   same_endpoint_copy_safe?: boolean;
@@ -119,39 +119,39 @@ export type BucketMigrationItemView = {
   read_only_applied: boolean;
   target_lock_applied: boolean;
   target_bucket_exists: boolean;
-  target_created_by_migration?: boolean;
-  recovery_required?: boolean;
-  source_deleted?: boolean;
-  cleanup_status?: string;
-  cleanup_error?: string | null;
+  target_created_by_migration: boolean;
+  recovery_required: boolean;
+  source_deleted: boolean;
+  cleanup_status: string;
+  cleanup_error: string | null;
   objects_copied: number;
   objects_deleted: number;
-  source_count?: number | null;
-  target_count?: number | null;
-  matched_count?: number | null;
-  different_count?: number | null;
-  only_source_count?: number | null;
-  only_target_count?: number | null;
-  diff_sample?: Record<string, unknown> | null;
-  error_message?: string | null;
-  started_at?: string | null;
-  finished_at?: string | null;
+  source_count: number | null;
+  target_count: number | null;
+  matched_count: number | null;
+  different_count: number | null;
+  only_source_count: number | null;
+  only_target_count: number | null;
+  diff_sample: Record<string, unknown> | null;
+  error_message: string | null;
+  started_at: string | null;
+  finished_at: string | null;
   created_at: string;
   updated_at: string;
 };
 
 export type BucketMigrationEventView = {
   id: number;
-  item_id?: number | null;
+  item_id: number | null;
   level: string;
   message: string;
-  metadata?: Record<string, unknown> | null;
+  metadata: Record<string, unknown> | null;
   created_at: string;
 };
 
 export type BucketMigrationView = {
   id: number;
-  created_by_user_id?: number | null;
+  created_by_user_id: number | null;
   source_context_id: string;
   target_context_id: string;
   mode: BucketMigrationMode;
@@ -161,33 +161,32 @@ export type BucketMigrationView = {
   lock_target_writes: boolean;
   use_same_endpoint_copy: boolean;
   auto_grant_source_read_for_copy: boolean;
-  mapping_prefix?: string | null;
+  mapping_prefix: string | null;
   status: BucketMigrationStatus;
   pause_requested: boolean;
   cancel_requested: boolean;
   precheck_status: BucketMigrationPrecheckStatus;
-  precheck_report?: BucketMigrationPrecheckReport | null;
-  precheck_checked_at?: string | null;
-  workflow_version?: number;
+  precheck_report: BucketMigrationPrecheckReport | null;
+  precheck_checked_at: string | null;
   configuration_revision: number;
-  checked_revision?: number | null;
-  preparation_status?: "unverified" | "checking" | "blocked" | "ready" | "stale";
-  preparation_active_checks?: boolean;
-  preparation_completed_items?: number;
-  maintenance_operation?: "restore_access" | "cleanup_source" | "cleanup_target" | null;
-  maintenance_status?: string;
-  maintenance_error?: string | null;
-  available_actions?: Record<string, { enabled: boolean; reason: string | null }>;
+  checked_revision: number | null;
+  preparation_status: "unverified" | "checking" | "blocked" | "ready" | "stale";
+  preparation_active_checks: boolean;
+  preparation_completed_items: number;
+  maintenance_operation: "restore_access" | "cleanup_source" | "cleanup_target" | null;
+  maintenance_status: string;
+  maintenance_error: string | null;
+  available_actions: Record<string, { enabled: boolean; reason: string | null }>;
   parallelism_max: number;
   total_items: number;
   completed_items: number;
   failed_items: number;
   skipped_items: number;
   awaiting_items: number;
-  error_message?: string | null;
-  started_at?: string | null;
-  finished_at?: string | null;
-  last_heartbeat_at?: string | null;
+  error_message: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+  last_heartbeat_at: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -226,7 +225,7 @@ export async function listManagerMigrations(limit = 100, contextId?: string | nu
     params.context_id = contextId.trim();
   }
   const { data } = await client.get<BucketMigrationListResponse>("/manager/migrations", { params });
-  return data.items || [];
+  return data.items;
 }
 
 export async function getManagerMigration(migrationId: number, eventsLimit = 200): Promise<BucketMigrationDetail> {

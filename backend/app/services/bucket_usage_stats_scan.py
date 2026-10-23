@@ -157,6 +157,20 @@ _BACKUP_NAME_MARKERS = (
     "dump",
     "dumps",
 )
+_BACKUP_COMPOUND_EXTENSIONS = {"sql.gz", "sql.zip", "dump.gz", "dump.zip"}
+_ARCHIVE_COMPOUND_EXTENSIONS = {"tar.gz", "tar.bz2", "tar.xz", "tar.zst"}
+_SOURCE_FILENAMES = {"dockerfile", "makefile", "gemfile", "rakefile"}
+_DATA_TYPE_EXTENSION_RULES = (
+    ("documents", _DOCUMENT_EXTENSIONS),
+    ("images", _IMAGE_EXTENSIONS),
+    # Keep source code before video because transport-stream `.ts` overlaps
+    # TypeScript and BucketReef historically classifies `.ts` as source code.
+    ("source_code", _SOURCE_EXTENSIONS),
+    ("videos", _VIDEO_EXTENSIONS),
+    ("audio", _AUDIO_EXTENSIONS),
+    ("archives", _ARCHIVE_EXTENSIONS),
+    ("scientific_data", _SCIENTIFIC_EXTENSIONS),
+)
 
 SIZE_BUCKETS: tuple[tuple[str, str, int | None, int | None], ...] = (
     ("0_b", "0 B", 0, 0),
@@ -199,6 +213,7 @@ CURRENT_VERSION_LABELS = {
 
 class BucketUsageStatsScanTarget(Protocol):
     bucket_name: str
+    bucket_tenant: str
     scope_kind: str
     scope_id: str
     scope_name: str | None
@@ -215,53 +230,37 @@ class ObjectVersionEntry:
     is_latest: bool
 
 
-def classify_data_type(key: str) -> str:
+def _object_name_parts(key: str) -> tuple[str, str, str, str] | None:
     normalized = (key or "").strip().lower()
     if not normalized or normalized.endswith("/"):
-        return "unknown"
+        return None
     name = PurePosixPath(normalized).name
     if not name:
-        return "unknown"
+        return None
     stem = name.rsplit(".", 1)[0] if "." in name else name
     extension = name.rsplit(".", 1)[1] if "." in name else ""
     compound_extension = (
         ".".join(name.split(".")[-2:]) if name.count(".") >= 2 else extension
     )
-    tokens = [token for token in stem.replace("_", "-").split("-") if token]
+    return name, stem, extension, compound_extension
 
-    if extension in _BACKUP_EXTENSIONS or compound_extension in {
-        "sql.gz",
-        "sql.zip",
-        "dump.gz",
-        "dump.zip",
-    }:
+
+def classify_data_type(key: str) -> str:
+    parts = _object_name_parts(key)
+    if parts is None:
+        return "unknown"
+    name, stem, extension, compound_extension = parts
+    if extension in _BACKUP_EXTENSIONS or compound_extension in _BACKUP_COMPOUND_EXTENSIONS:
         return "backups"
-    if any(marker in tokens or marker in stem for marker in _BACKUP_NAME_MARKERS):
+    if any(marker in stem for marker in _BACKUP_NAME_MARKERS):
         return "backups"
-    if extension in _DOCUMENT_EXTENSIONS:
-        return "documents"
-    if extension in _IMAGE_EXTENSIONS:
-        return "images"
-    if extension in _SOURCE_EXTENSIONS or name in {
-        "dockerfile",
-        "makefile",
-        "gemfile",
-        "rakefile",
-    }:
+    if name in _SOURCE_FILENAMES:
         return "source_code"
-    if extension in _VIDEO_EXTENSIONS:
-        return "videos"
-    if extension in _AUDIO_EXTENSIONS:
-        return "audio"
-    if extension in _ARCHIVE_EXTENSIONS or compound_extension in {
-        "tar.gz",
-        "tar.bz2",
-        "tar.xz",
-        "tar.zst",
-    }:
+    if compound_extension in _ARCHIVE_COMPOUND_EXTENSIONS:
         return "archives"
-    if extension in _SCIENTIFIC_EXTENSIONS:
-        return "scientific_data"
+    for data_type, extensions in _DATA_TYPE_EXTENSION_RULES:
+        if extension in extensions:
+            return data_type
     if extension:
         return "other"
     return "unknown"
@@ -460,6 +459,7 @@ class BucketUsageScan:
             scope_id=target.scope_id,
             scope_name=target.scope_name,
             bucket_name=target.bucket_name,
+            bucket_tenant=target.bucket_tenant,
             scan_mode=scan_mode,
             version_listing_available=version_listing_available,
             object_version_count=self.object_version_count,

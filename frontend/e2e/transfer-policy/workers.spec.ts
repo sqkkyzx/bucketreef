@@ -44,6 +44,7 @@ test("worker response has a single CSP and cannot be loaded without authorizatio
   const result = await page.request.get(`${asset}?${query}`);
   expect(result.status()).toBe(200);
   expect(result.headersArray().filter(header => header.name.toLowerCase() === "content-security-policy")).toHaveLength(1);
+  expect(result.headers()["content-security-policy"]).toContain("worker-src 'none'");
   expect(result.headers()["content-security-policy"]).toContain(`connect-src ${policy.connect_sources[0]}`);
   expect(result.headers()["cache-control"]).toContain("no-store");
   expect(result.headers()["etag"]).toBeUndefined();
@@ -56,6 +57,22 @@ test("worker response has a single CSP and cannot be loaded without authorizatio
   expect((await anonymous.get(`${asset}?${query}`)).status()).toBe(401);
   expect((await page.request.get(`${asset}?workspace=portal&context_id=999`)).status()).toBe(403);
   await anonymous.dispose();
+});
+
+test("frontend cache policy revalidates the SPA shell and keeps fingerprinted assets immutable", async ({ page }) => {
+  const index = await page.request.get("/index.html");
+  expect(index.status()).toBe(200);
+  expect(index.headers()["cache-control"]).toBe("no-cache, must-revalidate");
+  expect(index.headers()["content-security-policy"]).toContain("default-src 'self'");
+
+  const clientRoute = await page.request.get("/setup/first-admin");
+  expect(clientRoute.status()).toBe(200);
+  expect(clientRoute.headers()["cache-control"]).toBe("no-cache, must-revalidate");
+
+  const asset = await page.request.get("/assets/cache-probe-AbCd1234.js");
+  expect(asset.status()).toBe(200);
+  expect(asset.headers()["cache-control"]).toBe("public, max-age=31536000, immutable");
+  expect(asset.headers()["x-content-type-options"]).toBe("nosniff");
 });
 
 test("endpoint changes and cross-context copies preserve the page and isolate destinations", async ({ page }) => {

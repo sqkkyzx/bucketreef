@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
-from decimal import Decimal
 from typing import Any, Callable, Literal, Optional
 
 from sqlalchemy import func, select
@@ -39,6 +38,27 @@ class _HistoryColumns:
     ratio: Any
     collected: Any
     samples: Any | None
+
+
+@dataclass(frozen=True)
+class _UsageSubject:
+    subject_type: Literal["account", "s3_user"]
+    subject_id: int
+    name: str
+    identifier: Optional[str]
+
+
+@dataclass(frozen=True)
+class _UsageRowValues:
+    period_start: str
+    used_bytes: Any
+    used_objects: Any
+    bucket_count: Any
+    quota_size_bytes: Any
+    quota_objects: Any
+    usage_ratio_pct: Any
+    samples_count: Any
+    collected_at: Any
 
 
 class UsageHistoryService:
@@ -80,8 +100,21 @@ class UsageHistoryService:
         if extra_filter_builder is not None:
             filters.extend(extra_filter_builder(model))
 
+        rows = self._trend_rows(columns, filters)
+        points = [self._trend_point(row) for row in rows]
+        summary = self._trend_summary(model, filters, rows, points)
+        return UsageHistoryTrendResponse(
+            window=window,
+            granularity=granularity,
+            available=True,
+            points=points,
+            summary=summary,
+        )
+
+    def _trend_rows(self, columns: _HistoryColumns, filters: list) -> list:
+        model = columns.model
         samples_expr = func.sum(columns.samples) if columns.samples is not None else func.count(model.id)
-        rows = self.db.execute(
+        return self.db.execute(
             select(
                 columns.period.label("period_start"),
                 func.sum(columns.used_bytes).label("used_bytes"),
@@ -99,25 +132,31 @@ class UsageHistoryService:
             .order_by(columns.period.asc())
         ).all()
 
-        points = [
-            UsageHistoryTrendPoint(
-                period_start=self._iso(row.period_start) or "",
-                used_bytes=int(row.used_bytes or 0),
-                used_objects=int(row.used_objects or 0),
-                bucket_count=int(row.bucket_count or 0),
-                max_usage_ratio_pct=self._float_or_none(row.max_usage_ratio_pct),
-                subjects_count=int(row.account_subjects or 0) + int(row.user_subjects or 0),
-                samples_count=int(row.samples_count or 0),
-                collected_at=self._iso(row.collected_at),
-            )
-            for row in rows
-        ]
+    def _trend_point(self, row) -> UsageHistoryTrendPoint:
+        return UsageHistoryTrendPoint(
+            period_start=self._iso(row.period_start) or "",
+            used_bytes=int(row.used_bytes or 0),
+            used_objects=int(row.used_objects or 0),
+            bucket_count=int(row.bucket_count or 0),
+            max_usage_ratio_pct=self._float_or_none(row.max_usage_ratio_pct),
+            subjects_count=int(row.account_subjects or 0) + int(row.user_subjects or 0),
+            samples_count=int(row.samples_count or 0),
+            collected_at=self._iso(row.collected_at),
+        )
+
+    def _trend_summary(
+        self,
+        model,
+        filters: list,
+        rows: list,
+        points: list[UsageHistoryTrendPoint],
+    ) -> UsageHistoryTrendSummary:
         latest = points[-1] if points else None
         max_ratio = max(
             (point.max_usage_ratio_pct for point in points if point.max_usage_ratio_pct is not None),
             default=None,
         )
-        summary = UsageHistoryTrendSummary(
+        return UsageHistoryTrendSummary(
             total_records=sum(int(row.records_count or 0) for row in rows),
             points_count=len(points),
             subjects_count=self._count_subjects(model, filters),
@@ -126,13 +165,6 @@ class UsageHistoryService:
             latest_bucket_count=latest.bucket_count if latest else 0,
             latest_collected_at=latest.collected_at if latest else None,
             max_usage_ratio_pct=max_ratio,
-        )
-        return UsageHistoryTrendResponse(
-            window=window,
-            granularity=granularity,
-            available=True,
-            points=points,
-            summary=summary,
         )
 
     def list_records(
@@ -347,61 +379,88 @@ class UsageHistoryService:
         s3_user_name: Optional[str],
         s3_user_uid: Optional[str],
     ) -> UsageHistoryRecord:
+        subject = self._row_subject(
+            row,
+            account_name=account_name,
+            account_rgw_account_id=account_rgw_account_id,
+            account_rgw_user_uid=account_rgw_user_uid,
+            s3_user_name=s3_user_name,
+            s3_user_uid=s3_user_uid,
+        )
+        values = self._row_values(granularity, row)
+
+        return UsageHistoryRecord(
+            id=int(row.id),
+            granularity=granularity,
+            period_start=values.period_start,
+            storage_endpoint_id=int(row.storage_endpoint_id),
+            endpoint_name=endpoint_name or f"Endpoint #{row.storage_endpoint_id}",
+            subject_type=subject.subject_type,
+            subject_id=subject.subject_id,
+            subject_name=subject.name,
+            subject_identifier=subject.identifier,
+            used_bytes=int(values.used_bytes or 0),
+            used_objects=int(values.used_objects or 0),
+            bucket_count=int(values.bucket_count) if values.bucket_count is not None else None,
+            quota_size_bytes=int(values.quota_size_bytes) if values.quota_size_bytes is not None else None,
+            quota_objects=int(values.quota_objects) if values.quota_objects is not None else None,
+            usage_ratio_pct=self._float_or_none(values.usage_ratio_pct),
+            samples_count=int(values.samples_count) if values.samples_count is not None else None,
+            collected_at=self._iso(values.collected_at) or "",
+        )
+
+    @staticmethod
+    def _row_subject(
+        row,
+        *,
+        account_name: Optional[str],
+        account_rgw_account_id: Optional[str],
+        account_rgw_user_uid: Optional[str],
+        s3_user_name: Optional[str],
+        s3_user_uid: Optional[str],
+    ) -> _UsageSubject:
         is_account = row.s3_account_id is not None
         subject_id = int(row.s3_account_id if is_account else row.s3_user_id)
         subject_name = account_name if is_account else s3_user_name
         subject_identifier = (account_rgw_account_id or account_rgw_user_uid) if is_account else s3_user_uid
         if not subject_name:
             subject_name = f"{'Account' if is_account else 'S3 user'} #{subject_id}"
-
-        if granularity == "daily":
-            period_start = row.day.isoformat()
-            used_bytes = row.last_used_bytes
-            used_objects = row.last_used_objects
-            bucket_count = row.bucket_count
-            quota_size_bytes = None
-            quota_objects = None
-            usage_ratio_pct = row.max_ratio_pct
-            samples_count = row.samples_count
-            collected_at = row.updated_at
-        else:
-            period_start = row.hour_ts.isoformat()
-            used_bytes = row.used_bytes
-            used_objects = row.used_objects
-            bucket_count = row.bucket_count
-            quota_size_bytes = row.quota_size_bytes
-            quota_objects = row.quota_objects
-            usage_ratio_pct = row.usage_ratio_pct
-            samples_count = None
-            collected_at = row.collected_at
-
-        return UsageHistoryRecord(
-            id=int(row.id),
-            granularity=granularity,
-            period_start=period_start,
-            storage_endpoint_id=int(row.storage_endpoint_id),
-            endpoint_name=endpoint_name or f"Endpoint #{row.storage_endpoint_id}",
+        return _UsageSubject(
             subject_type="account" if is_account else "s3_user",
             subject_id=subject_id,
-            subject_name=subject_name,
-            subject_identifier=subject_identifier,
-            used_bytes=int(used_bytes or 0),
-            used_objects=int(used_objects or 0),
-            bucket_count=int(bucket_count) if bucket_count is not None else None,
-            quota_size_bytes=int(quota_size_bytes) if quota_size_bytes is not None else None,
-            quota_objects=int(quota_objects) if quota_objects is not None else None,
-            usage_ratio_pct=self._float_or_none(usage_ratio_pct),
-            samples_count=int(samples_count) if samples_count is not None else None,
-            collected_at=self._iso(collected_at) or "",
+            name=subject_name,
+            identifier=subject_identifier,
+        )
+
+    @staticmethod
+    def _row_values(granularity: Granularity, row) -> _UsageRowValues:
+        if granularity == "daily":
+            return _UsageRowValues(
+                period_start=row.day.isoformat(),
+                used_bytes=row.last_used_bytes,
+                used_objects=row.last_used_objects,
+                bucket_count=row.bucket_count,
+                quota_size_bytes=None,
+                quota_objects=None,
+                usage_ratio_pct=row.max_ratio_pct,
+                samples_count=row.samples_count,
+                collected_at=row.updated_at,
+            )
+        return _UsageRowValues(
+            period_start=row.hour_ts.isoformat(),
+            used_bytes=row.used_bytes,
+            used_objects=row.used_objects,
+            bucket_count=row.bucket_count,
+            quota_size_bytes=row.quota_size_bytes,
+            quota_objects=row.quota_objects,
+            usage_ratio_pct=row.usage_ratio_pct,
+            samples_count=None,
+            collected_at=row.collected_at,
         )
 
     @staticmethod
     def _float_or_none(value) -> Optional[float]:
-        if value is None:
-            return None
-        if isinstance(value, Decimal):
-            return float(value)
-        return float(value)
+        return None if value is None else float(value)
 
     @staticmethod
     def _iso(value) -> Optional[str]:

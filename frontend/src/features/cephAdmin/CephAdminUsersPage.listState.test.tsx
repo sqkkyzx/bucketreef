@@ -1,6 +1,6 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useLocation } from "react-router-dom";
 import { ApiError } from "../../api/client";
 import CephAdminUsersPage from "./CephAdminUsersPage";
 
@@ -17,7 +17,30 @@ vi.mock("./CephAdminUserCreateModal", () => ({
 }));
 
 vi.mock("./CephAdminUserEditModal", () => ({
-  default: () => null,
+  default: ({
+    uid,
+    tenant,
+    expectedAccountId,
+    navigation,
+    onClose,
+  }: {
+    uid: string;
+    tenant?: string | null;
+    expectedAccountId?: string | null;
+    navigation?: { previous?: () => void; next?: () => void; position?: string };
+    onClose: () => void;
+  }) => (
+    <div>
+      <div data-testid="selected-user-target">{tenant ?? "default"}:{uid}</div>
+      <div data-testid="selected-account-scope">
+        {expectedAccountId === undefined ? "unknown" : expectedAccountId ?? "no-account"}
+      </div>
+      <span data-testid="user-navigation-position">{navigation?.position ?? "no-navigation"}</span>
+      <button type="button" onClick={navigation?.previous}>Drawer previous</button>
+      <button type="button" onClick={navigation?.next}>Drawer next</button>
+      <button type="button" onClick={onClose}>Drawer close</button>
+    </div>
+  ),
 }));
 
 vi.mock("../../api/cephAdminUsers", () => ({
@@ -25,10 +48,16 @@ vi.mock("../../api/cephAdminUsers", () => ({
   streamCephAdminUsers: (...args: unknown[]) => streamCephAdminUsersMock(...args),
 }));
 
-function renderPage() {
+function LocationProbe() {
+  const location = useLocation();
+  return <span data-testid="location-probe">{location.pathname}{location.search}</span>;
+}
+
+function renderPage(initialEntry = "/ceph-admin/users") {
   return render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={[initialEntry]}>
       <CephAdminUsersPage />
+      <LocationProbe />
     </MemoryRouter>
   );
 }
@@ -52,6 +81,7 @@ function getTableOverflowContainer() {
 describe("CephAdminUsersPage list states", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    window.localStorage.removeItem("ceph-admin.user_list.columns.v2");
     streamCephAdminUsersMock.mockResolvedValue({ items: [], total: 0 });
     useCephAdminEndpointMock.mockReturnValue({
       selectedEndpointId: 1,
@@ -64,6 +94,87 @@ describe("CephAdminUsersPage list states", () => {
         can_metrics: true,
       },
     });
+  });
+
+  it("opens an account user when the Account column is hidden without mistaking missing enrichment for no account", async () => {
+    listCephAdminUsersMock.mockResolvedValue({
+      items: [{ uid: "alice", tenant: "tenant-a", account_id: null }],
+      total: 1,
+    });
+
+    renderPage();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Configure" }));
+    expect(screen.getByTestId("selected-account-scope")).toHaveTextContent("unknown");
+    expect(document.querySelector(".workflow-page-host--active")).not.toBeInTheDocument();
+    expect(listCephAdminUsersMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("passes a loaded account ID to the editor for stale-account protection", async () => {
+    window.localStorage.setItem("ceph-admin.user_list.columns.v2", JSON.stringify(["tenant", "account_name"]));
+    listCephAdminUsersMock
+      .mockResolvedValueOnce({ items: [{ uid: "alice", account_id: null }], total: 1 })
+      .mockResolvedValueOnce({ items: [{ uid: "alice", account_id: "RGW123", account_name: "Analytics" }], total: 1 });
+
+    renderPage();
+
+    await screen.findByText("Analytics");
+    fireEvent.click(screen.getByRole("button", { name: "Configure" }));
+    expect(screen.getByTestId("selected-account-scope")).toHaveTextContent("RGW123");
+  });
+
+  it("keeps the account scope unknown if the editor opens while account enrichment is still loading", async () => {
+    window.localStorage.setItem("ceph-admin.user_list.columns.v2", JSON.stringify(["tenant", "account_name"]));
+    const enrichment = deferred<{ items: { uid: string; account_id: string; account_name: string }[]; total: number }>();
+    listCephAdminUsersMock
+      .mockResolvedValueOnce({ items: [{ uid: "alice", account_id: null }], total: 1 })
+      .mockReturnValueOnce(enrichment.promise);
+
+    renderPage();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Configure" }));
+    expect(screen.getByTestId("selected-account-scope")).toHaveTextContent("unknown");
+
+    enrichment.resolve({ items: [{ uid: "alice", account_id: "RGW123", account_name: "Analytics" }], total: 1 });
+    await screen.findByText("Analytics");
+    expect(screen.getByTestId("selected-account-scope")).toHaveTextContent("unknown");
+  });
+
+  it("navigates tenant-aware RGW users locally and marks only the viewed row", async () => {
+    listCephAdminUsersMock.mockResolvedValueOnce({
+      items: [
+        { uid: "alice", tenant: "tenant-a", account_id: null },
+        { uid: "alice", tenant: "tenant-b", account_id: null },
+      ],
+      total: 2,
+    });
+
+    renderPage("/ceph-admin/users?ep=1&keep=yes");
+
+    const tenantBCell = await screen.findByText("tenant-b");
+    const tenantARow = screen.getByText("tenant-a").closest("tr");
+    const tenantBRow = tenantBCell.closest("tr");
+    fireEvent.click(within(tenantBRow as HTMLElement).getByRole("button", { name: "Configure" }));
+
+    expect(screen.getByTestId("selected-user-target")).toHaveTextContent("tenant-b:alice");
+    expect(screen.getByTestId("user-navigation-position")).toHaveTextContent("2 / 2");
+    expect(tenantARow).not.toHaveAttribute("data-viewed");
+    expect(tenantBRow).toHaveAttribute("data-viewed", "true");
+    expect(within(tenantBRow as HTMLElement).getByRole("button", { name: "Configure" })).toHaveAttribute("aria-current", "true");
+    expect(screen.getByTestId("location-probe")).toHaveTextContent("/ceph-admin/users?ep=1&keep=yes");
+
+    fireEvent.click(screen.getByRole("button", { name: "Drawer previous" }));
+    expect(await screen.findByTestId("selected-user-target")).toHaveTextContent("tenant-a:alice");
+    expect(screen.getByTestId("location-probe")).toHaveTextContent("/ceph-admin/users?ep=1&keep=yes");
+    expect(screen.getByTestId("location-probe")).not.toHaveTextContent("configure=");
+
+    fireEvent.click(screen.getByRole("button", { name: "Drawer close" }));
+    await waitFor(() => {
+      expect(screen.queryByTestId("selected-user-target")).not.toBeInTheDocument();
+    });
+    expect(screen.getByTestId("location-probe")).toHaveTextContent("/ceph-admin/users?ep=1&keep=yes");
+    expect(screen.getByTestId("location-probe")).not.toHaveTextContent("configure=");
+    expect(screen.getByTestId("location-probe")).not.toHaveTextContent("configure_tenant=");
   });
 
   it("opens delete User from the row menu and protects the active RGW identity", async () => {

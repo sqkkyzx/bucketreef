@@ -4,14 +4,15 @@ import { axe } from "jest-axe";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import type {
+  BucketMigrationDetail,
+  BucketMigrationPrecheckReport,
+} from "../../../api/managerMigrations";
 import ManagerMigrationDetailPage from "./ManagerMigrationDetailPage";
 
 const mockUseManagerContexts = vi.fn();
 const mockUseManagerMigrationDetail = vi.fn();
 const mockDeleteManagerMigration = vi.fn();
-const mockRollbackFailedManagerMigrationItems = vi.fn();
-const mockRollbackManagerMigration = vi.fn();
-const mockRollbackManagerMigrationItem = vi.fn();
 const mockStopManagerMigration = vi.fn();
 const mockPrecheck = vi.fn();
 const mockStart = vi.fn();
@@ -31,12 +32,6 @@ vi.mock("../../../api/managerMigrations", async () => {
       mockMaintenance(...args),
     deleteManagerMigration: (...args: unknown[]) =>
       mockDeleteManagerMigration(...args),
-    rollbackFailedManagerMigrationItems: (...args: unknown[]) =>
-      mockRollbackFailedManagerMigrationItems(...args),
-    rollbackManagerMigration: (...args: unknown[]) =>
-      mockRollbackManagerMigration(...args),
-    rollbackManagerMigrationItem: (...args: unknown[]) =>
-      mockRollbackManagerMigrationItem(...args),
     stopManagerMigration: (...args: unknown[]) =>
       mockStopManagerMigration(...args),
   };
@@ -51,7 +46,23 @@ vi.mock("../useManagerContexts", () => ({
   useManagerContexts: () => mockUseManagerContexts(),
 }));
 
-function buildDetail() {
+function buildPrecheckReport(
+  overrides: Partial<BucketMigrationPrecheckReport> = {},
+): BucketMigrationPrecheckReport {
+  return {
+    status: "pending",
+    checked_at: "2026-03-05T10:00:00Z",
+    items: [],
+    errors: 0,
+    warnings: 0,
+    summary: {},
+    capabilities: {},
+    unsupported_features: [],
+    ...overrides,
+  };
+}
+
+function buildDetail(): BucketMigrationDetail {
   return {
     id: 11,
     created_by_user_id: 1,
@@ -69,7 +80,7 @@ function buildDetail() {
     pause_requested: false,
     cancel_requested: false,
     precheck_status: "passed",
-    precheck_report: {
+    precheck_report: buildPrecheckReport({
       status: "failed",
       errors: 1,
       warnings: 1,
@@ -117,8 +128,17 @@ function buildDetail() {
           ],
         },
       ],
-    },
+    }),
     precheck_checked_at: null,
+    configuration_revision: 1,
+    checked_revision: 1,
+    preparation_status: "ready",
+    preparation_active_checks: false,
+    preparation_completed_items: 3,
+    maintenance_operation: null,
+    maintenance_status: "idle",
+    maintenance_error: null,
+    available_actions: {},
     parallelism_max: 8,
     total_items: 3,
     completed_items: 1,
@@ -142,6 +162,11 @@ function buildDetail() {
         read_only_applied: true,
         target_lock_applied: true,
         target_bucket_exists: false,
+        target_created_by_migration: false,
+        recovery_required: false,
+        source_deleted: false,
+        cleanup_status: "idle",
+        cleanup_error: null,
         objects_copied: 25,
         objects_deleted: 0,
         source_count: 100,
@@ -167,6 +192,11 @@ function buildDetail() {
         read_only_applied: false,
         target_lock_applied: true,
         target_bucket_exists: false,
+        target_created_by_migration: false,
+        recovery_required: false,
+        source_deleted: false,
+        cleanup_status: "idle",
+        cleanup_error: null,
         objects_copied: 3,
         objects_deleted: 0,
         source_count: null,
@@ -192,6 +222,11 @@ function buildDetail() {
         read_only_applied: true,
         target_lock_applied: true,
         target_bucket_exists: false,
+        target_created_by_migration: false,
+        recovery_required: false,
+        source_deleted: false,
+        cleanup_status: "idle",
+        cleanup_error: null,
         objects_copied: 20,
         objects_deleted: 0,
         source_count: 20,
@@ -217,6 +252,11 @@ function buildDetail() {
         read_only_applied: true,
         target_lock_applied: true,
         target_bucket_exists: false,
+        target_created_by_migration: false,
+        recovery_required: false,
+        source_deleted: false,
+        cleanup_status: "idle",
+        cleanup_error: null,
         objects_copied: 10,
         objects_deleted: 0,
         source_count: 10,
@@ -234,11 +274,11 @@ function buildDetail() {
       },
     ],
     recent_events: [],
-  } as const;
+  };
 }
 
-function show(overrides: Record<string, unknown> = {}) {
-  const detail = { ...buildDetail(), ...overrides };
+function show(overrides: Partial<BucketMigrationDetail> = {}) {
+  const detail: BucketMigrationDetail = { ...buildDetail(), ...overrides };
   mockUseManagerMigrationDetail.mockReturnValue({
     migrationDetail: detail,
     detailLoading: false,
@@ -290,7 +330,7 @@ describe("ManagerMigrationDetailPage", () => {
       status: "draft",
       preparation_status: "blocked",
       available_actions: { edit: enabled, precheck: enabled },
-      precheck_report: {
+      precheck_report: buildPrecheckReport({
         errors: 1,
         items: [
           {
@@ -306,7 +346,7 @@ describe("ManagerMigrationDetailPage", () => {
             ],
           },
         ],
-      },
+      }),
     });
     expect(screen.getByText("Cannot read source tags")).toBeInTheDocument();
     expect(
@@ -330,7 +370,7 @@ describe("ManagerMigrationDetailPage", () => {
       status: "draft",
       preparation_status: "unverified",
       available_actions: { precheck: enabled },
-      precheck_report: { errors: 0, items: [] },
+      precheck_report: buildPrecheckReport(),
     });
     expect((await axe(container)).violations).toEqual([]);
     await user.click(screen.getByRole("button", { name: "Run active checks" }));
@@ -344,7 +384,7 @@ describe("ManagerMigrationDetailPage", () => {
       preparation_status: "blocked",
       preparation_active_checks: false,
       available_actions: { precheck: enabled },
-      precheck_report: { errors: 1, items: [] },
+      precheck_report: buildPrecheckReport({ status: "failed", errors: 1 }),
     });
     await user.click(screen.getByRole("button", { name: "Run active checks" }));
     const dialog = screen.getByRole("dialog");

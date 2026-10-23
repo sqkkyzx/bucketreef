@@ -57,40 +57,93 @@ def normalize_owner_kind_scalar(raw: object) -> str | None:
     return normalized or None
 
 
+def _owner_kind_rule_values(rule: object) -> set[Literal["account", "user"]]:
+    op = getattr(rule, "op", None)
+    raw_value = getattr(rule, "value", None)
+    if op in {"eq", "neq"}:
+        value = normalize_owner_kind(raw_value)
+        return {value} if value is not None else set()
+    if op in {"in", "not_in"} and isinstance(raw_value, list):
+        return {
+            value
+            for item in raw_value
+            if (value := normalize_owner_kind(item)) is not None
+        }
+    return set()
+
+
+def _apply_owner_kind_rule(
+    allowed: set[Literal["account", "user"]],
+    rule: object,
+) -> set[Literal["account", "user"]]:
+    values = _owner_kind_rule_values(rule)
+    if not values:
+        return allowed
+    if getattr(rule, "op", None) in {"eq", "in"}:
+        return allowed & values
+    return allowed - values
+
+
 def determine_owner_name_lookup_scope(
     query: BucketFilterQuery | None,
 ) -> Literal["any", "account", "user"]:
     if not query or query.match != "all":
         return "any"
-    allowed: set[Literal["account", "user"]] = {"account", "user"}
-    saw_owner_kind_rule = False
-    for rule in query.rules:
-        if rule.field != "owner_kind":
-            continue
-        saw_owner_kind_rule = True
-        if rule.op == "eq":
-            value = normalize_owner_kind(rule.value)
-            if value:
-                allowed &= {value}
-        elif rule.op == "neq":
-            value = normalize_owner_kind(rule.value)
-            if value:
-                allowed.discard(value)
-        elif rule.op == "in" and isinstance(rule.value, list):
-            values = {normalize_owner_kind(item) for item in rule.value}
-            values = {item for item in values if item is not None}
-            if values:
-                allowed &= values
-        elif rule.op == "not_in" and isinstance(rule.value, list):
-            values = {normalize_owner_kind(item) for item in rule.value}
-            values = {item for item in values if item is not None}
-            if values:
-                allowed -= values
-    if not saw_owner_kind_rule:
+    owner_kind_rules = [rule for rule in query.rules if rule.field == "owner_kind"]
+    if not owner_kind_rules:
         return "any"
+    allowed: set[Literal["account", "user"]] = {"account", "user"}
+    for rule in owner_kind_rules:
+        allowed = _apply_owner_kind_rule(allowed, rule)
     if len(allowed) == 1:
         return next(iter(allowed))
     return "any"
+
+
+def _resolve_account_owner_name(
+    ctx: BucketListingAdminContext,
+    owner_id: str,
+) -> tuple[bool, str | None]:
+    try:
+        account_lookup_enabled = resolve_feature_flags(ctx.endpoint).account_enabled
+    except Exception:
+        account_lookup_enabled = None
+    if account_lookup_enabled is False:
+        return False, None
+
+    try:
+        payload = ctx.rgw_admin.get_account(
+            owner_id,
+            allow_not_found=True,
+            allow_not_implemented=True,
+        )
+    except RGWAdminError:
+        return False, None
+    if not isinstance(payload, dict) or payload.get("not_found"):
+        return False, None
+    # Strict account owner-name resolution: only RGW account "name" is accepted.
+    return True, normalize_optional_scalar(payload.get("name"))
+
+
+def _resolve_user_owner_name(
+    ctx: BucketListingAdminContext,
+    owner_id: str,
+    tenant: str | None,
+) -> str | None:
+    tenant_hint = tenant
+    uid = owner_id
+    split_tenant, split_uid = split_tenant_uid(owner_id)
+    if split_tenant:
+        tenant_hint = split_tenant
+        uid = split_uid
+    try:
+        payload = ctx.rgw_admin.get_user(uid, tenant=tenant_hint, allow_not_found=True)
+    except RGWAdminError:
+        return None
+    if not isinstance(payload, dict) or payload.get("not_found"):
+        return None
+    # Strict user owner-name resolution: only RGW "display_name" is accepted.
+    return normalize_optional_scalar(payload.get("display_name"))
 
 
 def _resolve_owner_name(
@@ -111,25 +164,9 @@ def _resolve_owner_name(
         cache[owner_key] = None
         return None
 
-    name: str | None = None
-    account_lookup_enabled: bool | None
-    try:
-        account_lookup_enabled = resolve_feature_flags(ctx.endpoint).account_enabled
-    except Exception:
-        account_lookup_enabled = None
-
-    if owner_scope in {"any", "account"} and account_lookup_enabled is not False:
-        try:
-            account_payload = ctx.rgw_admin.get_account(
-                owner_id,
-                allow_not_found=True,
-                allow_not_implemented=True,
-            )
-        except RGWAdminError:
-            account_payload = None
-        if isinstance(account_payload, dict) and not account_payload.get("not_found"):
-            # Strict account owner-name resolution: only RGW account "name" is accepted.
-            name = normalize_optional_scalar(account_payload.get("name"))
+    if owner_scope in {"any", "account"}:
+        resolved, name = _resolve_account_owner_name(ctx, owner_id)
+        if resolved:
             cache[owner_key] = name
             return name
 
@@ -137,19 +174,7 @@ def _resolve_owner_name(
         cache[owner_key] = None
         return None
 
-    tenant_hint = tenant
-    uid = owner_id
-    split_tenant, split_uid = split_tenant_uid(owner_id)
-    if split_tenant:
-        tenant_hint = split_tenant
-        uid = split_uid
-    try:
-        user_payload = ctx.rgw_admin.get_user(uid, tenant=tenant_hint, allow_not_found=True)
-    except RGWAdminError:
-        user_payload = None
-    if isinstance(user_payload, dict) and not user_payload.get("not_found"):
-        # Strict user owner-name resolution: only RGW "display_name" is accepted.
-        name = normalize_optional_scalar(user_payload.get("display_name"))
+    name = _resolve_user_owner_name(ctx, owner_id, tenant)
     cache[owner_key] = name
     return name
 
@@ -254,6 +279,50 @@ def request_requires_tenant_metadata(
     return _filter_requires_tenant_metadata(query) or sort_by == "tenant" or bool(simple_filter)
 
 
+def _needs_owner_metadata_backfill(
+    bucket: BucketListingSummary,
+    *,
+    include_tenant: bool,
+) -> bool:
+    if not bucket.owner:
+        return True
+    return bool(
+        include_tenant
+        and bucket.tenant is None
+        and not bucket.tenant_metadata_resolved
+        and owner_kind_from_owner(bucket.owner) != "account"
+    )
+
+
+def _load_bucket_owner_metadata(
+    ctx: BucketListingAdminContext,
+    bucket: BucketListingSummary,
+) -> tuple[BucketListingSummary, str | None, str | None, bool]:
+    try:
+        payload = ctx.rgw_admin.get_bucket_info(bucket.name, stats=False, allow_not_found=True)
+    except RGWAdminError:
+        return bucket, None, None, False
+    if not isinstance(payload, dict) or payload.get("not_found"):
+        return bucket, None, None, False
+    tenant, owner = extract_bucket_owner_scope(payload)
+    tenant_metadata_resolved = "tenant" in payload and payload.get("tenant") is not None
+    return bucket, tenant, owner, tenant_metadata_resolved
+
+
+def _apply_bucket_owner_metadata(
+    result: tuple[BucketListingSummary, str | None, str | None, bool],
+    *,
+    include_tenant: bool,
+) -> None:
+    bucket, tenant, owner, tenant_metadata_resolved = result
+    if not bucket.owner and owner:
+        bucket.owner = owner
+    if include_tenant and bucket.tenant is None and tenant:
+        bucket.tenant = tenant
+    if include_tenant and tenant_metadata_resolved:
+        bucket.tenant_metadata_resolved = True
+
+
 def backfill_bucket_owner_metadata(
     ctx: BucketListingAdminContext,
     buckets: list[BucketListingSummary],
@@ -272,13 +341,7 @@ def backfill_bucket_owner_metadata(
     pending = [
         bucket
         for bucket in buckets
-        if not bucket.owner
-        or (
-            include_tenant
-            and bucket.tenant is None
-            and not bucket.tenant_metadata_resolved
-            and owner_kind_from_owner(bucket.owner) != "account"
-        )
+        if _needs_owner_metadata_backfill(bucket, include_tenant=include_tenant)
     ]
     if not pending:
         return buckets
@@ -286,15 +349,7 @@ def backfill_bucket_owner_metadata(
     def load_one(
         bucket: BucketListingSummary,
     ) -> tuple[BucketListingSummary, str | None, str | None, bool]:
-        try:
-            payload = ctx.rgw_admin.get_bucket_info(bucket.name, stats=False, allow_not_found=True)
-        except RGWAdminError:
-            return bucket, None, None, False
-        if not isinstance(payload, dict) or payload.get("not_found"):
-            return bucket, None, None, False
-        tenant, owner = extract_bucket_owner_scope(payload)
-        tenant_metadata_resolved = "tenant" in payload and payload.get("tenant") is not None
-        return bucket, tenant, owner, tenant_metadata_resolved
+        return _load_bucket_owner_metadata(ctx, bucket)
 
     max_workers = min(BUCKET_OWNER_LOOKUP_MAX_WORKERS, len(pending))
     total = len(pending)
@@ -324,11 +379,6 @@ def backfill_bucket_owner_metadata(
                 emit_progress(index)
                 invoke_cancel_check(cancel_check)
 
-    for bucket, tenant, owner, tenant_metadata_resolved in resolved:
-        if not bucket.owner and owner:
-            bucket.owner = owner
-        if include_tenant and bucket.tenant is None and tenant:
-            bucket.tenant = tenant
-        if include_tenant and tenant_metadata_resolved:
-            bucket.tenant_metadata_resolved = True
+    for result in resolved:
+        _apply_bucket_owner_metadata(result, include_tenant=include_tenant)
     return buckets

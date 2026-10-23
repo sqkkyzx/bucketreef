@@ -210,6 +210,54 @@ def manager_membership_capabilities(
     )
 
 
+def _resolve_session_account_record(
+    db: Session,
+    actor: ManagerSessionPrincipal,
+    account_id: Optional[int],
+) -> Optional[S3Account]:
+    if not actor.account_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="S3Account context unavailable for session",
+        )
+    if account_id and account_id > 0:
+        account = resolve_account_by_id(db, account_id)
+        if account.rgw_account_id.lower() != actor.account_id.lower():
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Not authorized for this account",
+            )
+        return account
+    return get_s3_accounts_service(db).find_account_by_rgw_id(actor.account_id)
+
+
+def _resolve_session_storage_endpoint(
+    db: Session,
+    account: Optional[S3Account],
+    requested_endpoint: Optional[str],
+    *,
+    metadata_only: bool,
+) -> tuple[Optional[str], Optional[StorageEndpoint]]:
+    if not requested_endpoint and (account is None or not resolve_s3_endpoint(account)):
+        endpoint = (
+            get_storage_endpoints_service(db).get_default_endpoint_record()
+            if metadata_only
+            else resolve_default_endpoint(db)
+        )
+        if endpoint is None:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Default storage endpoint is not configured",
+            )
+        return endpoint.endpoint_url, endpoint
+    if requested_endpoint:
+        resolved = get_storage_endpoints_service(db).find_endpoint_record_by_url(
+            requested_endpoint
+        )
+        return requested_endpoint, resolved
+    return None, None
+
+
 def _resolve_session_account(
     db: Session,
     actor: ManagerSessionPrincipal,
@@ -217,33 +265,19 @@ def _resolve_session_account(
     requested_endpoint: Optional[str] = None,
     metadata_only: bool = False,
 ) -> S3ExecutionContext:
-    if not actor.account_id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="S3Account context unavailable for session")
-    account: Optional[S3Account] = None
-    if account_id and account_id > 0:
-        account = resolve_account_by_id(db, account_id)
-        if account.rgw_account_id.lower() != actor.account_id.lower():
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized for this account")
-    else:
-        account = get_s3_accounts_service(db).find_account_by_rgw_id(actor.account_id)
+    account = _resolve_session_account_record(db, actor, account_id)
     context_name = account.name if account is not None else actor.account_name or actor.account_id
     context_rgw_account_id = account.rgw_account_id if account is not None else actor.account_id
     context_rgw_user_uid = account.rgw_user_uid if account is not None else actor.user_uid
     context_email = account.email if account is not None else None
     context_endpoint = account.storage_endpoint if account is not None else None
     context_endpoint_id = account.storage_endpoint_id if account is not None else None
-    resolved_endpoint: Optional[StorageEndpoint] = None
-    if not requested_endpoint and (account is None or not resolve_s3_endpoint(account)):
-        endpoint = (
-            get_storage_endpoints_service(db).get_default_endpoint_record()
-            if metadata_only else resolve_default_endpoint(db)
-        )
-        if endpoint is None:
-            raise HTTPException(status_code=503, detail="Default storage endpoint is not configured")
-        requested_endpoint = endpoint.endpoint_url
-        resolved_endpoint = endpoint
-    elif requested_endpoint:
-        resolved_endpoint = get_storage_endpoints_service(db).find_endpoint_record_by_url(requested_endpoint)
+    requested_endpoint, resolved_endpoint = _resolve_session_storage_endpoint(
+        db,
+        account,
+        requested_endpoint,
+        metadata_only=metadata_only,
+    )
     if resolved_endpoint:
         context_endpoint_id = resolved_endpoint.id
         context_endpoint = resolved_endpoint
@@ -293,6 +327,122 @@ def _resolve_requested_session_endpoint(
     raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Endpoint is not allowed for this session")
 
 
+def _resolve_user_execution_context(
+    db: Session,
+    user: User,
+    *,
+    request: Request,
+    account_id: Optional[int],
+    s3_user_id: Optional[int],
+    connection_id: Optional[int],
+    ceph_admin_endpoint_id: Optional[int],
+    surface: str,
+    portal_browser: bool,
+    metadata_only: bool,
+    is_storage_ops_surface: bool,
+) -> S3ExecutionContext:
+    if ceph_admin_endpoint_id is not None:
+        if surface == "manager-browser":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Ceph Admin contexts are not available in Manager Browser",
+            )
+        return resolve_ceph_admin_browser_context(
+            db,
+            user,
+            ceph_admin_endpoint_id,
+            surface=surface,
+            metadata_only=metadata_only,
+        )
+    if connection_id is not None:
+        return _resolve_connection_context(
+            db,
+            user,
+            connection_id,
+            surface=surface,
+            touch_usage=not is_storage_ops_surface,
+            metadata_only=metadata_only,
+        )
+    if s3_user_id is not None:
+        return _resolve_s3_user_context(
+            db,
+            user,
+            s3_user_id,
+            surface=surface,
+            metadata_only=metadata_only,
+        )
+    if surface == "browser" and not portal_browser:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Accounts are not available in standard Browser",
+        )
+
+    account, link = resolve_user_account_link(db, user, account_id, allow_default=False)
+    if portal_browser:
+        return resolve_portal_browser_context(
+            db,
+            user,
+            account,
+            link,
+            request=request,
+            metadata_only=metadata_only,
+        )
+    if surface == "manager-browser" and not (
+        isinstance(link, EffectiveAccountLink) and link.manager_browser_allowed
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Manager Browser data access requires account administrator and explicit data access on the same association",
+        )
+
+    capabilities = manager_membership_capabilities(link)
+    if not capabilities.can_manage_buckets:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized for this account")
+    if metadata_only:
+        return S3ExecutionContext.from_account(account, manager_capabilities=capabilities)
+
+    access_key, secret_key = account.effective_rgw_credentials()
+    if not access_key or not secret_key:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Admin credentials are not configured for this account",
+        )
+    return S3ExecutionContext.from_account(
+        account,
+        access_key=access_key,
+        secret_key=secret_key,
+        manager_capabilities=capabilities,
+    )
+
+
+def _resolve_manager_session_execution_context(
+    db: Session,
+    actor: ManagerSessionPrincipal,
+    *,
+    account_id: Optional[int],
+    s3_user_id: Optional[int],
+    connection_id: Optional[int],
+    ceph_admin_endpoint_id: Optional[int],
+    surface: str,
+    requested_endpoint: Optional[str],
+    metadata_only: bool,
+) -> S3ExecutionContext:
+    if s3_user_id is not None or connection_id is not None or ceph_admin_endpoint_id is not None:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sessions cannot assume this context")
+    if surface == "manager-browser" and not actor.capabilities.access_browser:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Browser access is not allowed for this session",
+        )
+    return _resolve_session_account(
+        db,
+        actor,
+        account_id,
+        requested_endpoint=requested_endpoint,
+        metadata_only=metadata_only,
+    )
+
+
 def get_s3_execution_context(
     request: Request,
     context_ref: Optional[str] = Query(default=None, alias="context_id"),
@@ -328,75 +478,27 @@ def resolve_s3_execution_context(
         and path_matches_prefix(str(request.url.path), f"{settings.api_prefix}/storage-ops")
     )
     if isinstance(actor, User):
-        if ceph_admin_endpoint_id is not None:
-            if surface == "manager-browser":
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="Ceph Admin contexts are not available in Manager Browser",
-                )
-            return resolve_ceph_admin_browser_context(
-                db, actor, ceph_admin_endpoint_id, surface=surface,
-                **({"metadata_only": True} if metadata_only else {}),
-            )
-        if connection_id is not None:
-            return _resolve_connection_context(
-                db,
-                actor,
-                connection_id,
-                surface=surface,
-                touch_usage=not is_storage_ops_surface,
-                **({"metadata_only": True} if metadata_only else {}),
-            )
-        if s3_user_id is not None:
-            return _resolve_s3_user_context(
-                db, actor, s3_user_id, surface=surface,
-                **({"metadata_only": True} if metadata_only else {}),
-            )
-        if surface == "browser" and not portal_browser:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Accounts are not available in standard Browser",
-            )
-        account, link = resolve_user_account_link(db, actor, account_id, allow_default=False)
-        if portal_browser:
-            return resolve_portal_browser_context(
-                db, actor, account, link, request=request,
-                **({"metadata_only": True} if metadata_only else {}),
-            )
-        if surface == "manager-browser" and not (
-            isinstance(link, EffectiveAccountLink) and link.manager_browser_allowed
-        ):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Manager Browser data access requires account administrator and explicit data access on the same association",
-            )
-        capabilities = manager_membership_capabilities(link)
-        if not capabilities.can_manage_buckets:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized for this account")
-        if metadata_only:
-            return S3ExecutionContext.from_account(account, manager_capabilities=capabilities)
-        access_key, secret_key = account.effective_rgw_credentials()
-        if not access_key or not secret_key:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Admin credentials are not configured for this account",
-            )
-        return S3ExecutionContext.from_account(
-            account,
-            access_key=access_key,
-            secret_key=secret_key,
-            manager_capabilities=capabilities,
+        return _resolve_user_execution_context(
+            db,
+            actor,
+            request=request,
+            account_id=account_id,
+            s3_user_id=s3_user_id,
+            connection_id=connection_id,
+            ceph_admin_endpoint_id=ceph_admin_endpoint_id,
+            surface=surface,
+            portal_browser=portal_browser,
+            metadata_only=metadata_only,
+            is_storage_ops_surface=is_storage_ops_surface,
         )
-
-    if s3_user_id is not None or connection_id is not None or ceph_admin_endpoint_id is not None:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sessions cannot assume this context")
-
-    if surface == "manager-browser" and not actor.capabilities.access_browser:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Browser access is not allowed for this session",
-        )
-    return _resolve_session_account(
-        db, actor, account_id, requested_endpoint=requested_endpoint,
-        **({"metadata_only": True} if metadata_only else {}),
+    return _resolve_manager_session_execution_context(
+        db,
+        actor,
+        account_id=account_id,
+        s3_user_id=s3_user_id,
+        connection_id=connection_id,
+        ceph_admin_endpoint_id=ceph_admin_endpoint_id,
+        surface=surface,
+        requested_endpoint=requested_endpoint,
+        metadata_only=metadata_only,
     )

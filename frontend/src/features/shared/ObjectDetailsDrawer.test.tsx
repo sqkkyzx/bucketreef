@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import ObjectDetailsDrawer from "./ObjectDetailsDrawer";
@@ -62,11 +62,37 @@ describe("ObjectDetailsDrawer", () => {
 
   it("exposes previous and next only within the loaded list", () => {
     const next = vi.fn();
-    render(<ObjectDetailsDrawer name="one.txt" path="one.txt" copyPathLabel="Copy" moreLabel="More" onCopyPath={vi.fn()} onClose={vi.fn()} navigation={{ next, position: "1 / 2" }}>Text</ObjectDetailsDrawer>);
-    expect(screen.getByRole("button", { name: "Previous" })).toBeDisabled();
-    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    render(<ObjectDetailsDrawer name="one.txt" path="one.txt" copyPathLabel="Copy" moreLabel="More" onCopyPath={vi.fn()} onClose={vi.fn()} navigation={{ next, position: "1 / 2" }} activeTab="preview" tabs={[{ id: "preview", label: "Preview" }, { id: "details", label: "Details" }]} onTabChange={vi.fn()} primaryAction={{ label: "Download", onSelect: vi.fn() }}>Text</ObjectDetailsDrawer>);
+    const navigation = screen.getByRole("group", { name: "Loaded files" });
+    const tabList = screen.getByRole("tablist", { name: "Details views" });
+    const header = navigation.closest("header");
+    expect(header).toContainElement(navigation);
+    expect(header).toContainElement(screen.getByRole("button", { name: "Download" }));
+    expect(tabList.parentElement).not.toContainElement(navigation);
+    expect(within(navigation).getByRole("button", { name: "Previous object" })).toBeDisabled();
+    fireEvent.click(within(navigation).getByRole("button", { name: "Next object" }));
     expect(next).toHaveBeenCalledOnce();
-    expect(screen.getByRole("group", { name: "Loaded files" })).toHaveTextContent("1 / 2");
+    expect(navigation).toHaveTextContent("1 / 2");
+  });
+
+  it("keeps object navigation accessible without tabs", () => {
+    const previous = vi.fn();
+    render(<ObjectDetailsDrawer name="one.txt" path="one.txt" moreLabel="More" onClose={vi.fn()} navigation={{ previous, position: "2 / 2" }}>Text</ObjectDetailsDrawer>);
+    fireEvent.click(screen.getByRole("button", { name: "Previous object" }));
+    expect(previous).toHaveBeenCalledOnce();
+    expect(screen.getByRole("button", { name: "Next object" })).toBeDisabled();
+    expect(screen.getByRole("group", { name: "Loaded files" })).toHaveTextContent("2 / 2");
+  });
+
+  it.each([false, true])("hands focus to an enabled navigation control after a keyed replacement (mobile: %s)", (mobile) => {
+    vi.mocked(window.matchMedia).mockImplementation((query: string) => ({ matches: mobile, media: query, onchange: null, addEventListener: vi.fn(), removeEventListener: vi.fn(), dispatchEvent: vi.fn(), addListener: vi.fn(), removeListener: vi.fn() }));
+    const common = { moreLabel: "More", onClose: vi.fn(), primaryAction: { label: "Download", onSelect: vi.fn() } };
+    const view = render(<ObjectDetailsDrawer key="first" {...common} name="first.txt" path="first.txt" navigation={{ next: vi.fn(), position: "1 / 2" }}>First</ObjectDetailsDrawer>);
+    screen.getByRole("button", { name: "Next object" }).focus();
+    view.rerender(<ObjectDetailsDrawer key="second" {...common} name="second.txt" path="second.txt" navigation={{ previous: vi.fn(), position: "2 / 2", focus: "next" }}>Second</ObjectDetailsDrawer>);
+    expect(screen.getByRole("button", { name: "Previous object" })).toHaveFocus();
+    view.rerender(<ObjectDetailsDrawer key="only" {...common} name="only.txt" path="only.txt" navigation={{ position: "1 / 1", focus: "next" }}>Only</ObjectDetailsDrawer>);
+    expect(screen.getByRole("group", { name: "Loaded files" })).toHaveFocus();
   });
 
   it("closes object actions when the drawer switches to another path", () => {

@@ -27,15 +27,10 @@ from app.models.bucket_usage_stats import (
     BucketUsageStatsStatus,
 )
 from app.services.bucket_usage_stats_scan import (
-    AGE_BUCKETS,
-    CURRENT_VERSION_LABELS,
-    DATA_TYPE_LABELS,
-    DATA_TYPE_ORDER,
-    SIZE_BUCKETS,
     BucketUsageScan,
-    DistributionBuilder,
     ObjectVersionEntry,
 )
+from app.services.bucket_usage_stats_aggregation import build_bucket_usage_aggregate
 from app.services.long_running_s3_client import LongRunningS3ClientMixin
 from app.services.operation_lease_service import (
     BUCKET_USAGE_STATS_LEASE_TTL_SECONDS,
@@ -64,9 +59,15 @@ class BucketUsageStatsResolvedTarget:
     bucket_name: str
     scope_kind: str
     scope_id: str
+    bucket_tenant: str = ""
+    request_bucket_name: str | None = None
     scope_name: str | None = None
     context_id: str | None = None
     context_name: str | None = None
+
+    @property
+    def s3_bucket_name(self) -> str:
+        return self.request_bucket_name or self.bucket_name
 
 
 @dataclass(frozen=True)
@@ -74,34 +75,12 @@ class BucketUsageStatsAggregateTarget:
     scope_kind: str
     scope_id: str
     bucket_name: str
+    bucket_tenant: str = ""
 
 
 @dataclass(frozen=True)
 class BucketUsageStatsOptions:
     parallelism: int = 8
-
-
-@dataclass(frozen=True)
-class _BucketUsageAggregateTotals:
-    partial_scan_count: int
-    object_version_count: int
-    current_version_count: int
-    noncurrent_version_count: int
-    delete_marker_count: int
-    total_bytes: int
-    current_bytes: int
-    noncurrent_bytes: int
-    oldest_snapshot_at: datetime | None
-    newest_snapshot_at: datetime | None
-
-
-@dataclass(frozen=True)
-class _BucketUsageAggregateDistributions:
-    data_type: list[BucketUsageStatsDistributionEntry]
-    storage_class: list[BucketUsageStatsDistributionEntry]
-    size: list[BucketUsageStatsDistributionEntry]
-    age: list[BucketUsageStatsDistributionEntry]
-    current_vs_noncurrent: list[BucketUsageStatsDistributionEntry]
 
 
 @dataclass
@@ -189,11 +168,16 @@ class BucketUsageStatsService(LongRunningS3ClientMixin):
         db = self.session_factory()
         try:
             return OperationLeaseService(db).acquire(
-                bucket_usage_stats_bucket_operation_name(self._bucket_lease_scope(target), target.bucket_name),
+                bucket_usage_stats_bucket_operation_name(
+                    self._bucket_lease_scope(target),
+                    target.bucket_name,
+                    bucket_tenant=target.bucket_tenant,
+                ),
                 ttl_seconds=BUCKET_USAGE_STATS_LEASE_TTL_SECONDS,
                 lease_context={
                     "scope_kind": target.scope_kind,
                     "scope_id": target.scope_id,
+                    "bucket_tenant": target.bucket_tenant,
                     "bucket_name": target.bucket_name,
                 },
             )
@@ -268,7 +252,7 @@ class BucketUsageStatsService(LongRunningS3ClientMixin):
         progress_callback: ProgressCallback | None = None,
         cancel_check: CancelCheck | None = None,
     ) -> BucketUsageStatsSnapshot:
-        with self._open_client(target.context) as client:
+        with self._open_client(target.context, bucket_name=target.s3_bucket_name) as client:
             calculated_at = utcnow()
             warnings: list[str] = []
             scan_mode: BucketUsageStatsScanMode = "versions"
@@ -333,7 +317,7 @@ class BucketUsageStatsService(LongRunningS3ClientMixin):
         )
         entries = self._iter_version_entries(
             client,
-            target.bucket_name,
+            target.s3_bucket_name,
             cancel_check=cancel_check,
         )
         for entry in entries:
@@ -361,7 +345,7 @@ class BucketUsageStatsService(LongRunningS3ClientMixin):
         )
         entries = self._iter_current_entries(
             client,
-            target.bucket_name,
+            target.s3_bucket_name,
             cancel_check=cancel_check,
         )
         for entry in entries:
@@ -370,11 +354,20 @@ class BucketUsageStatsService(LongRunningS3ClientMixin):
             scan.add_entry(entry)
             scan.emit_progress(target, progress_callback)
 
-    def get_latest(self, db: Session, *, scope_kind: str, scope_id: str, bucket_name: str) -> BucketUsageStatsSnapshot | None:
+    def get_latest(
+        self,
+        db: Session,
+        *,
+        scope_kind: str,
+        scope_id: str,
+        bucket_name: str,
+        bucket_tenant: str = "",
+    ) -> BucketUsageStatsSnapshot | None:
         row = db.scalars(
             select(BucketUsageStatsSnapshotRow).where(
                 BucketUsageStatsSnapshotRow.scope_kind == scope_kind,
                 BucketUsageStatsSnapshotRow.scope_id == scope_id,
+                BucketUsageStatsSnapshotRow.bucket_tenant == bucket_tenant,
                 BucketUsageStatsSnapshotRow.bucket_name == bucket_name,
             )
         ).first()
@@ -404,7 +397,7 @@ class BucketUsageStatsService(LongRunningS3ClientMixin):
         ]
         bucket_count = len(expected_bucket_names) if expected_bucket_names is not None else len(snapshots)
         buckets_with_snapshot = len({snapshot.bucket_name for snapshot in snapshots})
-        return self._build_aggregate(
+        return build_bucket_usage_aggregate(
             scope_kind=scope_kind,
             scope_id=scope_id,
             scope_name=scope_name,
@@ -427,20 +420,26 @@ class BucketUsageStatsService(LongRunningS3ClientMixin):
         skipped_account_count: int | None = None,
     ) -> BucketUsageStatsAggregate:
         expected_targets: list[BucketUsageStatsAggregateTarget] = []
-        seen_targets: set[tuple[str, str, str]] = set()
+        seen_targets: set[tuple[str, str, str, str]] = set()
         for target in targets:
             normalized = BucketUsageStatsAggregateTarget(
                 scope_kind=(target.scope_kind or "").strip(),
                 scope_id=(target.scope_id or "").strip(),
                 bucket_name=(target.bucket_name or "").strip(),
+                bucket_tenant=(target.bucket_tenant or "").strip(),
             )
-            key = (normalized.scope_kind, normalized.scope_id, normalized.bucket_name)
-            if not all(key) or key in seen_targets:
+            key = (
+                normalized.scope_kind,
+                normalized.scope_id,
+                normalized.bucket_tenant,
+                normalized.bucket_name,
+            )
+            if not normalized.scope_kind or not normalized.scope_id or not normalized.bucket_name or key in seen_targets:
                 continue
             seen_targets.add(key)
             expected_targets.append(normalized)
 
-        rows_by_key: dict[tuple[str, str, str], BucketUsageStatsSnapshotRow] = {}
+        rows_by_key: dict[tuple[str, str, str, str], BucketUsageStatsSnapshotRow] = {}
         for target_scope_kind, target_scope_id in sorted({(target.scope_kind, target.scope_id) for target in expected_targets}):
             rows = db.scalars(
                 select(BucketUsageStatsSnapshotRow).where(
@@ -449,18 +448,20 @@ class BucketUsageStatsService(LongRunningS3ClientMixin):
                 )
             ).all()
             for row in rows:
-                rows_by_key[(row.scope_kind, row.scope_id, row.bucket_name)] = row
+                rows_by_key[(row.scope_kind, row.scope_id, row.bucket_tenant, row.bucket_name)] = row
 
         snapshots: list[BucketUsageStatsSnapshot] = []
         covered_targets = 0
         for target in expected_targets:
-            row = rows_by_key.get((target.scope_kind, target.scope_id, target.bucket_name))
+            row = rows_by_key.get(
+                (target.scope_kind, target.scope_id, target.bucket_tenant, target.bucket_name)
+            )
             if row is None:
                 continue
             snapshots.append(self._snapshot_from_row(row))
             covered_targets += 1
 
-        return self._build_aggregate(
+        return build_bucket_usage_aggregate(
             scope_kind=scope_kind,
             scope_id=scope_id,
             scope_name=scope_name,
@@ -473,193 +474,12 @@ class BucketUsageStatsService(LongRunningS3ClientMixin):
             skipped_account_count=skipped_account_count,
         )
 
-    def _build_aggregate(
-        self,
-        *,
-        scope_kind: str,
-        scope_id: str,
-        scope_name: str | None,
-        bucket_count: int,
-        buckets_with_snapshot: int,
-        snapshots: list[BucketUsageStatsSnapshot],
-        warnings: Iterable[str] | None = None,
-        managed_account_count: int | None = None,
-        accounts_with_listed_buckets: int | None = None,
-        skipped_account_count: int | None = None,
-    ) -> BucketUsageStatsAggregate:
-        missing_bucket_count = max(bucket_count - buckets_with_snapshot, 0)
-        totals = self._aggregate_totals(snapshots)
-        distributions = self._aggregate_distributions(snapshots, totals)
-        aggregate_warnings = self._aggregate_warnings(
-            warnings=warnings,
-            snapshots=snapshots,
-            bucket_count=bucket_count,
-            buckets_with_snapshot=buckets_with_snapshot,
-            missing_bucket_count=missing_bucket_count,
-            partial_scan_count=totals.partial_scan_count,
-        )
-
-        return BucketUsageStatsAggregate(
-            scope_kind=scope_kind,
-            scope_id=scope_id,
-            scope_name=scope_name,
-            managed_account_count=managed_account_count,
-            accounts_with_listed_buckets=accounts_with_listed_buckets,
-            skipped_account_count=skipped_account_count,
-            bucket_count=bucket_count,
-            buckets_with_snapshot=buckets_with_snapshot,
-            missing_bucket_count=missing_bucket_count,
-            partial_scan_count=totals.partial_scan_count,
-            object_version_count=totals.object_version_count,
-            current_version_count=totals.current_version_count,
-            noncurrent_version_count=totals.noncurrent_version_count,
-            delete_marker_count=totals.delete_marker_count,
-            total_bytes=totals.total_bytes,
-            current_bytes=totals.current_bytes,
-            noncurrent_bytes=totals.noncurrent_bytes,
-            data_type_distribution=distributions.data_type,
-            storage_class_distribution=distributions.storage_class,
-            size_distribution=distributions.size,
-            age_distribution=distributions.age,
-            current_vs_noncurrent=distributions.current_vs_noncurrent,
-            warnings=aggregate_warnings,
-            oldest_snapshot_at=totals.oldest_snapshot_at,
-            newest_snapshot_at=totals.newest_snapshot_at,
-        )
-
-    @staticmethod
-    def _aggregate_totals(
-        snapshots: list[BucketUsageStatsSnapshot],
-    ) -> _BucketUsageAggregateTotals:
-        calculated_at_values = [snapshot.calculated_at for snapshot in snapshots if snapshot.calculated_at]
-        return _BucketUsageAggregateTotals(
-            partial_scan_count=sum(
-                1
-                for snapshot in snapshots
-                if snapshot.scan_mode == "current_only" or not snapshot.version_listing_available
-            ),
-            object_version_count=sum(snapshot.object_version_count for snapshot in snapshots),
-            current_version_count=sum(snapshot.current_version_count for snapshot in snapshots),
-            noncurrent_version_count=sum(snapshot.noncurrent_version_count for snapshot in snapshots),
-            delete_marker_count=sum(snapshot.delete_marker_count for snapshot in snapshots),
-            total_bytes=sum(snapshot.total_bytes for snapshot in snapshots),
-            current_bytes=sum(snapshot.current_bytes for snapshot in snapshots),
-            noncurrent_bytes=sum(snapshot.noncurrent_bytes for snapshot in snapshots),
-            oldest_snapshot_at=min(calculated_at_values) if calculated_at_values else None,
-            newest_snapshot_at=max(calculated_at_values) if calculated_at_values else None,
-        )
-
-    @staticmethod
-    def _aggregate_warnings(
-        *,
-        warnings: Iterable[str] | None,
-        snapshots: list[BucketUsageStatsSnapshot],
-        bucket_count: int,
-        buckets_with_snapshot: int,
-        missing_bucket_count: int,
-        partial_scan_count: int,
-    ) -> list[str]:
-        aggregate_warnings: list[str] = []
-
-        def append_once(warning: str) -> None:
-            if warning and warning not in aggregate_warnings:
-                aggregate_warnings.append(warning)
-
-        for warning in warnings or []:
-            append_once(warning)
-        if bucket_count > 0 and buckets_with_snapshot == 0:
-            append_once("No bucket usage stats snapshot is available yet.")
-        elif missing_bucket_count > 0:
-            append_once("Some buckets do not have usage stats snapshots yet.")
-        if partial_scan_count > 0:
-            append_once(
-                "Some bucket snapshots were calculated from current-object listings only. Current/non-current distribution may be incomplete."
-            )
-        for snapshot in snapshots:
-            for warning in snapshot.warnings:
-                append_once(warning)
-        return aggregate_warnings
-
-    def _aggregate_distributions(
-        self,
-        snapshots: list[BucketUsageStatsSnapshot],
-        totals: _BucketUsageAggregateTotals,
-    ) -> _BucketUsageAggregateDistributions:
-        return _BucketUsageAggregateDistributions(
-            data_type=self._merge_distribution_entries(
-                [snapshot.data_type_distribution for snapshot in snapshots],
-                total_count=totals.object_version_count,
-                total_bytes=totals.total_bytes,
-                labels=DATA_TYPE_LABELS,
-                order=DATA_TYPE_ORDER,
-            ),
-            storage_class=self._merge_distribution_entries(
-                [snapshot.storage_class_distribution for snapshot in snapshots],
-                total_count=totals.object_version_count,
-                total_bytes=totals.total_bytes,
-            ),
-            size=self._merge_distribution_entries(
-                [snapshot.size_distribution for snapshot in snapshots],
-                total_count=totals.object_version_count,
-                total_bytes=totals.total_bytes,
-                labels={key: label for key, label, _, _ in SIZE_BUCKETS},
-                order=[key for key, _, _, _ in SIZE_BUCKETS],
-                include_zero_keys=True,
-            ),
-            age=self._merge_distribution_entries(
-                [snapshot.age_distribution for snapshot in snapshots],
-                total_count=totals.object_version_count,
-                total_bytes=totals.total_bytes,
-                labels={key: label for key, label, _, _ in AGE_BUCKETS} | {"unknown": "Unknown"},
-                order=[key for key, _, _, _ in AGE_BUCKETS] + ["unknown"],
-                include_zero_keys=True,
-            ),
-            current_vs_noncurrent=self._current_noncurrent_entries(
-                current_count=totals.current_version_count,
-                current_bytes=totals.current_bytes,
-                noncurrent_count=totals.noncurrent_version_count,
-                noncurrent_bytes=totals.noncurrent_bytes,
-                total_count=totals.object_version_count,
-                total_bytes=totals.total_bytes,
-            ),
-        )
-
-    def _merge_distribution_entries(
-        self,
-        groups: list[list[BucketUsageStatsDistributionEntry]],
-        *,
-        total_count: int,
-        total_bytes: int,
-        labels: dict[str, str] | None = None,
-        order: Iterable[str] | None = None,
-        include_zero_keys: bool = False,
-    ) -> list[BucketUsageStatsDistributionEntry]:
-        builder = DistributionBuilder(labels or {}, order)
-        for entries in groups:
-            for entry in entries:
-                builder.add(entry.key, count=entry.count, bytes_value=entry.bytes, label=entry.label)
-        return builder.entries(total_count=total_count, total_bytes=total_bytes, include_zero_keys=include_zero_keys)
-
-    def _current_noncurrent_entries(
-        self,
-        *,
-        current_count: int,
-        current_bytes: int,
-        noncurrent_count: int,
-        noncurrent_bytes: int,
-        total_count: int,
-        total_bytes: int,
-    ) -> list[BucketUsageStatsDistributionEntry]:
-        builder = DistributionBuilder(CURRENT_VERSION_LABELS, ["current", "noncurrent"])
-        builder.add("current", count=current_count, bytes_value=current_bytes)
-        builder.add("noncurrent", count=noncurrent_count, bytes_value=noncurrent_bytes)
-        return builder.entries(total_count=total_count, total_bytes=total_bytes, include_zero_keys=True)
-
     def upsert_snapshot(self, db: Session, snapshot: BucketUsageStatsSnapshot) -> BucketUsageStatsSnapshot:
         row = db.scalars(
             select(BucketUsageStatsSnapshotRow).where(
                 BucketUsageStatsSnapshotRow.scope_kind == snapshot.scope_kind,
                 BucketUsageStatsSnapshotRow.scope_id == snapshot.scope_id,
+                BucketUsageStatsSnapshotRow.bucket_tenant == snapshot.bucket_tenant,
                 BucketUsageStatsSnapshotRow.bucket_name == snapshot.bucket_name,
             )
         ).first()
@@ -667,6 +487,7 @@ class BucketUsageStatsService(LongRunningS3ClientMixin):
             row = BucketUsageStatsSnapshotRow(
                 scope_kind=snapshot.scope_kind,
                 scope_id=snapshot.scope_id,
+                bucket_tenant=snapshot.bucket_tenant,
                 bucket_name=snapshot.bucket_name,
             )
             db.add(row)
@@ -869,6 +690,7 @@ class BucketUsageStatsService(LongRunningS3ClientMixin):
             scope_id=row.scope_id,
             scope_name=row.scope_name,
             bucket_name=row.bucket_name,
+            bucket_tenant=row.bucket_tenant or "",
             scan_mode=row.scan_mode,
             version_listing_available=bool(row.version_listing_available),
             object_version_count=int(row.object_version_count or 0),

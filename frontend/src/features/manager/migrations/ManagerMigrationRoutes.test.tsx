@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { BucketMigrationDetail } from "../../../api/managerMigrations";
 import ManagerMigrationDetailPage from "./ManagerMigrationDetailPage";
 import ManagerMigrationsListPage from "./ManagerMigrationsListPage";
 import ManagerMigrationWizardPage from "./ManagerMigrationWizardPage";
@@ -36,11 +37,8 @@ vi.mock("../../../api/managerMigrations", async () => {
     continueManagerMigration: vi.fn(),
     startManagerMigration: vi.fn(),
     stopManagerMigration: vi.fn(),
-    rollbackManagerMigration: vi.fn(),
     retryManagerMigrationItem: vi.fn(),
-    rollbackManagerMigrationItem: vi.fn(),
     retryFailedManagerMigrationItems: vi.fn(),
-    rollbackFailedManagerMigrationItems: vi.fn(),
     deleteManagerMigration: vi.fn(),
   };
 });
@@ -52,7 +50,7 @@ vi.mock("../ExecutionContextProvider", () => ({
   }),
 }));
 
-function buildDraftDetail() {
+function buildDraftDetail(): BucketMigrationDetail {
   return {
     id: 11,
     created_by_user_id: 1,
@@ -68,8 +66,17 @@ function buildDraftDetail() {
     mapping_prefix: "",
     status: "draft",
     configuration_revision: 1,
+    checked_revision: null,
     preparation_status: "unverified",
-    available_actions: { edit: { enabled: true }, precheck: { enabled: true } },
+    preparation_active_checks: false,
+    preparation_completed_items: 0,
+    maintenance_operation: null,
+    maintenance_status: "idle",
+    maintenance_error: null,
+    available_actions: {
+      edit: { enabled: true, reason: null },
+      precheck: { enabled: true, reason: null },
+    },
     pause_requested: false,
     cancel_requested: false,
     precheck_status: "passed",
@@ -98,6 +105,11 @@ function buildDraftDetail() {
         read_only_applied: false,
         target_lock_applied: false,
         target_bucket_exists: false,
+        target_created_by_migration: false,
+        recovery_required: false,
+        source_deleted: false,
+        cleanup_status: "idle",
+        cleanup_error: null,
         objects_copied: 0,
         objects_deleted: 0,
         source_count: null,
@@ -126,13 +138,7 @@ describe("Manager migration routing", () => {
       { id: "tgt-ctx", display_name: "Target", endpoint_id: 2 },
     ]);
     listBucketsMock.mockResolvedValue([{ name: "bucket-a" }]);
-    listManagerMigrationsMock.mockResolvedValue([
-      {
-        ...detail,
-        items: undefined,
-        recent_events: undefined,
-      },
-    ]);
+    listManagerMigrationsMock.mockResolvedValue([detail]);
     getManagerMigrationMock.mockResolvedValue(detail);
     streamManagerMigrationMock.mockImplementation(async (_migrationId: number, options?: { onSnapshot?: (payload: unknown) => void }) => {
       options?.onSnapshot?.(detail);

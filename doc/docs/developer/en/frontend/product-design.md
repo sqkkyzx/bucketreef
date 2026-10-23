@@ -110,6 +110,36 @@ contextual drawer, which overlays the list on desktop and becomes a modal
 full-screen surface below 1024px. Keep the header limited to the resource name,
 path, actions, tabs, and actual warnings/status; do not repeat object metadata
 under the tabs.
+Detail drawers use `PageTabs variant="line"` with the same active underline and
+focus treatment as workspace pages. Let the tab bar own its bottom separator;
+do not add a second header border beneath it.
+
+Details and advanced-filter panels opt into the shared `UiDrawer` workspace
+presentation. `Layout` measures the content's viewport top so both families sit
+8px below the actual topbar on desktop, including a resized demo toolbar. Use a
+1px top border, 8px top-left radius, shared title typography and icon close button.
+Keep the body scrollable and filter actions in the shared fixed footer. Below
+1024px both families fill the viewport. Details remain non-modal on desktop;
+filters retain their backdrop, modal focus and unapplied-change guards. Mobile
+navigation keeps its separate left-drawer presentation.
+Topbar utility hints use a portal above desktop contextual details, below modal
+filters and mobile drawers; Escape dismisses a visible hint before its drawer.
+For object details, place previous/next object navigation and the loaded-list
+position in the title row beside Download/More and the close action. Bucket
+configuration drawers use the same header placement so navigation does not
+create a dedicated row above the content. Use
+compact icon buttons with accessible labels and preserve keyboard access and
+disabled states at the list boundaries.
+Mark the currently viewed object independently from checkbox selection and keyboard
+focus, with a persistent row tint and vertical marker beside the name. Expose
+that state with `aria-current` on the opening control and a polite announcement
+of the file name and loaded-list position. Keep the row visible by scrolling
+only the object list when necessary. Object changes retain focus on the
+requested navigation control, falling back to an enabled neighbor at a boundary;
+closing returns focus to the last viewed row, or the list if it disappeared.
+Keep checked-row backgrounds stable on hover. Focus outlines belong only to
+individual controls in keyboard navigation (`:focus-visible`); do not also
+outline their containing row with `focus-within`.
 
 ## Compact configuration inventories
 
