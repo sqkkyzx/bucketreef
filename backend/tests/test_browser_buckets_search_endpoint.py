@@ -3,11 +3,11 @@
 from app.db import S3Account, S3User, StorageEndpoint, StorageProvider
 from app.main import app
 from app.models.browser import BrowserBucket, PaginatedBrowserBucketsResponse
-from app.models.portal_storage_spaces import PortalStorageSpaceSummary
 from app.routers import browser as browser_router
 from app.routers import dependencies
 from app.services import browser_usage_summary_service
 from app.services.s3_execution_context import S3ExecutionContext
+from tests.portal_storage_space_factory import portal_storage_space_summary
 
 
 def _account() -> S3ExecutionContext:
@@ -246,6 +246,10 @@ def test_browser_usage_summary_hides_account_when_live_usage_is_unavailable(clie
         "available": False,
         "source": "account",
         "label": "Account",
+        "used_bytes": None,
+        "object_count": None,
+        "quota_max_size_bytes": None,
+        "quota_max_objects": None,
     }
 
 
@@ -325,6 +329,10 @@ def test_browser_usage_summary_hides_s3_user_when_live_usage_is_unavailable(clie
         "available": False,
         "source": "s3_user",
         "label": "S3 User",
+        "used_bytes": None,
+        "object_count": None,
+        "quota_max_size_bytes": None,
+        "quota_max_objects": None,
     }
 
 
@@ -369,7 +377,7 @@ def test_browser_usage_summary_does_not_fallback_to_portal_storage_space_rows(cl
     account = S3ExecutionContext.from_account(persisted_account, context_kind="portal_account")
     account.portal_browser_role = "portal_manager"
     account.portal_storage_spaces = [
-        PortalStorageSpaceSummary(
+        portal_storage_space_summary(
             id="space-a",
             name="Space A",
             role="Editor",
@@ -399,6 +407,10 @@ def test_browser_usage_summary_does_not_fallback_to_portal_storage_space_rows(cl
         "available": False,
         "source": "portal",
         "label": "Storage Spaces",
+        "used_bytes": None,
+        "object_count": None,
+        "quota_max_size_bytes": None,
+        "quota_max_objects": None,
     }
 
 
@@ -421,4 +433,8 @@ def test_browser_usage_summary_hides_connection_usage_without_bucket_listing(cli
         "available": False,
         "source": "connection",
         "label": "Connection",
+        "used_bytes": None,
+        "object_count": None,
+        "quota_max_size_bytes": None,
+        "quota_max_objects": None,
     }

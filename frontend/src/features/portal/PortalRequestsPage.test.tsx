@@ -50,8 +50,13 @@ const pendingRequest: PortalAdminRequest = {
     target_quota_unit: "GiB",
     reason: "New project",
   },
+  result: null,
+  error_message: null,
   requester_user_id: 1,
   requester_email: "requester@example.org",
+  decided_by_user_id: null,
+  decided_by_email: null,
+  decided_at: null,
   created_at: "2026-07-08T10:00:00Z",
   updated_at: "2026-07-08T10:00:00Z",
   messages: [],
@@ -116,7 +121,9 @@ describe("PortalRequestsPage", () => {
       used_objects: 42,
       quota_max_size_bytes: 20 * 1024 ** 3,
       quota_max_objects: 123,
+      max_buckets: null,
       storage_spaces: [],
+      other_storage_space: null,
     });
     mocks.fetchPortalCollaborators.mockResolvedValue({
       summary: {

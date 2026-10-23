@@ -4,7 +4,6 @@
  */
 import type { S3ExecutionContextSelector } from "./accountParams";
 import type {
-  BucketNamesPayload,
   BucketTargetsPayload,
   RgwBucketTargetsPayload,
 } from "./bucketOperation";
@@ -20,7 +19,6 @@ type BucketUsageStatsOptionsPayload = {
   parallelism?: number;
 };
 
-type BucketUsageStatsBucketPayload = BucketUsageStatsOptionsPayload & BucketNamesPayload;
 type BucketUsageStatsTargetPayload = BucketUsageStatsOptionsPayload & BucketTargetsPayload;
 type BucketUsageStatsRgwTargetPayload = BucketUsageStatsOptionsPayload & RgwBucketTargetsPayload;
 
@@ -40,7 +38,7 @@ export type BucketUsageStatsDistributionEntry = {
 export type BucketUsageStatsSnapshot = {
   scope_kind: string;
   scope_id: string;
-  scope_name?: string | null;
+  scope_name: string | null;
   bucket_name: string;
   bucket_tenant: string;
   scan_mode: "versions" | "current_only";
@@ -62,16 +60,16 @@ export type BucketUsageStatsSnapshot = {
 };
 
 type BucketUsageStatsLatestResponse = {
-  snapshot?: BucketUsageStatsSnapshot | null;
+  snapshot: BucketUsageStatsSnapshot | null;
 };
 
 export type BucketUsageStatsAggregate = {
   scope_kind: string;
   scope_id: string;
-  scope_name?: string | null;
-  managed_account_count?: number | null;
-  accounts_with_listed_buckets?: number | null;
-  skipped_account_count?: number | null;
+  scope_name: string | null;
+  managed_account_count: number | null;
+  accounts_with_listed_buckets: number | null;
+  skipped_account_count: number | null;
   bucket_count: number;
   buckets_with_snapshot: number;
   missing_bucket_count: number;
@@ -89,8 +87,8 @@ export type BucketUsageStatsAggregate = {
   age_distribution: BucketUsageStatsDistributionEntry[];
   current_vs_noncurrent: BucketUsageStatsDistributionEntry[];
   warnings: string[];
-  oldest_snapshot_at?: string | null;
-  newest_snapshot_at?: string | null;
+  oldest_snapshot_at: string | null;
+  newest_snapshot_at: string | null;
 };
 
 export type BucketUsageStatsAggregateResponse = {
@@ -99,26 +97,26 @@ export type BucketUsageStatsAggregateResponse = {
 
 export type BucketUsageStatsBucketResult = {
   bucket_name: string;
-  context_id?: string | null;
-  context_name?: string | null;
+  context_id: string | null;
+  context_name: string | null;
   status: "completed" | "completed_with_warnings" | "failed" | "canceled" | "skipped";
-  snapshot?: BucketUsageStatsSnapshot | null;
+  snapshot: BucketUsageStatsSnapshot | null;
   duration_seconds: number;
-  message?: string | null;
+  message: string | null;
 };
 
 export type BucketUsageStatsProgress = {
-  request_id?: string | null;
+  request_id: string | null;
   stage: "prepare" | "list" | "persist" | "completed";
-  bucket_name?: string | null;
-  context_id?: string | null;
-  context_name?: string | null;
+  bucket_name: string | null;
+  context_id: string | null;
+  context_name: string | null;
   total_buckets: number;
   completed_buckets: number;
   listed_versions: number;
   listed_delete_markers: number;
   total_bytes: number;
-  message?: string | null;
+  message: string | null;
 };
 
 export type BucketUsageStatsResult = {
@@ -126,7 +124,7 @@ export type BucketUsageStatsResult = {
   total_buckets: number;
   completed_buckets: number;
   failed_buckets: number;
-  skipped_buckets?: number;
+  skipped_buckets: number;
   listed_versions: number;
   listed_delete_markers: number;
   total_bytes: number;

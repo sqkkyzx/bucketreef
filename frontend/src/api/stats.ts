@@ -23,41 +23,36 @@ export type BucketOverview = {
 
 export type S3AccountUsagePoint = {
   account_id: string;
-  account_name?: string | null;
-  used_bytes?: number | null;
-  object_count?: number | null;
-  bucket_count?: number | null;
+  account_name: string | null;
+  used_bytes: number | null;
+  object_count: number | null;
+  bucket_count: number | null;
 };
 
 export type S3UserUsagePoint = {
   user_id: number;
-  user_name?: string | null;
-  rgw_user_uid?: string | null;
-  used_bytes?: number | null;
-  object_count?: number | null;
-  bucket_count?: number | null;
+  user_name: string | null;
+  rgw_user_uid: string;
+  used_bytes: number | null;
+  object_count: number | null;
+  bucket_count: number | null;
 };
 
-export type AdminStats = {
+export type AdminStorageStats = {
   total_accounts: number;
-  total_users: number;
-  total_admins: number;
   total_s3_users: number;
-  total_buckets: number;
-  account_usage?: S3AccountUsagePoint[];
-  s3_user_usage?: S3UserUsagePoint[];
-  storage_totals?: StorageTotals;
-  traffic?: AdminTrafficStats | null;
-  traffic_error?: string | null;
-  generated_at?: string;
+  account_usage: S3AccountUsagePoint[];
+  s3_user_usage: S3UserUsagePoint[];
+  storage_totals: StorageTotals;
+  generated_at: string;
 };
 
-export type ManagerStats = {
+export type StorageStats = {
   total_buckets: number;
-  total_bytes?: number;
-  total_objects?: number;
-  bucket_usage?: BucketUsagePoint[];
-  bucket_overview?: BucketOverview | null;
+  total_bytes: number;
+  total_objects: number;
+  bucket_usage: BucketUsagePoint[];
+  bucket_overview: BucketOverview;
 };
 
 export type TrafficSeriesPoint = {
@@ -73,7 +68,7 @@ export type TrafficTotals = {
   bytes_out: number;
   ops: number;
   success_ops: number;
-  success_rate?: number | null;
+  success_rate: number | null;
 };
 
 export type TrafficBucketRanking = {
@@ -83,7 +78,7 @@ export type TrafficBucketRanking = {
   bytes_out: number;
   ops: number;
   success_ops: number;
-  success_ratio?: number | null;
+  success_ratio: number | null;
 };
 
 export type TrafficUserRanking = {
@@ -93,7 +88,7 @@ export type TrafficUserRanking = {
   bytes_out: number;
   ops: number;
   success_ops: number;
-  success_ratio?: number | null;
+  success_ratio: number | null;
 };
 
 export type TrafficRequestBreakdown = {
@@ -115,7 +110,7 @@ export type ManagerTrafficStats = {
   start: string;
   end: string;
   resolution: string;
-  bucket_filter?: string | null;
+  bucket_filter: string | null;
   data_points: number;
   series: TrafficSeriesPoint[];
   totals: TrafficTotals;
@@ -146,24 +141,28 @@ export type ManagerUsageTrendsResponse = {
 };
 
 export type StorageTotals = {
-  used_bytes?: number | null;
-  object_count?: number | null;
-  bucket_count?: number | null;
-  accounts_with_usage?: number | null;
+  used_bytes: number | null;
+  object_count: number | null;
+  bucket_count: number | null;
+  accounts_with_usage: number;
 };
 
 export type AdminTrafficStats = ManagerTrafficStats;
-type AdminStorageStats = AdminStats;
-
 export type AdminDashboardScope = {
-  endpoints: { endpoint_id: number; name: string; storage_enabled: boolean; traffic_enabled: boolean }[];
+  endpoints: {
+    endpoint_id: number;
+    name: string;
+    admin_endpoint_url: string | null;
+    storage_enabled: boolean;
+    traffic_enabled: boolean;
+  }[];
 };
 
 export type AdminDashboardCoverage = {
   eligible_count: number;
   contributing_count: number;
   complete_count: number;
-  issues: { endpoint_id: number; name: string; reason: string }[];
+  issues: { endpoint_id: number; name: string; endpoint_url: string | null; reason: string }[];
 };
 
 export type AdminDashboardCache = { hit: boolean; expires_at: string };
@@ -171,7 +170,11 @@ export type AdminDashboardCache = { hit: boolean; expires_at: string };
 export type AdminDashboardStorage = {
   cache: AdminDashboardCache;
   generated_at: string;
-  storage_totals: Pick<StorageTotals, "bucket_count" | "object_count" | "used_bytes">;
+  storage_totals: {
+    bucket_count: number | null;
+    object_count: number | null;
+    used_bytes: number | null;
+  };
   coverage: AdminDashboardCoverage;
   measurements: Record<"bucket_count" | "object_count" | "used_bytes", { contributing_count: number; complete_count: number }>;
 };
@@ -209,7 +212,7 @@ export type AdminSummary = {
   total_admins: number;
   total_none_users: number;
   total_active_sessions: number;
-  active_sessions_by_type?: {
+  active_sessions_by_type: {
     ui: number;
     s3: number;
   };
@@ -222,7 +225,7 @@ export type AdminSummary = {
   total_ceph_endpoints: number;
   total_other_endpoints: number;
   total_connections: number;
-  total_shared_connections?: number;
+  total_shared_connections: number;
   total_private_connections: number;
 };
 
@@ -249,8 +252,8 @@ export async function fetchAdminTraffic(window: TrafficWindow = "week", endpoint
   return data;
 }
 
-export async function fetchManagerStats(contextId?: S3ExecutionContextSelector): Promise<ManagerStats> {
-  const { data } = await client.get<ManagerStats>("/manager/stats/overview", {
+export async function fetchManagerStats(contextId?: S3ExecutionContextSelector): Promise<StorageStats> {
+  const { data } = await client.get<StorageStats>("/manager/stats/overview", {
     params: withS3ContextParam(undefined, contextId),
   });
   return data;
@@ -263,15 +266,15 @@ export async function fetchManagerUsageTrends(contextId?: S3ExecutionContextSele
   return data;
 }
 
-export async function fetchAdminAccountStats(accountId: number): Promise<ManagerStats> {
-  const { data } = await client.get<ManagerStats>("/admin/stats/account", {
+export async function fetchAdminAccountStats(accountId: number): Promise<StorageStats> {
+  const { data } = await client.get<StorageStats>("/admin/stats/account", {
     params: { account_id: accountId },
   });
   return data;
 }
 
-export async function fetchAdminS3UserStats(userId: number): Promise<ManagerStats> {
-  const { data } = await client.get<ManagerStats>("/admin/stats/s3-user", {
+export async function fetchAdminS3UserStats(userId: number): Promise<StorageStats> {
+  const { data } = await client.get<StorageStats>("/admin/stats/s3-user", {
     params: { user_id: userId },
   });
   return data;

@@ -8,11 +8,12 @@ import pytest
 from fastapi import HTTPException
 
 from app.db import S3Account, StorageEndpoint
-from app.models.portal_storage_spaces import PortalStorageSpaceIcon, PortalStorageSpaceSummary
+from app.models.portal_storage_spaces import PortalStorageSpaceIcon
 from app.services.browser import _shared as browser_shared
 from app.services.browser import sorted_listing
 from app.services.browser_service import BrowserService
 from app.services.s3_execution_context import S3ExecutionContext
+from tests.portal_storage_space_factory import portal_storage_space_summary
 
 
 def _account() -> S3Account:
@@ -57,13 +58,18 @@ def test_listportal_storage_spaces_includes_descriptions():
         secret_key="secret-key",
     )
     account.portal_storage_spaces = [
-        PortalStorageSpaceSummary(
+        portal_storage_space_summary(
             id="space-1",
             internal_bucket_name="internal-space-1",
             name="Research Data",
             role="Editor",
             description="Shared research datasets",
-            icon=PortalStorageSpaceIcon(source="preset", preset="database"),
+            icon=PortalStorageSpaceIcon(
+                source="preset",
+                preset="database",
+                url=None,
+                updated_at=None,
+            ),
         )
     ]
 
@@ -73,7 +79,12 @@ def test_listportal_storage_spaces_includes_descriptions():
     assert result[0].display_name == "Research Data"
     assert result[0].workspace_label == "Storage Space"
     assert result[0].description == "Shared research datasets"
-    assert result[0].icon == PortalStorageSpaceIcon(source="preset", preset="database")
+    assert result[0].icon == PortalStorageSpaceIcon(
+        source="preset",
+        preset="database",
+        url=None,
+        updated_at=None,
+    )
 
 
 def test_list_object_versions_preserves_hierarchy_and_s3_cursors(monkeypatch):

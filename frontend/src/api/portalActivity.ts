@@ -13,20 +13,20 @@ export type PortalActivityItem = {
   actor: string;
   action: string;
   target: string;
-  storage_space_id?: string | null;
-  storage_space_name?: string | null;
-  ip_address?: string | null;
+  storage_space_id: string | null;
+  storage_space_name: string | null;
+  ip_address: string | null;
   status: string;
 };
 
 export type PortalServerAccessRequesterIdentity = {
   label: string;
   kind: "portal_user" | "external_access" | "rgw_user" | "rgw_account" | "unknown";
-  detail?: string | null;
-  access_key_id?: string | null;
-  iam_username?: string | null;
-  user_id?: number | null;
-  email?: string | null;
+  detail: string | null;
+  access_key_id: string | null;
+  iam_username: string | null;
+  user_id: number | null;
+  email: string | null;
   resolved: boolean;
 };
 
@@ -34,25 +34,25 @@ export type PortalServerAccessLogEntry = {
   id: string;
   source: "server_access_logging";
   timestamp: string;
-  storage_space_id?: string | null;
-  storage_space_name?: string | null;
+  storage_space_id: string | null;
+  storage_space_name: string | null;
   bucket_name: string;
   operation: string;
   operation_category: "upload" | "download" | "delete" | "metadata" | "list" | "other";
-  object_key?: string | null;
-  object_name?: string | null;
-  direction?: "Upload" | "Download" | null;
-  status_code?: number | null;
-  error_code?: string | null;
-  bytes_sent?: number | null;
-  object_size?: number | null;
-  requester?: string | null;
-  requester_identity?: PortalServerAccessRequesterIdentity | null;
-  client_ip?: string | null;
-  auth_type?: string | null;
-  request_id?: string | null;
-  request_uri?: string | null;
-  user_agent?: string | null;
+  object_key: string | null;
+  object_name: string | null;
+  direction: "Upload" | "Download" | null;
+  status_code: number | null;
+  error_code: string | null;
+  bytes_sent: number | null;
+  object_size: number | null;
+  requester: string | null;
+  requester_identity: PortalServerAccessRequesterIdentity | null;
+  client_ip: string | null;
+  auth_type: string | null;
+  request_id: string | null;
+  request_uri: string | null;
+  user_agent: string | null;
   log_object_key: string;
 };
 
@@ -74,8 +74,8 @@ export type PortalAlert = {
   title: string;
   description: string;
   severity_label: string;
-  storage_space_id?: string | null;
-  created_at?: string | null;
+  storage_space_id: string | null;
+  created_at: string | null;
 };
 
 export async function fetchPortalActivity(

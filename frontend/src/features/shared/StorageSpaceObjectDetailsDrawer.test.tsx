@@ -95,6 +95,7 @@ describe("StorageSpaceObjectDetailsDrawer", () => {
       encryption: "AES256",
       preview_type: "text",
       preview_text: "id,value\n1,reef",
+      preview_unavailable_reason: null,
     });
     mocks.fetchVersions.mockResolvedValue({
       key: "reports/2026/report.csv",
@@ -102,6 +103,8 @@ describe("StorageSpaceObjectDetailsDrawer", () => {
       can_restore: false,
       versions: [],
       is_truncated: false,
+      next_key_marker: null,
+      next_version_id_marker: null,
     });
     mocks.listLinks.mockResolvedValue([]);
     mocks.createLink.mockResolvedValue({
@@ -203,6 +206,7 @@ describe("StorageSpaceObjectDetailsDrawer", () => {
       encryption: "AES256",
       preview_type: "text",
       preview_text: "stale preview",
+      preview_unavailable_reason: null,
     };
     let resolveStaleDetail: (value: typeof staleDetail) => void = () => undefined;
     mocks.fetchDetail

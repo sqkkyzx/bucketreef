@@ -44,7 +44,7 @@ def get_ldap_auth_service_dependency(
 @router.get("/ldap/providers", response_model=list[LDAPProviderInfo])
 def list_ldap_providers(
     ldap_service: LDAPAuthService = Depends(get_ldap_auth_service_dependency),
-) -> list[dict[str, str]]:
+) -> list[LDAPProviderInfo]:
     return ldap_service.list_providers()
 
 
@@ -97,7 +97,11 @@ def login_with_ldap(
         )
         return AuthenticationResponse(
             status="link_approval_required",
+            user=None,
+            session=None,
+            redirect_path=None,
             link_request_id=exc.request_id,
+            recovery_codes=None,
         )
     except LDAPProviderNotFoundError as exc:
         audit_service.record_action(

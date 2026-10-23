@@ -94,28 +94,26 @@ class UiPreferences(ApiModel):
 
 
 class UserAvatar(ApiModel):
-    preference: UserAvatarPreference = "auto"
-    source: UserAvatarSource = "initials"
-    url: Optional[str] = None
+    preference: UserAvatarPreference
+    source: UserAvatarSource
+    url: Optional[str]
     initials: str
-    updated_at: Optional[datetime] = None
+    updated_at: Optional[datetime]
 
 
 class UserSummary(ApiModel):
     id: int
     email: EmailStr
-    full_name: Optional[str] = None
-    avatar: Optional[UserAvatar] = None
+    full_name: Optional[str]
+    avatar: Optional[UserAvatar]
     role: UiRole
-    iam_username: Optional[str] = None
 
 
 class UserAssociationDetail(ApiModel):
     id: int
     email: str
-    full_name: Optional[str] = None
-    avatar: Optional[UserAvatar] = None
-    allow_manager_browser_data_access: bool = False
+    full_name: Optional[str]
+    avatar: Optional[UserAvatar]
 
 
 class User(ApiModel):
@@ -203,30 +201,30 @@ class EffectiveUserAccess(ApiModel):
 class UserOut(ApiModel):
     id: int
     email: str
-    full_name: Optional[str] = None
-    picture_url: Optional[str] = None
+    full_name: Optional[str]
+    picture_url: Optional[str]
     avatar: UserAvatar
-    has_local_password: bool = False
-    is_active: bool = True
-    is_admin: bool = False
+    has_local_password: bool
+    is_active: bool
+    is_admin: bool
     role: UiRole
-    can_access_ceph_admin: bool = False
-    can_access_storage_ops: bool = False
-    can_create_manual_private_connections: bool = False
-    can_provision_managed_private_connections: bool = False
-    manager_tool_access: ManagerToolAccess = Field(default_factory=ManagerToolAccess)
-    browser_advanced_features_enabled: bool = False
-    ui_language: Optional[UiLanguage] = None
-    quota_alerts_enabled: bool = True
-    quota_alerts_global_watch: bool = False
-    ui_preferences: UiPreferences = Field(default_factory=UiPreferences)
-    account_links: list[AccountMembership] = []
-    group_details: list[LinkedUiGroup] = []
-    s3_user_links: list[S3UserMembership] = []
-    s3_user_details: list[LinkedS3User] = []
-    s3_connection_details: list[LinkedS3Connection] = []
+    can_access_ceph_admin: bool
+    can_access_storage_ops: bool
+    can_create_manual_private_connections: bool
+    can_provision_managed_private_connections: bool
+    manager_tool_access: ManagerToolAccess
+    browser_advanced_features_enabled: bool
+    ui_language: Optional[UiLanguage]
+    quota_alerts_enabled: bool
+    quota_alerts_global_watch: bool
+    ui_preferences: UiPreferences
+    account_links: list[AccountMembership]
+    group_details: list[LinkedUiGroup]
+    s3_user_links: list[S3UserMembership]
+    s3_user_details: list[LinkedS3User]
+    s3_connection_details: list[LinkedS3Connection]
     effective_access: EffectiveUserAccess
-    last_login_at: Optional[datetime] = None
+    last_login_at: Optional[datetime]
 
 
 class PaginatedUsersResponse(PaginatedResponse):

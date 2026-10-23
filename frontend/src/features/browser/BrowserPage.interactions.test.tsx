@@ -904,7 +904,6 @@ describe("BrowserPage interactions", () => {
     });
     getBucketPropertiesMock.mockResolvedValue({
       versioning_status: "Disabled",
-      object_lock_enabled: false,
       public_access_block: null,
       lifecycle_rules: [],
       cors_rules: [],
@@ -927,6 +926,7 @@ describe("BrowserPage interactions", () => {
       encryption: null,
       preview_type: "text",
       preview_text: "portal preview",
+      preview_unavailable_reason: null,
     });
     fetchPortalObjectVersionsMock.mockResolvedValue({
       key: "a.txt",
@@ -934,6 +934,8 @@ describe("BrowserPage interactions", () => {
       can_restore: false,
       versions: [],
       is_truncated: false,
+      next_key_marker: null,
+      next_version_id_marker: null,
     });
     listPortalPublicLinksMock.mockResolvedValue([]);
     fetchPortalAccessSummaryMock.mockResolvedValue({
@@ -1395,6 +1397,33 @@ describe("BrowserPage interactions", () => {
     await waitFor(() => {
       expect(onVisibilityChange).toHaveBeenCalledWith(true);
     });
+  });
+
+  it("exposes listing visibility actions in the standalone Browser More menu", async () => {
+    const user = userEvent.setup();
+    getBrowserBucketVersioningMock.mockResolvedValue({
+      enabled: true,
+      status: "Enabled",
+    });
+
+    renderPage();
+    await findRowByLabel("a.txt");
+
+    let moreMenu = await openContextMoreMenu(user);
+    expect(
+      within(moreMenu).getByRole("menuitem", { name: "Hide folders" }),
+    ).toBeInTheDocument();
+    expect(
+      within(moreMenu).getByRole("menuitem", { name: "Show deleted files" }),
+    ).toBeInTheDocument();
+
+    await user.click(
+      within(moreMenu).getByRole("menuitem", { name: "Hide folders" }),
+    );
+    moreMenu = await openContextMoreMenu(user);
+    expect(
+      within(moreMenu).getByRole("menuitem", { name: "Show folders" }),
+    ).toBeInTheDocument();
   });
 
   it("clears controlled deleted-file visibility only after versioning resolves disabled", async () => {

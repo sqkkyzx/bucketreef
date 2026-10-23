@@ -38,66 +38,66 @@ class BucketUsageStatsRgwTargetRequest(BucketUsageStatsRequestOptions):
 class BucketUsageStatsDistributionEntry(ApiModel):
     key: str
     label: str
-    count: int = 0
-    bytes: int = 0
-    ratio_count: float = 0
-    ratio_bytes: float = 0
+    count: int
+    bytes: int
+    ratio_count: float
+    ratio_bytes: float
 
 
 class BucketUsageStatsSnapshot(ApiModel):
     scope_kind: str
     scope_id: str
-    scope_name: Optional[str] = None
+    scope_name: Optional[str]
     bucket_name: str
-    bucket_tenant: str = ""
+    bucket_tenant: str
     scan_mode: BucketUsageStatsScanMode
-    version_listing_available: bool = True
-    object_version_count: int = 0
-    current_version_count: int = 0
-    noncurrent_version_count: int = 0
-    delete_marker_count: int = 0
-    total_bytes: int = 0
-    current_bytes: int = 0
-    noncurrent_bytes: int = 0
-    data_type_distribution: list[BucketUsageStatsDistributionEntry] = Field(default_factory=list)
-    storage_class_distribution: list[BucketUsageStatsDistributionEntry] = Field(default_factory=list)
-    size_distribution: list[BucketUsageStatsDistributionEntry] = Field(default_factory=list)
-    age_distribution: list[BucketUsageStatsDistributionEntry] = Field(default_factory=list)
-    current_vs_noncurrent: list[BucketUsageStatsDistributionEntry] = Field(default_factory=list)
-    warnings: list[str] = Field(default_factory=list)
+    version_listing_available: bool
+    object_version_count: int
+    current_version_count: int
+    noncurrent_version_count: int
+    delete_marker_count: int
+    total_bytes: int
+    current_bytes: int
+    noncurrent_bytes: int
+    data_type_distribution: list[BucketUsageStatsDistributionEntry]
+    storage_class_distribution: list[BucketUsageStatsDistributionEntry]
+    size_distribution: list[BucketUsageStatsDistributionEntry]
+    age_distribution: list[BucketUsageStatsDistributionEntry]
+    current_vs_noncurrent: list[BucketUsageStatsDistributionEntry]
+    warnings: list[str]
     calculated_at: datetime
 
 
 class BucketUsageStatsLatestResponse(ApiModel):
-    snapshot: Optional[BucketUsageStatsSnapshot] = None
+    snapshot: Optional[BucketUsageStatsSnapshot]
 
 
 class BucketUsageStatsAggregate(ApiModel):
     scope_kind: str
     scope_id: str
-    scope_name: Optional[str] = None
-    managed_account_count: Optional[int] = None
-    accounts_with_listed_buckets: Optional[int] = None
-    skipped_account_count: Optional[int] = None
-    bucket_count: int = 0
-    buckets_with_snapshot: int = 0
-    missing_bucket_count: int = 0
-    partial_scan_count: int = 0
-    object_version_count: int = 0
-    current_version_count: int = 0
-    noncurrent_version_count: int = 0
-    delete_marker_count: int = 0
-    total_bytes: int = 0
-    current_bytes: int = 0
-    noncurrent_bytes: int = 0
-    data_type_distribution: list[BucketUsageStatsDistributionEntry] = Field(default_factory=list)
-    storage_class_distribution: list[BucketUsageStatsDistributionEntry] = Field(default_factory=list)
-    size_distribution: list[BucketUsageStatsDistributionEntry] = Field(default_factory=list)
-    age_distribution: list[BucketUsageStatsDistributionEntry] = Field(default_factory=list)
-    current_vs_noncurrent: list[BucketUsageStatsDistributionEntry] = Field(default_factory=list)
-    warnings: list[str] = Field(default_factory=list)
-    oldest_snapshot_at: Optional[datetime] = None
-    newest_snapshot_at: Optional[datetime] = None
+    scope_name: Optional[str]
+    managed_account_count: Optional[int]
+    accounts_with_listed_buckets: Optional[int]
+    skipped_account_count: Optional[int]
+    bucket_count: int
+    buckets_with_snapshot: int
+    missing_bucket_count: int
+    partial_scan_count: int
+    object_version_count: int
+    current_version_count: int
+    noncurrent_version_count: int
+    delete_marker_count: int
+    total_bytes: int
+    current_bytes: int
+    noncurrent_bytes: int
+    data_type_distribution: list[BucketUsageStatsDistributionEntry]
+    storage_class_distribution: list[BucketUsageStatsDistributionEntry]
+    size_distribution: list[BucketUsageStatsDistributionEntry]
+    age_distribution: list[BucketUsageStatsDistributionEntry]
+    current_vs_noncurrent: list[BucketUsageStatsDistributionEntry]
+    warnings: list[str]
+    oldest_snapshot_at: Optional[datetime]
+    newest_snapshot_at: Optional[datetime]
 
 
 class BucketUsageStatsAggregateResponse(ApiModel):
@@ -110,37 +110,47 @@ class BucketUsageStatsScopeRequest(ApiModel):
 
 class BucketUsageStatsBucketResult(ApiModel):
     bucket_name: str
-    context_id: Optional[str] = None
-    context_name: Optional[str] = None
+    context_id: Optional[str]
+    context_name: Optional[str]
     status: BucketUsageStatsBucketStatus
-    snapshot: Optional[BucketUsageStatsSnapshot] = None
-    duration_seconds: float = 0
-    message: Optional[str] = None
+    snapshot: Optional[BucketUsageStatsSnapshot]
+    duration_seconds: float
+    message: Optional[str]
 
 
 class BucketUsageStatsProgress(ApiModel):
-    request_id: Optional[str] = None
-    stage: Literal["prepare", "list", "persist", "completed"] = "prepare"
-    bucket_name: Optional[str] = None
-    context_id: Optional[str] = None
-    context_name: Optional[str] = None
-    total_buckets: int = 0
-    completed_buckets: int = 0
-    listed_versions: int = 0
-    listed_delete_markers: int = 0
-    total_bytes: int = 0
-    message: Optional[str] = None
+    request_id: Optional[str]
+    stage: Literal["prepare", "list", "persist", "completed"]
+    bucket_name: Optional[str]
+    context_id: Optional[str]
+    context_name: Optional[str]
+    total_buckets: int
+    completed_buckets: int
+    listed_versions: int
+    listed_delete_markers: int
+    total_bytes: int
+    message: Optional[str]
 
 
 class BucketUsageStatsResult(ApiModel):
     status: BucketUsageStatsStatus
-    total_buckets: int = 0
-    completed_buckets: int = 0
-    failed_buckets: int = 0
-    skipped_buckets: int = 0
-    listed_versions: int = 0
-    listed_delete_markers: int = 0
-    total_bytes: int = 0
+    total_buckets: int
+    completed_buckets: int
+    failed_buckets: int
+    skipped_buckets: int
+    listed_versions: int
+    listed_delete_markers: int
+    total_bytes: int
     started_at: datetime
     finished_at: datetime
-    buckets: list[BucketUsageStatsBucketResult] = Field(default_factory=list)
+    buckets: list[BucketUsageStatsBucketResult]
+
+
+class BucketUsageStatsCollectionResult(ApiModel):
+    status: BucketUsageStatsStatus
+    eligible_accounts: int
+    skipped_accounts: int
+    due_buckets: int
+    completed_buckets: int
+    failed_buckets: int
+    skipped_buckets: int

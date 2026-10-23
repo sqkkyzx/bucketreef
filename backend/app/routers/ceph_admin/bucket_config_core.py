@@ -66,13 +66,17 @@ def get_versioning(
     )
 
 
-@router.put("/{bucket_name}/versioning", status_code=status.HTTP_200_OK)
+@router.put(
+    "/{bucket_name}/versioning",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_class=Response,
+)
 def update_versioning(
     bucket_name: str,
     payload: BucketVersioningUpdate,
     tenant: str | None = None,
     ctx: CephAdminContext = Depends(get_ceph_admin_context),
-):
+) -> Response:
     return _run_bucket_config_update(
         ctx,
         bucket_name,
@@ -82,13 +86,17 @@ def update_versioning(
     )
 
 
-@router.put("/{bucket_name}/quota", status_code=status.HTTP_200_OK)
+@router.put(
+    "/{bucket_name}/quota",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_class=Response,
+)
 def update_quota(
     bucket_name: str,
     payload: BucketQuotaUpdate,
     tenant: str | None = None,
     ctx: CephAdminContext = Depends(get_ceph_admin_context),
-):
+) -> Response:
     target = ceph_admin_bucket_target(ctx, bucket_name, tenant)
     service = BucketConfigurationService()
     context = build_ceph_admin_s3_context(ctx)
@@ -137,7 +145,7 @@ def update_quota(
                 },
             ),
         )
-        return {"message": "Bucket quota updated"}
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
     except ValueError as exc:
         raise_bad_request_from_value_error(exc)
     except RuntimeError as exc:

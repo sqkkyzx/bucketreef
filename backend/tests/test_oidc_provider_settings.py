@@ -16,9 +16,11 @@ from sqlalchemy import create_engine, text
 from app.core.config import OIDCProviderSettings, Settings
 from app.db import AuditLog, OidcLoginState, OidcProvider, User, UserRole
 from app.main import app
+from app.models.oidc import OIDCProviderAdminPayload
 from app.routers import dependencies
 from app.services.oidc_provider_settings_service import (
     _load_scopes,
+    _load_string_list,
     list_effective_oidc_providers,
     resolve_oidc_provider_map,
 )
@@ -36,6 +38,31 @@ def _provider_settings(*, enabled: bool = True, display_name: str = "Google") ->
         scopes=["openid", "email", "profile"],
         enabled=enabled,
     )
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("scopes", "openid,email"),
+        ("scopes", None),
+        ("trusted_email_domains", "example.com"),
+        ("trusted_email_domains", None),
+    ],
+)
+def test_admin_oidc_payload_requires_list_collection_fields(field: str, value: object):
+    payload = {
+        "provider_id": "ui",
+        "display_name": "UI Provider",
+        "discovery_url": "https://issuer.example.test/.well-known/openid-configuration",
+        "client_id": "client-id",
+        "redirect_uri": "https://app.example.test/auth/callback",
+        "scopes": ["openid", "email"],
+        "trusted_email_domains": ["example.com"],
+    }
+    payload[field] = value
+
+    with pytest.raises(ValidationError):
+        OIDCProviderAdminPayload.model_validate(payload)
 
 
 def test_environment_oidc_provider_rejects_unknown_fields():
@@ -135,6 +162,13 @@ def test_ui_provider_scopes_require_a_non_empty_string_list():
             _load_scopes(raw)
 
 
+def test_ui_provider_domains_require_canonical_persisted_json():
+    assert _load_string_list('["example.com"]') == ["example.com"]
+    for raw in ("", "{", "{}", '["example.com",42]'):
+        with pytest.raises((ValueError, TypeError)):
+            _load_string_list(raw)
+
+
 class _FakeUsersService:
     def get_or_create_oidc_user(self, **_kwargs):
         return SimpleNamespace(id=1, email="oidc@example.test"), True
@@ -208,7 +242,7 @@ def test_oidc_resolver_merges_env_and_ui_with_env_precedence(db_session):
     assert runtime["ui"].display_name == "UI Provider"
 
     service = OidcService(db_session, users_service=_FakeUsersService(), settings=settings)
-    assert service.list_providers() == [
+    assert [provider.model_dump() for provider in service.list_providers()] == [
         {"id": "google", "display_name": "Env Google", "icon_url": None},
         {"id": "ui", "display_name": "UI Provider", "icon_url": None},
     ]
@@ -306,6 +340,12 @@ def test_admin_oidc_api_never_returns_secret_and_preserves_replaces_clears_it(cl
     assert "second-secret" not in audit_payload
     assert "oidc_provider.create" in {log.action for log in db_session.query(AuditLog).all()}
     assert "oidc_provider.update" in {log.action for log in db_session.query(AuditLog).all()}
+
+    response = client.delete("/api/admin/settings/oidc/providers/ui")
+    assert response.status_code == 200, response.text
+    assert response.json() == {"status": "deleted"}
+    assert db_session.query(OidcProvider).filter(OidcProvider.provider_id == "ui").one_or_none() is None
+    assert "oidc_provider.delete" in {log.action for log in db_session.query(AuditLog).all()}
 
 
 def test_admin_oidc_api_locks_environment_managed_provider(client, db_session, monkeypatch):

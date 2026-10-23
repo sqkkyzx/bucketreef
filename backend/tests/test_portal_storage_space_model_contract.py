@@ -11,7 +11,12 @@ import pytest
 
 from app.db import User
 from app.main import app
-from app.models.portal_storage_spaces import PortalStorageSpaceCreate, PortalStorageSpaceSummary
+from app.models.portal_storage_spaces import (
+    PortalStorageSpaceCollaboratorPreview,
+    PortalStorageSpaceCreate,
+    PortalStorageSpaceIcon,
+    PortalStorageSpaceSummary,
+)
 from app.routers import portal_storage_spaces
 
 
@@ -48,6 +53,21 @@ def test_generic_space_names_remain_display_labels_and_named_ids_are_exact():
 
 def test_portal_storage_space_models_have_a_single_canonical_module() -> None:
     assert PortalStorageSpaceSummary.__module__ == "app.models.portal_storage_spaces"
+
+
+def test_portal_storage_space_icon_requires_complete_canonical_payload() -> None:
+    assert set(PortalStorageSpaceIcon.model_json_schema()["required"]) == {
+        "source",
+        "preset",
+        "url",
+        "updated_at",
+    }
+
+
+def test_portal_storage_space_summary_requires_complete_canonical_payload() -> None:
+    for model in (PortalStorageSpaceSummary, PortalStorageSpaceCollaboratorPreview):
+        schema = model.model_json_schema()
+        assert set(schema["required"]) == set(schema["properties"])
 
 
 def test_portal_storage_space_routes_preserve_their_openapi_contracts() -> None:

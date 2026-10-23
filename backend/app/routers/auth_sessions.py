@@ -15,10 +15,12 @@ from app.models.auth import (
     CurrentSessionResponse,
     ExternalIdentityInfo,
     RecentWebAuthnVerificationResponse,
+    RecoveryCodesResponse,
     RefreshResponse,
     SessionInfo,
     WebAuthnAuthenticationRequest,
     WebAuthnCredentialInfo,
+    WebAuthnCredentialCreatedResponse,
     WebAuthnCredentialRequest,
 )
 from app.models.session import ManagerSessionPrincipal, SessionDescriptor
@@ -94,7 +96,7 @@ def refresh_access_token(
         clear_auth_cookies(response)
         raise HTTPException(status_code=401, detail="Session expired or invalid") from exc
     set_auth_cookies(response, credentials)
-    return RefreshResponse()
+    return RefreshResponse(status="authenticated")
 
 
 @router.get("/session", response_model=CurrentSessionResponse)
@@ -113,9 +115,16 @@ def current_session(
             user_uid=actor.user_uid,
             capabilities=actor.capabilities,
         )
-        return CurrentSessionResponse(session=descriptor, auth_session=_session_info(row, current_id=row.id))
+        return CurrentSessionResponse(
+            authenticated=True,
+            user=None,
+            session=descriptor,
+            auth_session=_session_info(row, current_id=row.id),
+        )
     return CurrentSessionResponse(
+        authenticated=True,
         user=get_users_service(db).user_to_out(actor),
+        session=None,
         auth_session=_session_info(row, current_id=row.id),
     )
 
@@ -370,14 +379,18 @@ def profile_webauthn_registration_options(
     return service.begin_registration(current_user, binding_sid=current_auth_session(request, db).id)
 
 
-@router.post("/security/webauthn/registration/verify", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/security/webauthn/registration/verify",
+    response_model=WebAuthnCredentialCreatedResponse,
+    status_code=status.HTTP_201_CREATED,
+)
 def profile_webauthn_registration_verify(
     request: Request,
     payload: WebAuthnCredentialRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
     audit_service: AuditService = Depends(get_audit_service),
-) -> dict[str, Any]:
+) -> WebAuthnCredentialCreatedResponse:
     service = WebAuthnService(db)
     if service.has_credentials(current_user.id):
         require_recent_mfa(request, db)
@@ -401,7 +414,11 @@ def profile_webauthn_registration_verify(
         entity_type="webauthn_credential",
         entity_id=row.id,
     )
-    return {"id": row.id, "name": row.name, "reauthentication_required": True}
+    return WebAuthnCredentialCreatedResponse(
+        id=row.id,
+        name=row.name,
+        reauthentication_required=True,
+    )
 
 
 @router.delete("/security/webauthn/credentials/{credential_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -431,14 +448,14 @@ def revoke_webauthn_credential(
     clear_auth_cookies(response)
 
 
-@router.post("/security/recovery-codes")
+@router.post("/security/recovery-codes", response_model=RecoveryCodesResponse)
 def regenerate_recovery_codes(
     request: Request,
     response: Response,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
     audit_service: AuditService = Depends(get_audit_service),
-) -> dict[str, list[str]]:
+) -> RecoveryCodesResponse:
     require_self_service_security_action(request, db, current_user)
     codes = WebAuthnService(db).issue_recovery_codes(current_user)
     AuthSessionService(db).revoke_all_for_user(
@@ -454,4 +471,4 @@ def regenerate_recovery_codes(
         metadata={"count": len(codes)},
     )
     clear_auth_cookies(response)
-    return {"codes": codes}
+    return RecoveryCodesResponse(codes=codes)

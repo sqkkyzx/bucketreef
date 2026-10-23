@@ -91,7 +91,7 @@ export async function copyBucketOpsConfigs({
         objectLock: features.object_lock
           ? normalizeObjectLockSnapshot({
               ...rawObjectLock,
-              enabled: Boolean(properties?.object_lock_enabled ?? rawObjectLock.enabled),
+              enabled: Boolean(rawObjectLock.enabled),
             })
           : null,
         publicAccessBlock: features.public_access_block
@@ -100,17 +100,17 @@ export async function copyBucketOpsConfigs({
             )
           : null,
         lifecycleRules: features.lifecycle
-          ? ((await getBucketLifecycle(sourceEndpointId, bucketName)).rules ?? []) as Record<string, unknown>[]
+          ? (await getBucketLifecycle(sourceEndpointId, bucketName)).rules
           : null,
         corsRules: features.cors
-          ? ((await getBucketCors(sourceEndpointId, bucketName)).rules ?? []) as Record<string, unknown>[]
+          ? (await getBucketCors(sourceEndpointId, bucketName)).rules
           : null,
         policy: features.policy
           ? (((await getBucketPolicy(sourceEndpointId, bucketName)).policy ?? null) as Record<string, unknown> | null)
           : null,
         accessLogging: features.access_logging
           ? normalizeAccessLoggingSnapshot(
-              (await getBucketLogging(sourceEndpointId, bucketName)) as unknown as Record<string, unknown>,
+              await getBucketLogging(sourceEndpointId, bucketName),
             )
           : null,
       };

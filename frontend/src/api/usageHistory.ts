@@ -14,8 +14,8 @@ export type UsageHistoryTrendWindow = "day" | "week" | "month";
 export type UsageHistorySummary = {
   total_records: number;
   subjects_count: number;
-  latest_collected_at?: string | null;
-  max_usage_ratio_pct?: number | null;
+  latest_collected_at: string | null;
+  max_usage_ratio_pct: number | null;
 };
 
 export type UsageHistoryRecord = {
@@ -27,14 +27,14 @@ export type UsageHistoryRecord = {
   subject_type: "account" | "s3_user";
   subject_id: number;
   subject_name: string;
-  subject_identifier?: string | null;
+  subject_identifier: string | null;
   used_bytes: number;
   used_objects: number;
-  bucket_count?: number | null;
-  quota_size_bytes?: number | null;
-  quota_objects?: number | null;
-  usage_ratio_pct?: number | null;
-  samples_count?: number | null;
+  bucket_count: number | null;
+  quota_size_bytes: number | null;
+  quota_objects: number | null;
+  usage_ratio_pct: number | null;
+  samples_count: number | null;
   collected_at: string;
 };
 
@@ -59,17 +59,51 @@ type UsageHistoryQuery = {
   sortDir?: UsageHistorySortDir;
 };
 
+type UsageHistoryCollectionSubjectError = {
+  subject_type: "account" | "s3_user";
+  subject_id: number;
+  error: string;
+};
+
+type UsageHistoryCollectionSubjectWarning = {
+  subject_type: "account" | "s3_user";
+  subject_id: number;
+  warning: string;
+};
+
 type UsageHistoryCollectionResult = {
-  started_at?: string;
-  finished_at?: string;
-  subjects_total?: number;
-  subjects_processed?: number;
-  history_hourly_upserts?: number;
-  history_daily_upserts?: number;
-  errors?: unknown[];
-  warnings?: unknown[];
-  status?: string;
-  reason?: string;
+  started_at: string;
+  finished_at: string;
+  subjects_total: number;
+  subjects_processed: number;
+  history_hourly_upserts: number;
+  history_daily_upserts: number;
+  alerts_triggered: number;
+  alerts_sent: number;
+  notifications_created: number;
+  email_errors: number;
+  errors: UsageHistoryCollectionSubjectError[];
+  warnings: Array<string | UsageHistoryCollectionSubjectWarning>;
+  quota_alerts_enabled: boolean;
+  quota_alerts_configured: boolean;
+  usage_history_enabled: boolean;
+  usage_history_collection_enabled: boolean;
+  threshold_percent: number;
+  retention: {
+    quota_history: {
+      hourly_retention_days: number;
+      daily_retention_days: number;
+      deleted_hourly: number;
+      deleted_daily: number;
+    };
+    cost_history: {
+      daily_retention_days: number;
+      deleted_usage_daily: number;
+      deleted_storage_daily: number;
+    };
+  };
+  status: "skipped" | null;
+  reason: string | null;
 };
 
 export type UsageHistoryTrendPoint = {
@@ -77,10 +111,10 @@ export type UsageHistoryTrendPoint = {
   used_bytes: number;
   used_objects: number;
   bucket_count: number;
-  max_usage_ratio_pct?: number | null;
+  max_usage_ratio_pct: number | null;
   subjects_count: number;
   samples_count: number;
-  collected_at?: string | null;
+  collected_at: string | null;
 };
 
 export type UsageHistoryTrendSummary = {
@@ -90,15 +124,15 @@ export type UsageHistoryTrendSummary = {
   latest_used_bytes: number;
   latest_used_objects: number;
   latest_bucket_count: number;
-  latest_collected_at?: string | null;
-  max_usage_ratio_pct?: number | null;
+  latest_collected_at: string | null;
+  max_usage_ratio_pct: number | null;
 };
 
 export type UsageHistoryTrendResponse = {
   window: UsageHistoryTrendWindow;
   granularity: UsageHistoryGranularity;
   available: boolean;
-  unavailable_reason?: string | null;
+  unavailable_reason: string | null;
   points: UsageHistoryTrendPoint[];
   summary: UsageHistoryTrendSummary;
 };

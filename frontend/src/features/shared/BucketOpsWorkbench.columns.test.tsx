@@ -170,6 +170,7 @@ const baseResponse = {
   page_size: 25,
   has_next: false,
   stats_available: true,
+  stats_warning: null,
 };
 
 const baseBucket = {
@@ -232,8 +233,8 @@ describe("BucketOpsWorkbench atomic quota columns", () => {
     mocks.fetchStorageOpsBucketUiTags.mockResolvedValue({ definitions: [] });
     mocks.patchCephAdminBucketUiTags.mockResolvedValue({ definitions: [] });
     mocks.patchStorageOpsBucketUiTags.mockResolvedValue({ definitions: [] });
-    mocks.refreshCephAdminBucketListingCache.mockResolvedValue({ refreshed: true });
-    mocks.refreshStorageOpsBucketListingCache.mockResolvedValue({ refreshed: true });
+    mocks.refreshCephAdminBucketListingCache.mockResolvedValue({ refreshed: true, endpoint_id: 7 });
+    mocks.refreshStorageOpsBucketListingCache.mockResolvedValue({ refreshed: true, contexts: 1, endpoints: 1 });
     mocks.listExecutionContexts.mockResolvedValue([
       {
         kind: "account",

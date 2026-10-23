@@ -157,9 +157,9 @@ class BucketUsageStatsService(LongRunningS3ClientMixin):
 
     @staticmethod
     def _bucket_lease_scope(target: BucketUsageStatsResolvedTarget) -> str:
-        endpoint_id = getattr(target.context, "storage_endpoint_id", None)
-        if endpoint_id is None:
-            endpoint_id = getattr(getattr(target.context, "storage_endpoint", None), "id", None)
+        endpoint_id = target.context.storage_endpoint_id
+        if endpoint_id is None and target.context.storage_endpoint is not None:
+            endpoint_id = target.context.storage_endpoint.id
         return f"endpoint:{endpoint_id}" if endpoint_id is not None else f"{target.scope_kind}:{target.scope_id}"
 
     def _acquire_bucket_lease(self, target: BucketUsageStatsResolvedTarget) -> OperationLeaseHandle | None:
@@ -546,8 +546,16 @@ class BucketUsageStatsService(LongRunningS3ClientMixin):
         if progress_callback:
             progress_callback(
                 BucketUsageStatsProgress(
+                    request_id=None,
                     stage="prepare",
+                    bucket_name=None,
+                    context_id=None,
+                    context_name=None,
                     total_buckets=len(targets),
+                    completed_buckets=0,
+                    listed_versions=0,
+                    listed_delete_markers=0,
+                    total_bytes=0,
                     message="Preparing bucket usage statistics calculation",
                 )
             )
@@ -595,6 +603,7 @@ class BucketUsageStatsService(LongRunningS3ClientMixin):
                 context_id=target.context_id,
                 context_name=target.context_name,
                 status="skipped",
+                snapshot=None,
                 duration_seconds=monotonic() - started,
                 message="Skipped because bucket usage statistics are already being calculated.",
             )
@@ -625,6 +634,7 @@ class BucketUsageStatsService(LongRunningS3ClientMixin):
                 context_id=target.context_id,
                 context_name=target.context_name,
                 status="failed",
+                snapshot=None,
                 duration_seconds=monotonic() - started,
                 message=format_s3_error(exc),
             )
@@ -670,6 +680,7 @@ class BucketUsageStatsService(LongRunningS3ClientMixin):
                     if progress_callback:
                         progress_callback(
                             BucketUsageStatsProgress(
+                                request_id=None,
                                 stage="completed",
                                 bucket_name=result.bucket_name,
                                 context_id=result.context_id,

@@ -27,7 +27,6 @@ function createApi() {
     getBucketPolicy: vi.fn(async () => ({ policy: null })),
     getBucketProperties: vi.fn(async (): Promise<BucketProperties> => ({
       lifecycle_rules: [],
-      object_lock_enabled: true,
       object_lock: { enabled: true, mode: "GOVERNANCE", days: 7 },
       versioning_status: "Enabled",
     })),
@@ -39,6 +38,7 @@ function createApi() {
       page_size: 5,
       has_next: false,
       stats_available: true,
+      stats_warning: null,
     })),
   };
 }
@@ -59,6 +59,7 @@ describe("useBucketOpsTooltips", () => {
       page_size: 5,
       has_next: false,
       stats_available: true,
+      stats_warning: null,
     });
     const { result } = renderHook(() =>
       useBucketOpsTooltips({
@@ -128,7 +129,7 @@ describe("useBucketOpsTooltips", () => {
       }),
     );
     expect(api.getBucketProperties).toHaveBeenCalledOnce();
-    expect(api.getBucketProperties).toHaveBeenCalledWith(7, "reports");
+    expect(api.getBucketProperties).toHaveBeenCalledWith(7, "tenant-a:reports");
   });
 
   it("ignores stale work after a cache reset without disrupting the replacement request", async () => {

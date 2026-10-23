@@ -176,9 +176,7 @@ async function buildBucketConfigPastePreview({
         : {};
     const currentObjectLock = normalizeObjectLockSnapshot({
       ...rawCurrentObjectLock,
-      enabled: Boolean(
-        properties?.object_lock_enabled ?? rawCurrentObjectLock.enabled,
-      ),
+      enabled: Boolean(rawCurrentObjectLock.enabled),
     });
     const sectionChanged = !isObjectLockSnapshotEqual(
       currentObjectLock,
@@ -232,12 +230,10 @@ async function buildBucketConfigPastePreview({
   }
 
   if (features.lifecycle && source.lifecycleRules) {
-    const currentLifecycle = (
-      (await getBucketLifecycle(
-        targetEndpointId,
-        mapping.destinationBucket,
-      )).rules ?? []
-    ) as Record<string, unknown>[];
+    const currentLifecycle = (await getBucketLifecycle(
+      targetEndpointId,
+      mapping.destinationBucket,
+    )).rules;
     const sectionChanged =
       stableStringify(currentLifecycle) !== stableStringify(source.lifecycleRules);
     changed ||= sectionChanged;
@@ -259,9 +255,10 @@ async function buildBucketConfigPastePreview({
   }
 
   if (features.cors && source.corsRules) {
-    const currentCors = (
-      (await getBucketCors(targetEndpointId, mapping.destinationBucket)).rules ?? []
-    ) as Record<string, unknown>[];
+    const currentCors = (await getBucketCors(
+      targetEndpointId,
+      mapping.destinationBucket,
+    )).rules;
     const sectionChanged =
       stableStringify(currentCors) !== stableStringify(source.corsRules);
     changed ||= sectionChanged;
@@ -313,10 +310,10 @@ async function buildBucketConfigPastePreview({
 
   if (features.access_logging && source.accessLogging) {
     const currentAccessLogging = normalizeAccessLoggingSnapshot(
-      (await getBucketLogging(
+      await getBucketLogging(
         targetEndpointId,
         mapping.destinationBucket,
-      )) as unknown as Record<string, unknown>,
+      ),
     );
     const sectionChanged = !isAccessLoggingSnapshotEqual(
       currentAccessLogging,

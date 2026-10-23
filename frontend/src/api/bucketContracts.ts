@@ -54,9 +54,9 @@ export type BucketReplicationConfiguration = {
 };
 
 export type BucketLoggingConfiguration = {
-  enabled?: boolean | null;
-  target_bucket?: string | null;
-  target_prefix?: string | null;
+  enabled: boolean;
+  target_bucket: string | null;
+  target_prefix: string | null;
 };
 
 export type BucketPublicAccessBlock = {
@@ -67,7 +67,7 @@ export type BucketPublicAccessBlock = {
 };
 
 export type BucketVersioningStatus = {
-  status?: string | null;
+  status: string | null;
   enabled: boolean;
 };
 
@@ -80,7 +80,7 @@ export type BucketWebsiteConfiguration = {
   index_document?: string | null;
   error_document?: string | null;
   redirect_all_requests_to?: BucketWebsiteRedirectAllRequestsTo | null;
-  routing_rules?: Record<string, unknown>[];
+  routing_rules: Record<string, unknown>[];
 };
 
 type BucketAclGrantee = {
@@ -102,7 +102,6 @@ export type BucketAcl = {
 
 export type BucketProperties = {
   versioning_status?: string | null;
-  object_lock_enabled?: boolean | null;
   object_lock?: BucketObjectLockConfiguration | null;
   public_access_block?: BucketPublicAccessBlock | null;
   lifecycle_rules: BucketLifecycleRule[];

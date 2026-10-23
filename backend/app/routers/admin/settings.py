@@ -5,7 +5,13 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.db import User
-from app.models.app_settings import AppSettings, GeneralFeatureLocks, QuotaNotificationSettings
+from app.models.app_settings import (
+    AppSettings,
+    GeneralFeatureLocks,
+    IdentityProviderDeleteResult,
+    QuotaNotificationSettings,
+    QuotaNotificationTestEmailResult,
+)
 from app.models.cost import CostSettings
 from app.models.ldap import LDAP_PROVIDER_CONFIG_FIELDS, LDAPProviderAdminItem, LDAPProviderAdminPayload
 from app.models.oidc import OIDC_PROVIDER_CONFIG_FIELDS, OIDCProviderAdminItem, OIDCProviderAdminPayload
@@ -240,14 +246,17 @@ def update_oidc_provider_settings(
     return item
 
 
-@router.delete("/oidc/providers/{provider_id}")
+@router.delete(
+    "/oidc/providers/{provider_id}",
+    response_model=IdentityProviderDeleteResult,
+)
 def delete_oidc_provider_settings(
     request: Request,
     provider_id: str,
     current_user: User = Depends(get_current_ui_superadmin),
     db: Session = Depends(get_db),
     audit: AuditService = Depends(get_audit_service),
-) -> dict[str, str]:
+) -> IdentityProviderDeleteResult:
     require_admin_sensitive_action(request, db, current_user)
     try:
         delete_oidc_provider(db, provider_id)
@@ -266,7 +275,7 @@ def delete_oidc_provider_settings(
         entity_id=provider_id.lower(),
         metadata={"provider_id": provider_id.lower()},
     )
-    return {"status": "deleted"}
+    return IdentityProviderDeleteResult(status="deleted")
 
 
 @router.get("/ldap/providers", response_model=list[LDAPProviderAdminItem])
@@ -349,14 +358,17 @@ def update_ldap_provider_settings(
     return item
 
 
-@router.delete("/ldap/providers/{provider_id}")
+@router.delete(
+    "/ldap/providers/{provider_id}",
+    response_model=IdentityProviderDeleteResult,
+)
 def delete_ldap_provider_settings(
     request: Request,
     provider_id: str,
     current_user: User = Depends(get_current_ui_superadmin),
     db: Session = Depends(get_db),
     audit: AuditService = Depends(get_audit_service),
-) -> dict[str, str]:
+) -> IdentityProviderDeleteResult:
     require_admin_sensitive_action(request, db, current_user)
     try:
         delete_ldap_provider(db, provider_id)
@@ -375,18 +387,20 @@ def delete_ldap_provider_settings(
         entity_id=provider_id.lower(),
         metadata={"provider_id": provider_id.lower()},
     )
-    return {"status": "deleted"}
+    return IdentityProviderDeleteResult(status="deleted")
 
 
-@router.post("/quota-notifications/test-email")
+@router.post("/quota-notifications/test-email", response_model=QuotaNotificationTestEmailResult)
 def send_quota_notifications_test_email(
     payload: QuotaNotificationSettings,
     current_user: User = Depends(get_current_ui_superadmin),
-) -> dict:
+) -> QuotaNotificationTestEmailResult:
     try:
-        return QuotaAlertEmailService().send_test_email(
-            notification_settings=payload,
-            recipient_email=current_user.email,
+        return QuotaNotificationTestEmailResult.model_validate(
+            QuotaAlertEmailService().send_test_email(
+                notification_settings=payload,
+                recipient_email=current_user.email,
+            )
         )
     except ValueError as exc:
         raise_http_exception_from_exception(status.HTTP_400_BAD_REQUEST, exc)

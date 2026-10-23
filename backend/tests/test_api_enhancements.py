@@ -187,10 +187,7 @@ def test_manager_create_bucket_passes_versioning_and_location(client: TestClient
     )
 
     assert response.status_code == 201, response.text
-    body = response.json()
-    assert body["name"] == "demo-bucket"
-    assert body["versioning"] is True
-    assert body["location_constraint"] == "eu-west-1"
+    assert response.content == b""
     assert captured == {
         "name": "demo-bucket",
         "account_id": 11,
@@ -223,6 +220,31 @@ def test_manager_delete_bucket_returns_structured_not_empty_error(client: TestCl
         "code": "bucket_not_empty",
         "message": "Bucket 'demo-bucket' is not empty. Empty it before deleting.",
     }
+
+
+def test_manager_delete_bucket_returns_no_content(client: TestClient):
+    class FakeBucketService:
+        def delete_bucket(self, name, account, force=False):  # noqa: ANN001
+            assert name == "demo-bucket"
+            assert account.id == 11
+            assert force is False
+
+    account = S3Account(
+        name="acc",
+        rgw_account_id="RGW00000000000000011",
+        rgw_access_key="AK",
+        rgw_secret_key="SK",
+    )
+    account.id = 11
+
+    app.dependency_overrides[manager_buckets_router.get_s3_execution_context] = lambda: account
+    app.dependency_overrides[manager_buckets_router.get_buckets_service] = lambda: FakeBucketService()
+    app.dependency_overrides[manager_buckets_router.get_audit_service] = lambda: _FakeAuditService()
+
+    response = client.delete("/api/manager/buckets/demo-bucket")
+
+    assert response.status_code == 204, response.text
+    assert response.content == b""
 
 
 def test_manager_get_bucket_versioning_returns_status(client: TestClient):

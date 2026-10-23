@@ -1,4 +1,5 @@
 import type { CephAdminRgwAccountDetail } from "../api/cephAdminAccounts";
+import type { CephAdminEndpoint, CephAdminEndpointAccess } from "../api/cephAdminEndpoints";
 import type { CephAdminRgwUserDetail } from "../api/cephAdminUsers";
 import { GiB } from "./state";
 import { governance } from "./governance";
@@ -6,18 +7,62 @@ import { generatedKey, keyActions } from "./iam";
 import { DemoError, json, listing, required, textField, type DemoRequest } from "./http";
 
 export function ceph(c: DemoRequest): Response | undefined {
-  if (c.path === "/ceph-admin/endpoints" && c.method === "GET") return json(c.state.endpoints);
+  if (c.path === "/ceph-admin/endpoints" && c.method === "GET") {
+    const endpoints: CephAdminEndpoint[] = c.state.endpoints.map(endpoint => ({
+      id: endpoint.id,
+      name: endpoint.name,
+      endpoint_url: endpoint.endpoint_url,
+      admin_endpoint: endpoint.features.admin.endpoint ?? null,
+      region: endpoint.region ?? null,
+      is_default: endpoint.is_default,
+      capabilities: endpoint.capabilities ?? {},
+      tags: endpoint.tags,
+    }));
+    return json(endpoints);
+  }
   const access = c.path.match(/^\/ceph-admin\/endpoints\/(\d+)\/access$/);
-  if (access && c.method === "GET") return json({ endpoint_id: Number(access[1]), can_admin: true, can_accounts: true, can_metrics: true, admin_warning: null });
+  if (access && c.method === "GET") {
+    const probed = c.url.searchParams.get("probe") === "true";
+    const response: CephAdminEndpointAccess = {
+      endpoint_id: Number(access[1]),
+      can_admin: true,
+      can_accounts: true,
+      can_metrics: true,
+      admin_warning: null,
+      accounts_warning: null,
+      active_rgw_uid: null,
+      active_rgw_tenant: null,
+      availability_status: probed ? "available" : "unknown",
+      availability_checked_at: probed ? c.state.initializedAt : null,
+    };
+    return json(response);
+  }
   const match = c.path.match(/^\/ceph-admin\/endpoints\/(\d+)\/(accounts|users)(?:\/([^/]+)(?:\/(detail|config|keys)(?:\/([^/]+)(?:\/status)?)?)?)?$/);
   if (!match) return undefined;
   const endpoint = required(c.state.endpoints.find(e => e.id === Number(match[1])));
   const accounts = c.state.accounts.filter(a => a.storage_endpoint_id === endpoint.id);
   const id = match[3] ? decodeURIComponent(match[3]) : undefined;
   if (match[2] === "accounts") {
-    const view = (a: typeof accounts[number]): CephAdminRgwAccountDetail => ({ account_id: a.rgw_account_id, account_name: a.name, email: a.email, max_users: 100, max_buckets: 100,
-      bucket_count: c.state.buckets.filter(b => b.accountId === a.id).length, user_count: c.state.iam[a.id]?.users.length ?? 0,
-      ...a.rgw, quota: { enabled: a.rgw?.quota?.enabled ?? true, max_size_bytes: (a.quota_max_size_gb ?? 0) * GiB, max_objects: a.quota_max_objects ?? -1 } });
+    const view = (a: typeof accounts[number]): CephAdminRgwAccountDetail => ({
+      account_id: a.rgw_account_id,
+      tenant: null,
+      account_name: a.name,
+      email: a.email,
+      max_users: 100,
+      max_buckets: 100,
+      max_roles: null,
+      max_groups: null,
+      max_access_keys: null,
+      bucket_count: c.state.buckets.filter(b => b.accountId === a.id).length,
+      user_count: c.state.iam[a.id]?.users.length ?? 0,
+      bucket_quota: null,
+      ...a.rgw,
+      quota: {
+        enabled: a.rgw?.quota?.enabled ?? true,
+        max_size_bytes: (a.quota_max_size_gb ?? 0) * GiB,
+        max_objects: a.quota_max_objects ?? -1,
+      },
+    });
     const updateAccount = (account: typeof accounts[number]) => {
       const body = c.body;
       for (const field of ["max_users", "max_buckets", "max_roles", "max_groups", "max_access_keys"]) if (field in body) account.rgw = { ...account.rgw, [field]: body[field] };
@@ -25,10 +70,26 @@ export function ceph(c: DemoRequest): Response | undefined {
       if ("email" in body) account.email = String(body.email ?? "");
       if ("quota_max_size_bytes" in body) account.quota_max_size_gb = Number(body.quota_max_size_bytes) / GiB;
       if ("quota_max_objects" in body) account.quota_max_objects = Number(body.quota_max_objects);
-      if ("quota_enabled" in body) account.rgw = { ...account.rgw, quota: { ...view(account).quota, enabled: Boolean(body.quota_enabled) } };
+      if ("quota_enabled" in body) {
+        const quota = view(account).quota;
+        account.rgw = {
+          ...account.rgw,
+          quota: {
+            enabled: Boolean(body.quota_enabled),
+            max_size_bytes: quota?.max_size_bytes ?? null,
+            max_objects: quota?.max_objects ?? null,
+          },
+        };
+      }
       if ("bucket_quota_enabled" in body) account.rgw = { ...account.rgw, bucket_quota: { enabled: Boolean(body.bucket_quota_enabled), max_size_bytes: Number(body.bucket_quota_max_size_bytes ?? -1), max_objects: Number(body.bucket_quota_max_objects ?? -1) } };
     };
-    if (c.method === "GET") return id && id !== "stream" ? json(view(required(accounts.find(a => a.rgw_account_id === id)))) : listing(accounts.map(a => ({ ...view(a), quota_max_size_bytes: (a.quota_max_size_gb ?? 0) * GiB, quota_max_objects: a.quota_max_objects })), c);
+    if (c.method === "GET") return id && id !== "stream" ? json(view(required(accounts.find(a => a.rgw_account_id === id)))) : listing(accounts.map(a => ({
+      ...view(a),
+      quota_max_size_bytes: (a.quota_max_size_gb ?? 0) * GiB,
+      quota_max_objects: a.quota_max_objects,
+      used_bytes: a.used_bytes,
+      object_count: a.used_objects,
+    })), c);
     if (c.method === "POST" && !id) {
       const response = governance({ ...c, path: "/admin/accounts", body: { ...c.body, name: c.body.account_name, storage_endpoint_id: endpoint.id } });
       if (!response) return undefined;
@@ -43,7 +104,34 @@ export function ceph(c: DemoRequest): Response | undefined {
   }
   if (match[2] === "users") {
     const users = accounts.flatMap(account => c.state.iam[account.id].users.map(user => ({ user, account })));
-    const detail = ({ user, account }: typeof users[number]): CephAdminRgwUserDetail => ({ uid: `${account.id}:${user.name}`, display_name: user.name, account_id: account.rgw_account_id, account_name: account.name, email: `${user.name}@example.com`, suspended: false, max_buckets: 100, caps: [], keys: (c.state.iam[account.id].keys[user.name] ?? []).map(k => ({ access_key: k.access_key_id, status: k.status, is_active: k.status === "Active" })), ...user.rgw });
+    const detail = ({ user, account }: typeof users[number]): CephAdminRgwUserDetail => ({
+      uid: `${account.id}:${user.name}`,
+      tenant: user.rgw?.tenant ?? null,
+      display_name: user.rgw?.display_name ?? user.name,
+      email: user.rgw?.email ?? `${user.name}@example.com`,
+      account_id: user.rgw?.account_id ?? account.rgw_account_id,
+      account_name: user.rgw?.account_name ?? account.name,
+      suspended: user.rgw?.suspended ?? false,
+      admin: user.rgw?.admin ?? null,
+      system: user.rgw?.system ?? null,
+      account_root: user.rgw?.account_root ?? null,
+      max_buckets: user.rgw?.max_buckets ?? 100,
+      op_mask: user.rgw?.op_mask ?? null,
+      default_placement: user.rgw?.default_placement ?? null,
+      default_storage_class: user.rgw?.default_storage_class ?? null,
+      caps: user.rgw?.caps ?? [],
+      quota: user.rgw?.quota ?? null,
+      keys: (c.state.iam[account.id].keys[user.name] ?? []).map(k => ({
+        access_key: k.access_key_id,
+        status: k.status,
+        is_active: k.status === "Active",
+        created_at: k.created_at,
+        user: user.name,
+        subuser: null,
+        is_private_access_managed: k.is_private_access_managed,
+        managed_connection_id: k.managed_connection_id,
+      })),
+    });
     const updateUser = (user: typeof users[number]["user"]) => {
       const body = c.body;
       for (const field of ["display_name", "email", "suspended", "max_buckets", "op_mask", "system", "account_root"]) if (field in body) user.rgw = { ...user.rgw, [field]: body[field] };

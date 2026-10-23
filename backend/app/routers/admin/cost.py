@@ -10,7 +10,13 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.domain_errors import CostDisabledError
 from app.db import User
-from app.models.cost import AdminCostSubjectDetail, CostAnalyticsResponse, CostSubjectsResponse, CostSummary
+from app.models.cost import (
+    AdminCostSubjectDetail,
+    CostAnalyticsResponse,
+    CostCollectionResult,
+    CostSubjectsResponse,
+    CostSummary,
+)
 from app.routers.cost_common import parse_cost_day
 from app.routers.dependencies import get_current_super_admin
 from app.services.admin_cost_service import AdminCostService
@@ -39,12 +45,12 @@ def cost_summary(
         _raise_cost_http_error(exc)
 
 
-@router.post("/collect/daily")
+@router.post("/collect/daily", response_model=CostCollectionResult)
 def cost_collect_daily(
     day: str = Query(..., description="UTC day YYYY-MM-DD"),
     current_user: User = Depends(get_current_super_admin),
     db: Session = Depends(get_db),
-) -> dict:
+) -> CostCollectionResult:
     parsed = parse_cost_day(day)
     try:
         return AdminCostService(db).collect_daily(parsed, current_user)
@@ -56,7 +62,7 @@ def cost_collect_daily(
 def cost_subjects(
     month: str = Query(..., description="YYYY-MM"),
     endpoint_id: int | None = Query(None),
-    subject_type: str = Query("all", alias="type"),
+    subject_type: str = Query("all"),
     search: str | None = Query(None),
     page: int = Query(1, ge=1),
     page_size: int = Query(25, ge=1, le=200),
@@ -84,7 +90,7 @@ def cost_subjects(
 def cost_analytics(
     month: str = Query(..., description="YYYY-MM"),
     endpoint_id: int | None = Query(None),
-    subject_type: str = Query("all", alias="type"),
+    subject_type: str = Query("all"),
     _: User = Depends(get_current_super_admin),
     db: Session = Depends(get_db),
 ) -> CostAnalyticsResponse:
@@ -113,7 +119,7 @@ def cost_subject_detail(
 def cost_export_csv(
     month: str = Query(..., description="YYYY-MM"),
     endpoint_id: int | None = Query(None),
-    subject_type: str = Query("all", alias="type"),
+    subject_type: str = Query("all"),
     _: User = Depends(get_current_super_admin),
     db: Session = Depends(get_db),
 ) -> Response:

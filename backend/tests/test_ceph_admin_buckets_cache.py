@@ -130,6 +130,22 @@ def test_rgw_bucket_metadata_is_not_reexported_from_listing_enrichment():
     assert not hasattr(bucket_listing_enrichment, "_resolve_bucket_owner_identity")
 
 
+def test_rgw_bucket_metadata_splits_admin_qualified_bucket_name():
+    entry = {
+        "bucket": "tenant_a/bucket-a",
+        "tenant": "",
+        "owner": "tenant_a$user-a",
+    }
+
+    summary = rgw_bucket_metadata.build_bucket_summary(entry)
+
+    assert summary is not None
+    assert summary.name == "bucket-a"
+    assert summary.tenant == "tenant_a"
+    assert summary.tenant_metadata_resolved is True
+    assert rgw_bucket_metadata.extract_bucket_name(entry) == "bucket-a"
+
+
 @pytest.fixture(autouse=True)
 def clear_buckets_listing_cache():
     bucket_listing_cache.reset_ceph_admin_bucket_listing_caches_for_tests()
@@ -2378,7 +2394,6 @@ def test_ceph_admin_bucket_listing_feature_param_filters_cover_non_lifecycle_fea
     def fake_get_bucket_properties(self, name: str, account):
         if name == "bucket-a":
             return BucketProperties(
-                object_lock_enabled=True,
                 object_lock=BucketObjectLock(enabled=True, mode="GOVERNANCE", days=30, years=1),
                 public_access_block=BucketPublicAccessBlock(
                     block_public_acls=True,
@@ -2390,7 +2405,6 @@ def test_ceph_admin_bucket_listing_feature_param_filters_cover_non_lifecycle_fea
                 cors_rules=[{"AllowedMethods": ["GET", "HEAD"], "AllowedOrigins": ["https://example.test"]}],
             )
         return BucketProperties(
-            object_lock_enabled=False,
             object_lock=BucketObjectLock(enabled=False, mode="COMPLIANCE", days=5, years=3),
             public_access_block=BucketPublicAccessBlock(
                 block_public_acls=False,
@@ -2637,7 +2651,6 @@ def test_ceph_admin_bucket_listing_includes_audit_feature_column_details(monkeyp
 
     def fake_get_bucket_properties(self, name: str, account):  # noqa: ARG001
         return BucketProperties(
-            object_lock_enabled=True,
             object_lock=BucketObjectLock(enabled=True, mode="GOVERNANCE", days=30, years=1),
             public_access_block=BucketPublicAccessBlock(
                 block_public_acls=True,
@@ -2868,6 +2881,8 @@ def test_ceph_admin_bucket_stream_emits_progress_result_and_done(monkeypatch: py
             page=page,
             page_size=page_size,
             has_next=False,
+            stats_available=True,
+            stats_warning=None,
         )
 
     monkeypatch.setattr(buckets_router, "_compute_bucket_listing", fake_compute)

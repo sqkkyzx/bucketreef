@@ -179,7 +179,7 @@ export type AppSettings = {
 };
 
 type QuotaNotificationTestEmailResult = {
-  status: string;
+  status: "sent";
   recipient: string;
   sent_at: string;
 };
@@ -195,9 +195,9 @@ export type LoginSettings = {
   allow_login_access_keys: boolean;
   allow_login_endpoint_list: boolean;
   allow_login_custom_endpoint: boolean;
-  default_endpoint_url?: string | null;
+  default_endpoint_url: string | null;
   endpoints: PublicStorageEndpoint[];
-  login_logo_url?: string | null;
+  login_logo_url: string | null;
 };
 
 export async function fetchAppSettings(): Promise<AppSettings> {

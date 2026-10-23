@@ -10,6 +10,8 @@ from app.core.database import get_db
 from app.db import QuotaUsageDaily
 from app.models.access_context import ManagerActor
 from app.models.healthcheck import WorkspaceEndpointHealthOverviewResponse
+from app.models.storage_stats import StorageStats
+from app.models.traffic import TrafficStats
 from app.models.usage_trends import UsageTrendsResponse
 from app.models.usage_history import UsageHistoryTrendResponse, UsageHistoryTrendWindow
 from app.routers.dependencies import (
@@ -38,12 +40,12 @@ router = APIRouter(prefix="/manager/stats", tags=["manager-stats"])
 settings = get_settings()
 
 
-@router.get("/overview")
+@router.get("/overview", response_model=StorageStats)
 def account_stats(
     context: S3ExecutionContext = Depends(get_s3_execution_context),
     bucket_service: BucketsService = Depends(get_buckets_service),
     _: ManagerActor = Depends(require_storage_metrics_capable_manager),
-) -> dict:
+) -> StorageStats:
     if not context.rgw_account_id and not context.rgw_user_uid:
         raise HTTPException(status_code=400, detail="Storage metrics not available for this context")
     try:
@@ -67,13 +69,13 @@ def account_stats(
     ]
     bucket_usage.sort(key=lambda bucket: bucket["used_bytes"] or 0, reverse=True)
 
-    return {
+    return StorageStats.model_validate({
         "total_buckets": total_buckets,
         "total_bytes": total_bytes,
         "total_objects": total_objects,
         "bucket_usage": bucket_usage,
         "bucket_overview": build_bucket_overview(bucket_usage),
-    }
+    })
 
 
 @router.get("/usage-trends", response_model=UsageTrendsResponse, response_model_exclude_none=True)
@@ -113,19 +115,19 @@ def account_usage_history_trends(
     )
 
 
-@router.get("/traffic")
+@router.get("/traffic", response_model=TrafficStats)
 def account_traffic(
     window: TrafficWindow = Query(TrafficWindow.WEEK),
     bucket: Optional[str] = Query(None),
     context: S3ExecutionContext = Depends(get_s3_execution_context),
     _: ManagerActor = Depends(require_usage_logs_capable_manager),
-) -> dict:
+) -> TrafficStats:
     try:
         service = TrafficService(context)
     except ValueError as exc:
         raise_http_exception_from_exception(502, exc)
     try:
-        return service.get_traffic(window=window, bucket=bucket)
+        return TrafficStats.model_validate(service.get_traffic(window=window, bucket=bucket))
     except ValueError as exc:
         raise_http_exception_from_exception(400, exc)
     except RGWAdminError as exc:
@@ -147,6 +149,7 @@ def endpoint_health_overview(
     if endpoint_id is None:
         return WorkspaceEndpointHealthOverviewResponse(
             generated_at=utcnow().isoformat(),
+            stale_after_seconds=max(1, int(settings.healthcheck_interval_seconds)) * 2,
             incident_highlight_minutes=max(1, int(settings.healthcheck_incident_recent_minutes or 720)),
             endpoint_count=0,
             up_count=0,

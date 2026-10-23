@@ -70,11 +70,11 @@ function getS3UserSearchCandidates(user: S3User): Array<string | number | null |
     user.name,
     user.rgw_user_uid,
     user.email,
-    ...(user.user_links ?? []).flatMap((link) => [
+    ...user.user_links.flatMap((link) => [
       link.user_email,
       link.user_full_name,
     ]),
-    ...(user.group_links ?? []).map((link) => link.group_name),
+    ...user.group_links.map((link) => link.group_name),
     ...extractUiTagLabels(user.tags),
   ];
 }
@@ -151,6 +151,8 @@ export default function S3UsersPage() {
     allow_activity_history: null as boolean | null,
     allow_rgw_usage_metrics: null as boolean | null,
     allow_cost_estimation: null as boolean | null,
+    allow_bucket_usage_stats: null as boolean | null,
+    allow_bucket_usage_stats_collection: null as boolean | null,
     allow_managed_private_connection_provisioning: null as boolean | null,
   });
   const [editInitialSignature, setEditInitialSignature] = useState("");
@@ -461,25 +463,27 @@ export default function S3UsersPage() {
       name: user.name,
       email: user.email ?? "",
       tags: normalizeUiTags(user.tags),
-      user_links: (user.user_links ?? []).map((link) => ({
+      user_links: user.user_links.map((link) => ({
         ...link,
-        allow_manager_browser_data_access: Boolean(link.allow_manager_browser_data_access),
+        allow_manager_browser_data_access: link.allow_manager_browser_data_access,
       })),
-      group_links: (user.group_links ?? []).map((link) => ({
+      group_links: user.group_links.map((link) => ({
         ...link,
-        allow_manager_browser_data_access: Boolean(link.allow_manager_browser_data_access),
+        allow_manager_browser_data_access: link.allow_manager_browser_data_access,
       })),
       quota_max_size_gb: quota.value,
       quota_max_size_unit: quota.unit,
       quota_max_objects: user.quota_max_objects != null ? String(user.quota_max_objects) : "",
-      allow_bucket_quota_management: user.allow_bucket_quota_management ?? null,
-      allow_access_key_management: user.allow_access_key_management ?? null,
-      allow_access_key_metadata: user.allow_access_key_metadata ?? null,
-      allow_access_key_expiration: user.allow_access_key_expiration ?? null,
-      allow_activity_history: user.allow_activity_history ?? null,
-      allow_rgw_usage_metrics: user.allow_rgw_usage_metrics ?? null,
-      allow_cost_estimation: user.allow_cost_estimation ?? null,
-      allow_managed_private_connection_provisioning: user.allow_managed_private_connection_provisioning ?? null,
+      allow_bucket_quota_management: user.allow_bucket_quota_management,
+      allow_access_key_management: user.allow_access_key_management,
+      allow_access_key_metadata: user.allow_access_key_metadata,
+      allow_access_key_expiration: user.allow_access_key_expiration,
+      allow_activity_history: user.allow_activity_history,
+      allow_rgw_usage_metrics: user.allow_rgw_usage_metrics,
+      allow_cost_estimation: user.allow_cost_estimation,
+      allow_bucket_usage_stats: user.allow_bucket_usage_stats,
+      allow_bucket_usage_stats_collection: user.allow_bucket_usage_stats_collection,
+      allow_managed_private_connection_provisioning: user.allow_managed_private_connection_provisioning,
     };
     setEditingUser(user);
     setEditForm(nextEditForm);
@@ -507,8 +511,14 @@ export default function S3UsersPage() {
         name: editForm.name || undefined,
         email: editForm.email || undefined,
         tags: normalizeUiTags(editForm.tags),
-        user_links: editForm.user_links,
-        group_links: editForm.group_links,
+        user_links: editForm.user_links.map(({ user_id, allow_manager_browser_data_access }) => ({
+          user_id,
+          allow_manager_browser_data_access,
+        })),
+        group_links: editForm.group_links.map(({ group_id, allow_manager_browser_data_access }) => ({
+          group_id,
+          allow_manager_browser_data_access,
+        })),
       };
       if (canManageManagerFeatures) {
         payload.allow_bucket_quota_management = editForm.allow_bucket_quota_management;
@@ -521,6 +531,8 @@ export default function S3UsersPage() {
         payload.allow_managed_private_connection_provisioning =
           editForm.allow_managed_private_connection_provisioning;
       }
+      payload.allow_bucket_usage_stats = editForm.allow_bucket_usage_stats;
+      payload.allow_bucket_usage_stats_collection = editForm.allow_bucket_usage_stats_collection;
       if (allowUserQuotaUpdates) {
         payload.quota_max_size_gb = editForm.quota_max_size_gb !== "" ? Number(editForm.quota_max_size_gb) : null;
         payload.quota_max_size_unit = editForm.quota_max_size_gb !== "" ? editForm.quota_max_size_unit : null;
@@ -533,25 +545,27 @@ export default function S3UsersPage() {
         name: updatedUser.name,
         email: updatedUser.email ?? "",
         tags: normalizeUiTags(updatedUser.tags),
-        user_links: (updatedUser.user_links ?? editForm.user_links ?? []).map((link) => ({
+        user_links: updatedUser.user_links.map((link) => ({
           ...link,
-          allow_manager_browser_data_access: Boolean(link.allow_manager_browser_data_access),
+          allow_manager_browser_data_access: link.allow_manager_browser_data_access,
         })),
-        group_links: (updatedUser.group_links ?? editForm.group_links ?? []).map((link) => ({
+        group_links: updatedUser.group_links.map((link) => ({
           ...link,
-          allow_manager_browser_data_access: Boolean(link.allow_manager_browser_data_access),
+          allow_manager_browser_data_access: link.allow_manager_browser_data_access,
         })),
-        quota_max_size_gb: updatedUser.quota_max_size_gb != null ? savedQuota.value : editForm.quota_max_size_gb,
-        quota_max_size_unit: updatedUser.quota_max_size_gb != null ? savedQuota.unit : editForm.quota_max_size_unit,
-        quota_max_objects: updatedUser.quota_max_objects != null ? String(updatedUser.quota_max_objects) : editForm.quota_max_objects,
-        allow_bucket_quota_management: updatedUser.allow_bucket_quota_management ?? editForm.allow_bucket_quota_management,
-        allow_access_key_management: updatedUser.allow_access_key_management ?? editForm.allow_access_key_management,
-        allow_access_key_metadata: updatedUser.allow_access_key_metadata ?? editForm.allow_access_key_metadata,
-        allow_access_key_expiration: updatedUser.allow_access_key_expiration ?? editForm.allow_access_key_expiration,
-        allow_activity_history: updatedUser.allow_activity_history ?? editForm.allow_activity_history,
-        allow_rgw_usage_metrics: updatedUser.allow_rgw_usage_metrics ?? editForm.allow_rgw_usage_metrics,
-        allow_cost_estimation: updatedUser.allow_cost_estimation ?? editForm.allow_cost_estimation,
-        allow_managed_private_connection_provisioning: updatedUser.allow_managed_private_connection_provisioning ?? editForm.allow_managed_private_connection_provisioning,
+        quota_max_size_gb: updatedUser.quota_max_size_gb != null ? savedQuota.value : "",
+        quota_max_size_unit: savedQuota.unit,
+        quota_max_objects: updatedUser.quota_max_objects != null ? String(updatedUser.quota_max_objects) : "",
+        allow_bucket_quota_management: updatedUser.allow_bucket_quota_management,
+        allow_access_key_management: updatedUser.allow_access_key_management,
+        allow_access_key_metadata: updatedUser.allow_access_key_metadata,
+        allow_access_key_expiration: updatedUser.allow_access_key_expiration,
+        allow_activity_history: updatedUser.allow_activity_history,
+        allow_rgw_usage_metrics: updatedUser.allow_rgw_usage_metrics,
+        allow_cost_estimation: updatedUser.allow_cost_estimation,
+        allow_bucket_usage_stats: updatedUser.allow_bucket_usage_stats,
+        allow_bucket_usage_stats_collection: updatedUser.allow_bucket_usage_stats_collection,
+        allow_managed_private_connection_provisioning: updatedUser.allow_managed_private_connection_provisioning,
       };
       setEditingUser(updatedUser);
       setEditForm(savedForm);
@@ -964,11 +978,6 @@ export default function S3UsersPage() {
                             ]} />}
                           </>}
                     </SettingsSection>
-                    {editPermissionLoading ? <p role="status">{adminText("Checking endpoint permissions...")}</p>
-                      : editPermissionError ? <UiInlineMessage tone="error" role="alert">
-                        {editPermissionError} <SettingsButton variant="secondary" onClick={() => editingEndpointId && void fetchEndpointUsersWritePermission(editingEndpointId)}>{adminText("Retry permissions")}</SettingsButton>
-                      </UiInlineMessage>
-                        : !allowUserQuotaUpdates && <UiInlineMessage tone="info">{adminText("Quota editing requires Admin Ops support and users=write on the endpoint.")}</UiInlineMessage>}
                 <AdminQuotaFields
                   compact
                   storageValue={editForm.quota_max_size_gb}
@@ -985,6 +994,23 @@ export default function S3UsersPage() {
                       setEditForm((prev) => ({ ...prev, quota_max_objects: value }))
                   }
                 />
+                    {editPermissionLoading ? <p role="status">{adminText("Checking endpoint permissions...")}</p>
+                      : editPermissionError ? <UiInlineMessage tone="error" role="alert">
+                        {editPermissionError} <SettingsButton variant="secondary" onClick={() => editingEndpointId && void fetchEndpointUsersWritePermission(editingEndpointId)}>{adminText("Retry permissions")}</SettingsButton>
+                      </UiInlineMessage>
+                        : !allowUserQuotaUpdates && <UiInlineMessage tone="info">{adminText("Quota editing requires Admin Ops support and users=write on the endpoint.")}</UiInlineMessage>}
+                    <SettingsSection title={adminText("Services and monitoring")} description={adminText("RGW User-specific overrides for shared Manager services.")} presentation="compact">
+                      <FeatureOverrideField title={adminText("Bucket composition statistics")} value={editForm.allow_bucket_usage_stats}
+                        policy={generalSettings.project_feature_policies.bucket_usage_stats} disabled={editBusy}
+                        triState
+                        description={adminText("Controls bucket composition statistics for this RGW User in Manager.")}
+                        onChange={value => setEditForm(prev => ({ ...prev, allow_bucket_usage_stats: value }))} />
+                      <FeatureOverrideField title={adminText("Automatic bucket composition collection")} value={editForm.allow_bucket_usage_stats_collection}
+                        policy={generalSettings.project_collection_policies.bucket_usage_stats} disabled={editBusy}
+                        triState
+                        description={adminText("Controls scheduled refreshes for this RGW User. Bucket composition statistics must also be enabled.")}
+                        onChange={value => setEditForm(prev => ({ ...prev, allow_bucket_usage_stats_collection: value }))} />
+                    </SettingsSection>
                   </div>
                 )}
 
@@ -1022,7 +1048,7 @@ export default function S3UsersPage() {
                               <AdminAssociationAdvancedSettings
                                 targetLabel={portalUserLabelById.get(link.user_id) ?? `User #${link.user_id}`}
                                 associationKind="rgw_user"
-                                allowManagerBrowserDataAccess={Boolean(link.allow_manager_browser_data_access)}
+                                allowManagerBrowserDataAccess={link.allow_manager_browser_data_access}
                                 onApply={(allowed) =>
                                   setEditForm((prev) => ({
                                     ...prev,
@@ -1075,10 +1101,16 @@ export default function S3UsersPage() {
                         ...prev,
                         user_links: [
                           ...prev.user_links,
-                          ...editPortalUserSelections.map((userId) => ({
-                            user_id: userId,
-                            allow_manager_browser_data_access: false,
-                          })),
+                          ...editPortalUserSelections.map((userId) => {
+                            const user = portalUsers.find((candidate) => candidate.id === userId);
+                            return {
+                              user_id: userId,
+                              user_email: user?.email ?? null,
+                              user_full_name: user?.full_name ?? null,
+                              user_avatar: user?.avatar ?? null,
+                              allow_manager_browser_data_access: false,
+                            };
+                          }),
                         ],
                       }));
                       setEditPortalUserSelections([]);
@@ -1137,7 +1169,7 @@ export default function S3UsersPage() {
                               <AdminAssociationAdvancedSettings
                                 targetLabel={groupLabelById.get(link.group_id) ?? `Group #${link.group_id}`}
                                 associationKind="rgw_user"
-                                allowManagerBrowserDataAccess={Boolean(link.allow_manager_browser_data_access)}
+                                allowManagerBrowserDataAccess={link.allow_manager_browser_data_access}
                                 onApply={(allowed) =>
                                   setEditForm((prev) => ({
                                     ...prev,
@@ -1190,10 +1222,15 @@ export default function S3UsersPage() {
                         ...prev,
                         group_links: [
                           ...prev.group_links,
-                          ...editGroupSelections.map((groupId) => ({
-                            group_id: groupId,
-                            allow_manager_browser_data_access: false,
-                          })),
+                          ...editGroupSelections.map((groupId) => {
+                            const group = uiGroups.find((candidate) => candidate.id === groupId);
+                            return {
+                              group_id: groupId,
+                              group_name: group?.name ?? null,
+                              group_avatar: group?.avatar ?? null,
+                              allow_manager_browser_data_access: false,
+                            };
+                          }),
                         ],
                       }));
                       setEditGroupSelections([]);

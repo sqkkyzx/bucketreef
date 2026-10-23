@@ -59,6 +59,35 @@ def _usage_history_settings(enabled: bool) -> AppSettings:
     return settings
 
 
+def test_manager_endpoint_health_without_endpoint_returns_complete_empty_payload(
+    db_session,
+    monkeypatch,
+) -> None:
+    app_settings = AppSettings()
+    app_settings.general.endpoint_status_enabled = True
+    monkeypatch.setattr(manager_stats_router, "load_app_settings", lambda: app_settings)
+    monkeypatch.setattr(manager_stats_router.settings, "healthcheck_interval_seconds", 45)
+
+    context = S3ExecutionContext(
+        context_id="conn-no-endpoint",
+        context_kind="connection",
+        name="connection without endpoint",
+        access_key="access",
+        secret_key="secret",
+    )
+
+    payload = manager_stats_router.endpoint_health_overview(context=context, db=db_session)
+
+    assert payload.stale_after_seconds == 90
+    assert payload.endpoint_count == 0
+    assert payload.up_count == 0
+    assert payload.degraded_count == 0
+    assert payload.down_count == 0
+    assert payload.unknown_count == 0
+    assert payload.endpoints == []
+    assert payload.incidents == []
+
+
 @pytest.mark.parametrize(
     "dependency",
     [
@@ -237,9 +266,9 @@ def test_manager_stats_overview_allows_connection_with_resolved_identity(db_sess
             return []
 
     payload = manager_stats_router.account_stats(context=account, bucket_service=_FakeBucketsService(), _={})
-    assert payload["total_buckets"] == 0
-    assert payload["total_bytes"] == 0
-    assert payload["total_objects"] == 0
+    assert payload.total_buckets == 0
+    assert payload.total_bytes == 0
+    assert payload.total_objects == 0
 
 
 def test_manager_stats_overview_sanitizes_bucket_error_details():
@@ -336,8 +365,8 @@ def test_manager_stats_traffic_allows_connection_with_resolved_identity(db_sessi
         _={},
     )
     assert captured["uid"] == "traffic"
-    assert payload["window"] == "week"
-    assert payload["totals"]["ops"] == 0
+    assert payload.window == "week"
+    assert payload.totals.ops == 0
 
 
 def test_manager_stats_traffic_sanitizes_rgw_error_details(monkeypatch):

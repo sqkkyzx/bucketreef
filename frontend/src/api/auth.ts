@@ -18,19 +18,19 @@ type SessionCapabilities = {
 export type AuthSessionDescriptor = {
     session_id: string;
     actor_type: string;
-    account_id?: string | null;
-    account_name?: string | null;
-    user_uid?: string | null;
+    account_id: string | null;
+    account_name: string | null;
+    user_uid: string | null;
     capabilities: SessionCapabilities;
 };
 
 export type AuthenticationResponse = {
   status: "authenticated" | "mfa_required" | "mfa_enrollment_required" | "link_approval_required";
-  user?: AuthUser | null;
-  session?: AuthSessionDescriptor | null;
-  redirect_path?: string | null;
-  link_request_id?: string | null;
-  recovery_codes?: string[] | null;
+  user: AuthUser | null;
+  session: AuthSessionDescriptor | null;
+  redirect_path: string | null;
+  link_request_id: string | null;
+  recovery_codes: string[] | null;
 };
 
 type FirstAdminBootstrapStatus = {
@@ -63,17 +63,29 @@ export async function bootstrapFirstAdmin(
   return data;
 }
 
+export type AuthSessionInfo = {
+  id: string;
+  principal_type: string;
+  auth_type: string;
+  created_at: string;
+  last_activity_at: string;
+  idle_expires_at: string;
+  absolute_expires_at: string;
+  mfa_verified_at: string | null;
+  ip_address: string | null;
+  user_agent: string | null;
+  revoked_at: string | null;
+  revoke_reason: string | null;
+  current: boolean;
+  user_id: number | null;
+  s3_session_id: string | null;
+};
+
 export type CurrentSessionResponse = {
   authenticated: true;
-  user?: AuthUser | null;
-  session?: AuthSessionDescriptor | null;
-  auth_session: {
-    id: string;
-    auth_type: string;
-    mfa_verified_at?: string | null;
-    idle_expires_at: string;
-    absolute_expires_at: string;
-  };
+  user: AuthUser | null;
+  session: AuthSessionDescriptor | null;
+  auth_session: AuthSessionInfo;
 };
 
 export async function login(email: string, password: string): Promise<AuthenticationResponse> {
@@ -127,7 +139,7 @@ export async function loginWithKeys(
 export type OidcProviderInfo = {
   id: string;
   display_name: string;
-  icon_url?: string | null;
+  icon_url: string | null;
 };
 
 type OidcStartResponse = {

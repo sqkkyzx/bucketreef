@@ -1,12 +1,12 @@
 # Copyright (c) 2025 Laurent Barbe
 # Licensed under the Apache License, Version 2.0
-import re
 from typing import Literal, Optional
 
 from pydantic import Field, field_validator
 
 from app.models.base import ApiModel
 from app.utils.identity_provider_ids import normalize_identity_provider_id
+from app.utils.oidc_validation import normalize_trusted_email_domains
 
 
 OIDC_PROVIDER_DEFAULT_SCOPES = ["openid", "email", "profile"]
@@ -26,31 +26,10 @@ OIDC_PROVIDER_CONFIG_FIELDS = (
 )
 
 
-def normalize_trusted_email_domains(value) -> list[str]:
-    if value is None:
-        return []
-    if isinstance(value, str):
-        items = value.replace("\n", ",").split(",")
-    elif isinstance(value, list):
-        items = value
-    else:
-        raise ValueError("trusted_email_domains must be a list or comma-separated string")
-    normalized: list[str] = []
-    for item in items:
-        domain = str(item or "").strip().lower().lstrip("@")
-        if not domain:
-            continue
-        if len(domain) > 253 or "." not in domain or not re.fullmatch(r"[a-z0-9.-]+", domain):
-            raise ValueError("trusted_email_domains must contain exact DNS domains")
-        if domain not in normalized:
-            normalized.append(domain)
-    return normalized
-
-
 class OIDCProviderInfo(ApiModel):
     id: str
     display_name: str
-    icon_url: Optional[str] = None
+    icon_url: Optional[str]
 
 
 class OIDCStartRequest(ApiModel):
@@ -69,8 +48,8 @@ class OIDCCallbackRequest(ApiModel):
 
 
 class OIDCProviderFieldLock(ApiModel):
-    forced: bool = False
-    source: Optional[str] = None
+    forced: bool
+    source: Optional[str]
 
 
 class OIDCProviderAdminItem(ApiModel):
@@ -79,18 +58,18 @@ class OIDCProviderAdminItem(ApiModel):
     discovery_url: str
     client_id: str
     redirect_uri: str
-    scopes: list[str] = Field(default_factory=lambda: list(OIDC_PROVIDER_DEFAULT_SCOPES))
-    prompt: Optional[str] = None
-    enabled: bool = True
-    icon_url: Optional[str] = None
-    use_pkce: bool = True
-    use_nonce: bool = True
-    linking_policy: Literal["manual", "trusted_email"] = "manual"
-    trusted_email_domains: list[str] = Field(default_factory=list)
+    scopes: list[str]
+    prompt: Optional[str]
+    enabled: bool
+    icon_url: Optional[str]
+    use_pkce: bool
+    use_nonce: bool
+    linking_policy: Literal["manual", "trusted_email"]
+    trusted_email_domains: list[str]
     source: Literal["environment", "ui"]
     editable: bool
-    field_locks: dict[str, OIDCProviderFieldLock] = Field(default_factory=dict)
-    has_client_secret: bool = False
+    field_locks: dict[str, OIDCProviderFieldLock]
+    has_client_secret: bool
 
 
 class OIDCProviderAdminPayload(ApiModel):
@@ -132,20 +111,13 @@ class OIDCProviderAdminPayload(ApiModel):
         normalized = value.strip()
         return normalized or None
 
-    @field_validator("scopes", mode="before")
+    @field_validator("scopes")
     @classmethod
-    def normalize_scopes(cls, value) -> list[str]:
-        if value is None:
-            return list(OIDC_PROVIDER_DEFAULT_SCOPES)
-        if isinstance(value, str):
-            normalized = [item.strip() for item in value.replace("\n", ",").split(",") if item.strip()]
-            return normalized or list(OIDC_PROVIDER_DEFAULT_SCOPES)
-        if isinstance(value, list):
-            normalized = [item.strip() for item in value if isinstance(item, str) and item.strip()]
-            return normalized or list(OIDC_PROVIDER_DEFAULT_SCOPES)
-        raise ValueError("scopes must be a list or comma-separated string")
+    def normalize_scopes(cls, value: list[str]) -> list[str]:
+        normalized = [item.strip() for item in value if item.strip()]
+        return normalized or list(OIDC_PROVIDER_DEFAULT_SCOPES)
 
-    @field_validator("trusted_email_domains", mode="before")
+    @field_validator("trusted_email_domains")
     @classmethod
-    def normalize_domains(cls, value) -> list[str]:
+    def normalize_domains(cls, value: list[str]) -> list[str]:
         return normalize_trusted_email_domains(value)

@@ -75,11 +75,13 @@ function accountLink(
     account_id: accountId,
     manager_role: managerRole,
     portal_role: portalRole,
+    allow_manager_browser_data_access: false,
     provenance: {
       direct_manager_role: managerRole,
       direct_portal_role: portalRole,
       direct_determines_effective_manager_role: Boolean(managerRole),
       direct_determines_effective_portal_role: Boolean(portalRole),
+      direct_allow_manager_browser_data_access: false,
       groups: [],
     },
   };
@@ -94,8 +96,16 @@ function effectiveAccess(
     can_access_storage_ops: canAccessStorageOps,
     can_create_manual_private_connections: false,
     can_provision_managed_private_connections: false,
+    group_can_provision_managed_private_connections: false,
     has_owned_private_connections: false,
     manager_tool_access: {
+      bucket_compare: false,
+      bucket_integrity_check: false,
+      bucket_migration: false,
+      bucket_purge: false,
+      feature_rules: false,
+    },
+    group_manager_tool_access: {
       bucket_compare: false,
       bucket_integrity_check: false,
       bucket_migration: false,

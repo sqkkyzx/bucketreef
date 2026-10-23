@@ -3,7 +3,7 @@
 
 """Core bucket configuration endpoints for the Manager workspace."""
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Response, status
 
 from app.models.access_context import ManagerActor
 from app.models.bucket import (
@@ -76,14 +76,18 @@ def get_versioning(
     )
 
 
-@router.put("/{bucket_name}/versioning", status_code=status.HTTP_200_OK)
+@router.put(
+    "/{bucket_name}/versioning",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_class=Response,
+)
 def update_versioning(
     bucket_name: str,
     payload: BucketVersioningUpdate,
     context: S3ExecutionContext = Depends(get_s3_execution_context),
     current_user: ManagerActor = Depends(get_current_account_admin),
     mutation: BucketConfigMutationService = Depends(get_manager_bucket_config_mutation_service),
-):
+) -> Response:
     return mutation.update(
         actor=current_user,
         context=context,
@@ -157,15 +161,19 @@ def put_bucket_encryption(
     )
 
 
-@router.delete("/{bucket_name}/encryption", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{bucket_name}/encryption",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_class=Response,
+)
 def delete_bucket_encryption(
     bucket_name: str,
     context: S3ExecutionContext = Depends(get_s3_execution_context),
     current_user: ManagerActor = Depends(get_current_account_admin),
     mutation: BucketConfigMutationService = Depends(get_manager_bucket_config_mutation_service),
-) -> None:
+) -> Response:
     require_sse_feature(context.storage_endpoint)
-    mutation.delete(
+    return mutation.delete(
         actor=current_user,
         context=context,
         bucket_name=bucket_name,

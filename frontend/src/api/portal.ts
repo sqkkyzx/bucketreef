@@ -26,40 +26,40 @@ export type PortalStorageSpaceAccountMemberRole = "Viewer" | "Editor";
 export type PortalStorageSpaceCollaboratorPreview = {
   user_id: number;
   email: string;
-  display_name?: string | null;
+  display_name: string | null;
   role: PortalStorageSpaceRole;
-  avatar?: UserAvatarDescriptor | null;
+  avatar: UserAvatarDescriptor;
 };
 
 export type PortalStorageSpaceSummary = {
   id: string;
   name: string;
   role: PortalStorageSpaceRole;
-  can_browse?: boolean | null;
-  can_delete?: boolean;
-  can_take_ownership?: boolean;
-  status?: string | null;
-  description?: string | null;
-  owner_label?: string | null;
-  owner_user_id?: number | null;
-  collaborators?: PortalStorageSpaceCollaboratorPreview[];
-  collaborator_count?: number;
-  visibility?: PortalStorageSpaceVisibility;
-  share_scope?: PortalStorageSpaceShareScope;
-  account_member_role?: PortalStorageSpaceAccountMemberRole | null;
-  project_key?: string | null;
-  dataset_label?: string | null;
-  region?: string | null;
-  created_at?: string | null;
-  used_bytes?: number | null;
-  object_count?: number | null;
-  quota_max_size_bytes?: number | null;
-  quota_max_objects?: number | null;
-  internal_bucket_name?: string | null;
-  archived_at?: string | null;
-  origin?: "portal_generic" | "portal_named" | "imported";
-  name_editable?: boolean;
-  icon?: StorageSpaceIconDescriptor | null;
+  can_browse: boolean;
+  can_delete: boolean;
+  can_take_ownership: boolean;
+  status: string;
+  description: string | null;
+  owner_label: string | null;
+  owner_user_id: number | null;
+  collaborators: PortalStorageSpaceCollaboratorPreview[];
+  collaborator_count: number;
+  visibility: PortalStorageSpaceVisibility;
+  share_scope: PortalStorageSpaceShareScope;
+  account_member_role: PortalStorageSpaceAccountMemberRole | null;
+  project_key: string | null;
+  dataset_label: string | null;
+  region: string | null;
+  created_at: string | null;
+  used_bytes: number | null;
+  object_count: number | null;
+  quota_max_size_bytes: number | null;
+  quota_max_objects: number | null;
+  internal_bucket_name: string | null;
+  archived_at: string | null;
+  origin: "portal_generic" | "portal_named" | "imported";
+  name_editable: boolean;
+  icon: StorageSpaceIconDescriptor;
 };
 
 export type PortalStorageSpaceInitialShare = {
@@ -97,14 +97,14 @@ type PortalStorageSpaceUpdate = Partial<PortalStorageSpaceCreate> & {
 export type PortalStorageObjectDetail = {
   key: string;
   name: string;
-  size?: number | null;
-  last_modified?: string | null;
-  content_type?: string | null;
-  storage_class?: string | null;
-  encryption?: string | null;
+  size: number | null;
+  last_modified: string | null;
+  content_type: string | null;
+  storage_class: string | null;
+  encryption: string | null;
   preview_type: "text" | "image" | "unavailable";
-  preview_text?: string | null;
-  preview_unavailable_reason?: string | null;
+  preview_text: string | null;
+  preview_unavailable_reason: string | null;
 };
 
 type PortalStorageObjectDownload = {
@@ -132,8 +132,8 @@ export type PortalStorageObjectVersion = {
   version_id: string;
   is_latest: boolean;
   is_delete_marker: boolean;
-  last_modified?: string | null;
-  size?: number | null;
+  last_modified: string | null;
+  size: number | null;
 };
 
 export type PortalStorageObjectVersionsResponse = {
@@ -142,8 +142,8 @@ export type PortalStorageObjectVersionsResponse = {
   can_restore: boolean;
   versions: PortalStorageObjectVersion[];
   is_truncated: boolean;
-  next_key_marker?: string | null;
-  next_version_id_marker?: string | null;
+  next_key_marker: string | null;
+  next_version_id_marker: string | null;
 };
 
 type PortalStorageObjectRestoreResponse = {
@@ -158,7 +158,7 @@ export type PortalDeletedPrefixRestoreFailure = {
 };
 
 export type PortalDeletedPrefixRestoreProgress = {
-  request_id?: string | null;
+  request_id: string | null;
   stage: "prepare" | "list" | "restore" | "completed";
   storage_space_id: string;
   storage_space_name: string;
@@ -168,9 +168,9 @@ export type PortalDeletedPrefixRestoreProgress = {
   restore_candidates: number;
   restored_objects: number;
   failed_objects: number;
-  total_candidates_final?: boolean;
-  current_key?: string | null;
-  message?: string | null;
+  total_candidates_final: boolean;
+  current_key: string | null;
+  message: string | null;
 };
 
 export type PortalDeletedPrefixRestoreResult = {
@@ -195,7 +195,7 @@ type PortalDeletedPrefixRestoreStreamOptions = {
 };
 
 export type PortalStorageSpaceVersionCleanupProgress = {
-  request_id?: string | null;
+  request_id: string | null;
   stage: "prepare" | "list" | "delete" | "completed";
   storage_space_id: string;
   storage_space_name: string;
@@ -205,8 +205,8 @@ export type PortalStorageSpaceVersionCleanupProgress = {
   deleted_versions: number;
   deleted_delete_markers: number;
   bytes_freed: number;
-  total_candidates_final?: boolean;
-  message?: string | null;
+  total_candidates_final: boolean;
+  message: string | null;
 };
 
 export type PortalStorageSpaceVersionCleanupResult = {

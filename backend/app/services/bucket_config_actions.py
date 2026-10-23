@@ -11,6 +11,7 @@ from app.models.bucket import (
     Bucket,
     BucketAcl,
     BucketAclUpdate,
+    BucketCors,
     BucketCorsUpdate,
     BucketCreate,
     BucketEncryptionConfiguration,
@@ -26,6 +27,7 @@ from app.models.bucket import (
     BucketQuotaUpdate,
     BucketVersioningStatus,
     BucketReplicationConfiguration,
+    BucketTags,
     BucketTagsUpdate,
     BucketVersioningUpdate,
     BucketWebsiteConfiguration,
@@ -126,7 +128,7 @@ def create_bucket_config(
     service: BucketsService,
     context: S3ExecutionTarget,
     payload: BucketCreate,
-) -> tuple[dict[str, Any], dict[str, Any]]:
+) -> dict[str, Any]:
     versioning = payload.versioning if payload.versioning is not None else False
     location_constraint = payload.location_constraint
     _map_runtime_error(
@@ -137,16 +139,10 @@ def create_bucket_config(
             location_constraint=location_constraint,
         )
     )
-    response = {
-        "message": f"Bucket '{payload.name}' created",
-        "name": payload.name,
-        "versioning": versioning,
-        "location_constraint": location_constraint,
-    }
     audit_metadata: dict[str, Any] = {"versioning": versioning}
     if location_constraint:
         audit_metadata["location_constraint"] = location_constraint
-    return response, audit_metadata
+    return audit_metadata
 
 
 def delete_bucket_config(
@@ -155,7 +151,7 @@ def delete_bucket_config(
     context: S3ExecutionTarget,
     bucket_name: str,
     force: bool = False,
-) -> tuple[dict[str, str], dict[str, Any]]:
+) -> None:
     try:
         service.delete_bucket(bucket_name, context, force=force)
     except BucketNotEmptyError as exc:
@@ -168,7 +164,6 @@ def delete_bucket_config(
         ) from exc
     except RuntimeError as exc:
         raise_bad_gateway_from_runtime(exc)
-    return {"message": f"Bucket '{bucket_name}' deleted"}, {"force": force}
 
 
 def update_bucket_quota_config(
@@ -177,9 +172,9 @@ def update_bucket_quota_config(
     context: S3ExecutionTarget,
     bucket_name: str,
     payload: BucketQuotaUpdate,
-) -> tuple[dict[str, str], dict[str, Any]]:
+) -> dict[str, Any]:
     _map_value_and_runtime_errors(lambda: service.set_bucket_quota(bucket_name, context, payload))
-    return {"message": "Bucket quota updated"}, payload.model_dump(exclude_none=True)
+    return payload.model_dump(exclude_none=True)
 
 
 def get_bucket_properties_config(*, service: BucketConfigurationService, context: S3ExecutionTarget, bucket_name: str) -> BucketProperties:
@@ -197,12 +192,9 @@ def update_bucket_versioning_config(
     context: S3ExecutionTarget,
     bucket_name: str,
     payload: BucketVersioningUpdate,
-) -> tuple[dict[str, Any], dict[str, Any]]:
+) -> tuple[Response, dict[str, Any]]:
     _map_runtime_error(lambda: service.set_versioning(bucket_name, context, enabled=payload.enabled))
-    return {
-        "message": f"Versioning updated for {bucket_name}",
-        "enabled": payload.enabled,
-    }, {"enabled": payload.enabled}
+    return no_content_response(), {"enabled": payload.enabled}
 
 
 def get_bucket_object_lock_config(*, service: BucketConfigurationService, context: S3ExecutionTarget, bucket_name: str) -> BucketObjectLock:
@@ -234,7 +226,7 @@ def put_bucket_encryption_config(
     payload: BucketEncryptionConfiguration,
 ) -> tuple[BucketEncryptionConfiguration, dict[str, Any]]:
     result = _map_runtime_error(lambda: service.set_bucket_encryption(bucket_name, context, payload.rules))
-    return result, {"rules_count": len(payload.rules or [])}
+    return result, {"rules_count": len(payload.rules)}
 
 
 def delete_bucket_encryption_config(*, service: BucketConfigurationService, context: S3ExecutionTarget, bucket_name: str) -> None:
@@ -312,9 +304,9 @@ def delete_bucket_lifecycle_config(*, service: BucketConfigurationService, conte
     _map_runtime_error(lambda: service.delete_lifecycle(bucket_name, context))
 
 
-def get_bucket_cors_config(*, service: BucketConfigurationService, context: S3ExecutionTarget, bucket_name: str) -> dict[str, Any]:
+def get_bucket_cors_config(*, service: BucketConfigurationService, context: S3ExecutionTarget, bucket_name: str) -> BucketCors:
     cors = _map_runtime_error(lambda: service.get_bucket_cors(bucket_name, context))
-    return {"rules": cors or []}
+    return BucketCors(rules=cors or [])
 
 
 def put_bucket_cors_config(
@@ -323,9 +315,9 @@ def put_bucket_cors_config(
     context: S3ExecutionTarget,
     bucket_name: str,
     payload: BucketCorsUpdate,
-) -> tuple[dict[str, Any], dict[str, Any]]:
+) -> tuple[BucketCors, dict[str, Any]]:
     _map_runtime_error(lambda: service.set_cors(bucket_name, context, rules=payload.rules))
-    return {"rules": payload.rules}, {"rules_count": len(payload.rules or [])}
+    return BucketCors(rules=payload.rules), {"rules_count": len(payload.rules or [])}
 
 
 def delete_bucket_cors_config(*, service: BucketConfigurationService, context: S3ExecutionTarget, bucket_name: str) -> None:
@@ -345,7 +337,7 @@ def put_bucket_notifications_config(
     bucket_name: str,
     payload: BucketNotificationConfiguration,
 ) -> tuple[BucketNotificationConfiguration, dict[str, Any]]:
-    configuration = payload.configuration or {}
+    configuration = payload.configuration
     result = _map_runtime_error(lambda: service.set_bucket_notifications(bucket_name, context, configuration))
     return result, {"keys": list(configuration.keys())}
 
@@ -368,7 +360,7 @@ def put_bucket_replication_config(
     payload: BucketReplicationConfiguration,
 ) -> tuple[BucketReplicationConfiguration, dict[str, Any]]:
     result = _map_value_and_runtime_errors(lambda: service.set_bucket_replication(bucket_name, context, payload))
-    configuration = payload.configuration or {}
+    configuration = payload.configuration
     rules = configuration.get("Rules")
     rules_count = len(rules) if isinstance(rules, list) else 0
     return result, {"rules_count": rules_count}
@@ -416,9 +408,9 @@ def delete_bucket_website_config(*, service: BucketConfigurationService, context
     _map_runtime_error(lambda: service.delete_bucket_website(bucket_name, context))
 
 
-def get_bucket_tags_config(*, service: BucketConfigurationService, context: S3ExecutionTarget, bucket_name: str) -> dict[str, Any]:
+def get_bucket_tags_config(*, service: BucketConfigurationService, context: S3ExecutionTarget, bucket_name: str) -> BucketTags:
     tags = _map_runtime_error(lambda: service.get_bucket_tags(bucket_name, context))
-    return {"tags": [tag.model_dump() for tag in tags]}
+    return BucketTags(tags=tags)
 
 
 def put_bucket_tags_config(
@@ -427,10 +419,10 @@ def put_bucket_tags_config(
     context: S3ExecutionTarget,
     bucket_name: str,
     payload: BucketTagsUpdate,
-) -> tuple[dict[str, Any], dict[str, Any]]:
+) -> tuple[BucketTags, dict[str, Any]]:
     tags = [{"key": tag.key, "value": tag.value} for tag in payload.tags]
     _map_runtime_error(lambda: service.set_bucket_tags(bucket_name, context, tags=tags))
-    return {"tags": payload.tags}, {"tags": tags, "count": len(payload.tags or [])}
+    return BucketTags(tags=payload.tags), {"tags": tags, "count": len(payload.tags or [])}
 
 
 def delete_bucket_tags_config(*, service: BucketConfigurationService, context: S3ExecutionTarget, bucket_name: str) -> None:

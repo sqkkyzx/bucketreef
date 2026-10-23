@@ -10,16 +10,16 @@ export function adminAccountForm(account: S3Account) {
     quota_max_size_gb: quota.value,
     quota_max_size_unit: quota.unit as string,
     quota_max_objects: account.quota_max_objects == null ? "" : String(account.quota_max_objects),
-    allow_bucket_quota_management: account.allow_bucket_quota_management ?? null,
-    allow_access_key_metadata: account.allow_access_key_metadata ?? null,
-    allow_access_key_expiration: account.allow_access_key_expiration ?? null,
-    allow_activity_history: account.allow_activity_history ?? null,
-    allow_rgw_usage_metrics: account.allow_rgw_usage_metrics ?? null,
-    allow_cost_estimation: account.allow_cost_estimation ?? null,
-    allow_bucket_usage_stats: account.allow_bucket_usage_stats ?? null,
-    allow_bucket_usage_stats_collection: account.allow_bucket_usage_stats_collection ?? null,
-    user_links: account.user_links.map<AccountUserLink>(link => ({ ...link, allow_manager_browser_data_access: Boolean(link.allow_manager_browser_data_access) })),
-    group_links: account.group_links.map<AccountGroupLink>(link => ({ ...link, allow_manager_browser_data_access: Boolean(link.allow_manager_browser_data_access) })),
+    allow_bucket_quota_management: account.allow_bucket_quota_management,
+    allow_access_key_metadata: account.allow_access_key_metadata,
+    allow_access_key_expiration: account.allow_access_key_expiration,
+    allow_activity_history: account.allow_activity_history,
+    allow_rgw_usage_metrics: account.allow_rgw_usage_metrics,
+    allow_cost_estimation: account.allow_cost_estimation,
+    allow_bucket_usage_stats: account.allow_bucket_usage_stats,
+    allow_bucket_usage_stats_collection: account.allow_bucket_usage_stats_collection,
+    user_links: account.user_links.map<AccountUserLink>(link => ({ ...link })),
+    group_links: account.group_links.map<AccountGroupLink>(link => ({ ...link })),
   };
 }
 
@@ -35,8 +35,28 @@ export function accountQuotaChanged(draft: AdminAccountForm, baseline: AdminAcco
 export function adminAccountPayload(draft: AdminAccountForm, baseline: AdminAccountForm, allowQuotaUpdates: boolean, canManageManagerFeatures: boolean): Parameters<typeof updateS3Account>[1] {
   return {
     tags: normalizeUiTags(draft.tags),
-    user_links: draft.user_links,
-    group_links: draft.group_links,
+    user_links: draft.user_links.map(({
+      user_id,
+      manager_role,
+      portal_role,
+      allow_manager_browser_data_access,
+    }) => ({
+      user_id,
+      manager_role,
+      portal_role,
+      allow_manager_browser_data_access,
+    })),
+    group_links: draft.group_links.map(({
+      group_id,
+      manager_role,
+      portal_role,
+      allow_manager_browser_data_access,
+    }) => ({
+      group_id,
+      manager_role,
+      portal_role,
+      allow_manager_browser_data_access,
+    })),
     allow_bucket_usage_stats: draft.allow_bucket_usage_stats,
     allow_bucket_usage_stats_collection: draft.allow_bucket_usage_stats_collection,
     ...(canManageManagerFeatures ? {

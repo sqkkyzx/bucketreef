@@ -7,19 +7,19 @@ import client from "./client";
 
 export type PortalAccessKey = {
   access_key_id: string;
-  status?: string | null;
-  created_at?: string | null;
+  status: string | null;
+  created_at: string | null;
   is_active: boolean;
-  is_portal?: boolean;
-  deletable?: boolean;
-  secret_access_key?: string | null;
-  session_token?: string | null;
-  expires_at?: string | null;
-  target_type?: "self" | "external";
-  external_email?: string | null;
-  storage_space_name?: string | null;
-  bucket_name?: string | null;
-  permission?: "read_only" | "read_write" | null;
+  is_portal: boolean;
+  deletable: boolean;
+  secret_access_key: string | null;
+  session_token: string | null;
+  expires_at: string | null;
+  target_type: "self" | "external";
+  external_email: string | null;
+  storage_space_name: string | null;
+  bucket_name: string | null;
+  permission: "read_only" | "read_write" | null;
 };
 
 export type PortalAccessKeyCreate = {
@@ -30,16 +30,16 @@ export type PortalAccessKeyCreate = {
 };
 
 export type PortalIAMUser = {
-  iam_user_id?: string | null;
-  iam_username?: string | null;
-  arn?: string | null;
-  created_at?: string | null;
+  iam_user_id: string | null;
+  iam_username: string | null;
+  arn: string | null;
+  created_at: string | null;
 };
 
 export type PortalAccessKeysState = {
   iam_user: PortalIAMUser;
-  s3_endpoint?: string | null;
-  force_path_style?: boolean;
+  s3_endpoint: string | null;
+  force_path_style: boolean;
   access_keys: PortalAccessKey[];
   can_manage_access_keys: boolean;
   can_create_external_access: boolean;

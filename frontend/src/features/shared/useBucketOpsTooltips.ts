@@ -146,7 +146,7 @@ export function useBucketOpsTooltips({
         include: ["owner_name"],
         with_stats: false,
       });
-      const candidate = (response.items ?? []).find(
+      const candidate = response.items.find(
         (item) =>
           item.name === bucket.name &&
           (item.tenant ?? "") === (bucket.tenant ?? "") &&
@@ -246,7 +246,7 @@ export function useBucketOpsTooltips({
       }
       if (featureKey === "object_lock") {
         const properties = await getBucketPropertiesCached(bucket);
-        return buildObjectLockSummaryLines(properties.object_lock_enabled, properties.object_lock);
+        return buildObjectLockSummaryLines(properties.object_lock);
       }
       if (featureKey === "block_public_access") {
         const properties = await getBucketPropertiesCached(bucket);

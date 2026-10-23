@@ -31,7 +31,7 @@ def _to_api_token_info(row: ApiToken) -> ApiTokenInfo:
         last_used_at=row.last_used_at,
         expires_at=row.expires_at,
         revoked_at=row.revoked_at,
-        scopes=json.loads(row.scopes_json or "[]"),
+        scopes=json.loads(row.scopes_json),
     )
 
 
@@ -75,7 +75,11 @@ def create_api_token(
         entity_id=row.id,
         metadata={"name": row.name, "scopes": payload.scopes, "expires_at": row.expires_at.isoformat()},
     )
-    return ApiTokenCreateResponse(access_token=token, api_token=_to_api_token_info(row))
+    return ApiTokenCreateResponse(
+        access_token=token,
+        token_type="bearer",
+        api_token=_to_api_token_info(row),
+    )
 
 
 @router.delete("/api-tokens/{token_id}", status_code=status.HTTP_204_NO_CONTENT)

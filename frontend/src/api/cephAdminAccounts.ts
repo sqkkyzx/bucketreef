@@ -4,43 +4,44 @@
  */
 import type { CephAdminRgwQuotaConfig } from "./cephAdminRgwTypes";
 import {
-  buildCephAdminEntityListingQuery,
+  listCephAdminEntities,
+  streamCephAdminEntities,
   type CephAdminEntityListingParams,
   type CephAdminEntityListingRequestOptions,
   type CephAdminListingStreamOptions,
-  type CephAdminListingStreamProgress,
 } from "./cephAdminEntityListing";
 import client from "./client";
-import { resolveApiBaseUrl, streamBucketsWithSse } from "./sseBucketsStream";
 import type { PaginatedResponse } from "./types";
 
 export type CephAdminRgwAccount = {
   account_id: string;
-  tenant?: string | null;
-  account_name?: string | null;
-  email?: string | null;
-  max_users?: number | null;
-  max_buckets?: number | null;
-  quota_max_size_bytes?: number | null;
-  quota_max_objects?: number | null;
-  bucket_count?: number | null;
-  user_count?: number | null;
+  tenant: string | null;
+  account_name: string | null;
+  email: string | null;
+  max_users: number | null;
+  max_buckets: number | null;
+  quota_max_size_bytes: number | null;
+  quota_max_objects: number | null;
+  used_bytes: number | null;
+  object_count: number | null;
+  bucket_count: number | null;
+  user_count: number | null;
 };
 
 export type CephAdminRgwAccountDetail = {
   account_id: string;
-  tenant?: string | null;
-  account_name?: string | null;
-  email?: string | null;
-  max_users?: number | null;
-  max_buckets?: number | null;
-  max_roles?: number | null;
-  max_groups?: number | null;
-  max_access_keys?: number | null;
-  bucket_count?: number | null;
-  user_count?: number | null;
-  quota?: CephAdminRgwQuotaConfig | null;
-  bucket_quota?: CephAdminRgwQuotaConfig | null;
+  tenant: string | null;
+  account_name: string | null;
+  email: string | null;
+  max_users: number | null;
+  max_buckets: number | null;
+  max_roles: number | null;
+  max_groups: number | null;
+  max_access_keys: number | null;
+  bucket_count: number | null;
+  user_count: number | null;
+  quota: CephAdminRgwQuotaConfig | null;
+  bucket_quota: CephAdminRgwQuotaConfig | null;
 };
 
 export type UpdateCephAdminAccountPayload = {
@@ -92,17 +93,12 @@ export async function listCephAdminAccounts(
   params?: ListCephAdminAccountsParams,
   options?: CephAdminEntityListingRequestOptions,
 ): Promise<PaginatedCephAdminAccountsResponse> {
-  const { data } = await client.get<PaginatedCephAdminAccountsResponse>(
-    `/ceph-admin/endpoints/${endpointId}/accounts`,
-    {
-      params: {
-        ...params,
-        include: params?.include?.join(","),
-      },
-      signal: options?.signal,
-    },
+  return listCephAdminEntities<PaginatedCephAdminAccountsResponse>(
+    endpointId,
+    "accounts",
+    params,
+    options,
   );
-  return data;
 }
 
 export async function streamCephAdminAccounts(
@@ -110,20 +106,12 @@ export async function streamCephAdminAccounts(
   params?: ListCephAdminAccountsParams,
   options?: CephAdminListingStreamOptions,
 ): Promise<PaginatedCephAdminAccountsResponse> {
-  const baseUrl = resolveApiBaseUrl();
-  const query = buildCephAdminEntityListingQuery(params);
-  const queryText = query.toString();
-  const url = `${baseUrl}/ceph-admin/endpoints/${endpointId}/accounts/stream${queryText ? `?${queryText}` : ""}`;
-  return streamBucketsWithSse<
-    CephAdminListingStreamProgress,
-    PaginatedCephAdminAccountsResponse
-  >({
-    url,
+  return streamCephAdminEntities<PaginatedCephAdminAccountsResponse>(
+    endpointId,
+    "accounts",
+    params,
     options,
-    streamFailedLabel: "Advanced search stream failed",
-    missingResultMessage:
-      "Advanced search stream ended without a result payload",
-  });
+  );
 }
 
 export async function getCephAdminAccountDetail(

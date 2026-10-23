@@ -6,7 +6,7 @@ from app.services.feature_policy_service import (
     manager_resource_states,
     manager_rgw_usage_metrics_state,
     manager_usage_metrics_resource,
-    project_account_resource,
+    project_usage_resource,
 )
 from app.services.app_settings_service import load_app_settings_for_db_readonly
 from dataclasses import dataclass
@@ -19,7 +19,7 @@ from app.core.database import get_db
 from app.core.domain_errors import S3AccountNotFoundError, S3ConnectionNotFoundError, S3UserNotFoundError
 from app.db import User
 from app.models.access_context import ManagerActor
-from app.models.execution_context import ManagerContext
+from app.models.execution_context import ManagerAccessMode, ManagerContext
 from app.models.session import ManagerSessionPrincipal
 from app.routers.dependencies import (
     get_s3_execution_context,
@@ -100,7 +100,7 @@ def _manager_stats_state(
     return False, None, None
 
 
-def _manager_access_mode(context: S3ExecutionContext) -> str:
+def _manager_access_mode(context: S3ExecutionContext) -> ManagerAccessMode:
     if context.context_kind == "account":
         return "admin"
     if context.context_kind in {"session", "connection", "s3_user"}:
@@ -170,7 +170,7 @@ def _manager_browser_state(
 def _manager_iam_identity(
     context: S3ExecutionContext,
     actor: ManagerActor,
-    access_mode: str,
+    access_mode: ManagerAccessMode,
     connection_iam_identity: Optional[str],
 ) -> Optional[str]:
     if access_mode == "admin":
@@ -338,7 +338,7 @@ def get_manager_context(
         provisioning_source=provisioning_sources[0].kind if provisioning_sources else None,
         activity_resource=manager_activity_resource(db, context),
     )
-    project_resource = project_account_resource(db, context)
+    project_resource = project_usage_resource(db, context)
     feature_states["rgw_usage_metrics"] = manager_rgw_usage_metrics_state(
         app_settings.manager.feature_policies,
         manager_usage_metrics_resource(db, context),

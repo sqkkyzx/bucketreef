@@ -90,7 +90,7 @@ export async function objects(c: DemoRequest): Promise<Response | undefined> {
   if ((action === "versions" || action === "portal-versions") && method === "GET") {
     const list = bucket.objects.filter(o => action === "portal-versions" ? o.key === key : o.key.startsWith(url.searchParams.get("prefix") ?? key));
     const versions = list.flatMap(o => o.versions.map((v, i) => ({ ...objectView(v), is_latest: i === 0, is_delete_marker: Boolean(v.deleted) })));
-    if (portal) return json({ key, versioning_status: (bucket.config.versioning as { status: string }).status, can_restore: role !== "Viewer" && !space?.archived_at && location.pathname.startsWith("/portal"), versions, is_truncated: false });
+    if (portal) return json({ key, versioning_status: (bucket.config.versioning as { status: string }).status, can_restore: role !== "Viewer" && !space?.archived_at && location.pathname.startsWith("/portal"), versions, is_truncated: false, next_key_marker: null, next_version_id_marker: null });
     return json({ prefix: url.searchParams.get("prefix"), common_prefixes: [], versions: versions.filter(v => !v.is_delete_marker), delete_markers: versions.filter(v => v.is_delete_marker), is_truncated: false });
   }
   if (action === "objects/columns" && method === "POST") return json({ items: (body.keys as string[] ?? []).map(k => {
@@ -142,9 +142,10 @@ export async function objects(c: DemoRequest): Promise<Response | undefined> {
   }
   if (action === "object-legal-hold" && method === "GET") return json({ key, status: "OFF" });
   if (action === "object-retention" && method === "GET") return json({ key, mode: null, retain_until: null });
-  if (action === "portal-detail" && method === "GET") return json({ ...objectView(version), name: key.split("/").at(-1), content_type: version.content_type,
+  if (action === "portal-detail" && method === "GET") return json({ key: version.key, name: key.split("/").at(-1), size: version.size,
+    last_modified: version.last_modified, content_type: version.content_type, storage_class: version.storage_class, encryption: null,
     preview_type: version.body.type.startsWith("text/") || version.body.type === "application/json" ? "text" : version.body.type.startsWith("image/") ? "image" : "unavailable",
-    preview_text: version.body.size < FILE_LIMIT ? await version.body.slice(0, 64 * 1024).text() : null });
+    preview_text: version.body.size < FILE_LIMIT ? await version.body.slice(0, 64 * 1024).text() : null, preview_unavailable_reason: null });
   if ((action === "download" || action === "portal-download") && method === "GET") return new Response(version.body, { headers: { "Content-Type": version.body.type, "Content-Length": String(version.body.size), "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(key.split("/").at(-1)!)}` } });
   if (action === "presign" && method === "POST") {
     if (body.operation === "delete_object") { removeObject(bucket, key); return json({ url: URL.createObjectURL(new Blob()), method: "GET", expires_in: 900 }); }

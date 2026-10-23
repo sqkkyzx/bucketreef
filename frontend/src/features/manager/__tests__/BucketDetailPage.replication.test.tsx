@@ -7,6 +7,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import BucketDetailPage from "../BucketDetailPage";
 import { setSessionUserCache } from "../../../utils/workspaces";
 
+type ListManagerObjects = typeof import("../../../api/managerObjects").listManagerObjects;
+type ListCephAdminBucketObjects = typeof import("../../../api/cephAdminBucketDetails").listCephAdminBucketObjects;
+
 const useExecutionContextMock = vi.fn();
 const useCephAdminEndpointMock = vi.fn();
 const getBucketStatsMock = vi.fn();
@@ -24,8 +27,8 @@ const getBucketCorsMock = vi.fn();
 const getBucketTagsMock = vi.fn();
 const getBucketPublicAccessBlockMock = vi.fn();
 const putBucketLifecycleMock = vi.fn();
-const listManagerObjectsMock = vi.fn();
-const listCephAdminBucketObjectsMock = vi.fn();
+const listManagerObjectsMock = vi.fn<ListManagerObjects>();
+const listCephAdminBucketObjectsMock = vi.fn<ListCephAdminBucketObjects>();
 const listCephAdminBucketsMock = vi.fn();
 const getCephAdminBucketPropertiesMock = vi.fn();
 const getCephAdminBucketVersioningMock = vi.fn();
@@ -87,7 +90,7 @@ vi.mock("../../../api/cephAdminBucketDetails", async () => {
   );
   return {
     ...actual,
-    listCephAdminBucketObjects: (...args: unknown[]) => listCephAdminBucketObjectsMock(...args),
+    listCephAdminBucketObjects: (...args: Parameters<ListCephAdminBucketObjects>) => listCephAdminBucketObjectsMock(...args),
     getCephAdminBucketProperties: (...args: unknown[]) => getCephAdminBucketPropertiesMock(...args),
     getCephAdminBucketVersioning: (...args: unknown[]) => getCephAdminBucketVersioningMock(...args),
     getCephAdminBucketObjectLock: (...args: unknown[]) => getCephAdminBucketObjectLockMock(...args),
@@ -120,7 +123,7 @@ vi.mock("../../../api/managerObjects", async () => {
   const actual = await vi.importActual<typeof import("../../../api/managerObjects")>("../../../api/managerObjects");
   return {
     ...actual,
-    listManagerObjects: (...args: unknown[]) => listManagerObjectsMock(...args),
+    listManagerObjects: (...args: Parameters<ListManagerObjects>) => listManagerObjectsMock(...args),
   };
 });
 
@@ -208,14 +211,25 @@ describe("BucketDetailPage replication state", () => {
     });
     putBucketLifecycleMock.mockImplementation((_accountId, _bucketName, rules) => Promise.resolve({ rules }));
     getBucketReplicationMock.mockResolvedValue({ configuration: {} });
-    listManagerObjectsMock.mockResolvedValue({ prefix: "", objects: [], prefixes: [], is_truncated: false });
-    listCephAdminBucketObjectsMock.mockResolvedValue({ prefix: "", objects: [], prefixes: [], is_truncated: false });
+    listManagerObjectsMock.mockResolvedValue({
+      prefix: "",
+      objects: [],
+      prefixes: [],
+      is_truncated: false,
+      next_continuation_token: null,
+    });
+    listCephAdminBucketObjectsMock.mockResolvedValue({
+      prefix: "",
+      objects: [],
+      prefixes: [],
+      is_truncated: false,
+      next_continuation_token: null,
+    });
     listCephAdminBucketsMock.mockResolvedValue({
       items: [{ name: "demo-bucket" }],
     });
     getCephAdminBucketPropertiesMock.mockResolvedValue({
       versioning_status: "Disabled",
-      object_lock_enabled: false,
       object_lock: { enabled: false, mode: null, days: null, years: null },
       public_access_block: {
         block_public_acls: false,
@@ -715,6 +729,7 @@ describe("BucketDetailPage replication state", () => {
       ],
       prefixes: ["reports/"],
       is_truncated: false,
+      next_continuation_token: null,
     });
 
     render(
@@ -726,16 +741,14 @@ describe("BucketDetailPage replication state", () => {
     await user.click(screen.getByRole("tab", { name: "Objects" }));
 
     await waitFor(() =>
-      expect(listCephAdminBucketObjectsMock).toHaveBeenCalledWith(1, "demo-bucket", "")
+      expect(listCephAdminBucketObjectsMock).toHaveBeenCalledWith(1, "demo-bucket", "", null)
     );
     expect(screen.getAllByText("reports/")).not.toHaveLength(0);
     expect(screen.getByText("reports/summary.csv")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "(root)" })).toHaveClass("ui-list-action", "ui-list-action-active");
     expect(screen.getByRole("button", { name: "(root)" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByRole("button", { name: "reports/" })).toHaveClass("ui-list-action");
-    expect(
-      screen.getAllByRole("button", { name: "Refresh", exact: true }).some((button) => button.classList.contains("ui-list-action")),
-    ).toBe(true);
+    expect(screen.getAllByRole("button", { name: "Refresh", exact: true })).toHaveLength(1);
     expect(
       screen.getByText("Read-only preview using the selected endpoint's Ceph Admin credentials.")
     ).toBeInTheDocument();
@@ -1262,7 +1275,7 @@ describe("BucketDetailPage replication state", () => {
     await user.click(objectLockSaveButton);
 
     await waitFor(() => {
-      expect(setCephAdminBucketVersioningMock).toHaveBeenCalledWith(1, "demo-bucket", true);
+      expect(setCephAdminBucketVersioningMock).toHaveBeenCalledWith(1, "demo-bucket", true, null);
       expect(updateCephAdminBucketObjectLockMock).toHaveBeenCalled();
     });
 
@@ -1669,6 +1682,7 @@ describe("BucketDetailPage replication state", () => {
     await user.click(metricsTab);
 
     expect(await screen.findByText("Current usage and quota")).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "Refresh", exact: true })).toHaveLength(1);
     const trafficTitle = screen.getByRole("heading", { name: "Traffic" });
     expect(trafficTitle).toHaveClass("ui-section");
     expect(screen.queryByText("Bucket: demo-bucket")).not.toBeInTheDocument();

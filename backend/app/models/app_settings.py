@@ -1,7 +1,7 @@
 # Copyright (c) 2025 Laurent Barbe
 # Licensed under the Apache License, Version 2.0
 import re
-from typing import Optional
+from typing import Literal, Optional
 from urllib.parse import urlparse
 
 from pydantic import Field, field_validator, model_validator
@@ -122,7 +122,7 @@ class GeneralSettings(ApiModel):
 
 class GeneralSettingsView(GeneralSettings):
     """Read-only settings projection for authenticated workspace consumers."""
-    manager_feature_policies: ManagerFeaturePolicies = Field(default_factory=ManagerFeaturePolicies)
+    manager_feature_policies: ManagerFeaturePolicies
 
     @classmethod
     def from_settings(cls, settings: "AppSettings") -> "GeneralSettingsView":
@@ -187,12 +187,12 @@ class BrandingSettings(ApiModel):
 
 
 class LoginSettings(ApiModel):
-    allow_login_access_keys: bool = False
-    allow_login_endpoint_list: bool = False
-    allow_login_custom_endpoint: bool = False
-    default_endpoint_url: Optional[str] = None
-    endpoints: list[StorageEndpointPublic] = Field(default_factory=list)
-    login_logo_url: Optional[str] = None
+    allow_login_access_keys: bool
+    allow_login_endpoint_list: bool
+    allow_login_custom_endpoint: bool
+    default_endpoint_url: Optional[str]
+    endpoints: list[StorageEndpointPublic]
+    login_logo_url: Optional[str]
 
 
 class PortalSettings(ApiModel):
@@ -258,6 +258,16 @@ class QuotaNotificationSettings(ApiModel):
             raise ValueError("SMTP settings must be strings")
         normalized = value.strip()
         return normalized or None
+
+
+class QuotaNotificationTestEmailResult(ApiModel):
+    status: Literal["sent"]
+    recipient: str
+    sent_at: str
+
+
+class IdentityProviderDeleteResult(ApiModel):
+    status: Literal["deleted"]
 
 
 class BrowserSettings(ApiModel):

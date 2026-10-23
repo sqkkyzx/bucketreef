@@ -17,31 +17,27 @@ import type { RgwBucketReference } from "./bucketOperation";
 
 export type CephAdminBucket = {
   name: string;
-  bucket_name?: string | null;
-  tenant?: string | null;
-  owner?: string | null;
-  owner_name?: string | null;
-  owner_suspended?: boolean | null;
-  context_id?: string | null;
-  context_name?: string | null;
-  context_kind?: "account" | "connection" | "s3_user" | null;
-  used_bytes?: number | null;
-  object_count?: number | null;
-  quota_max_size_bytes?: number | null;
-  quota_max_objects?: number | null;
-  owner_used_bytes?: number | null;
-  owner_object_count?: number | null;
-  owner_quota_max_size_bytes?: number | null;
-  owner_quota_max_objects?: number | null;
-  tags?: BucketTag[] | null;
-  features?: Record<string, BucketFeatureStatus> | null;
-  column_details?: Record<string, unknown> | null;
-  ui_tags?: BucketUiTagDefinition[];
+  tenant: string | null;
+  owner: string | null;
+  owner_name: string | null;
+  owner_suspended: boolean | null;
+  used_bytes: number | null;
+  object_count: number | null;
+  quota_max_size_bytes: number | null;
+  quota_max_objects: number | null;
+  owner_used_bytes: number | null;
+  owner_object_count: number | null;
+  owner_quota_max_size_bytes: number | null;
+  owner_quota_max_objects: number | null;
+  tags: BucketTag[] | null;
+  features: Record<string, BucketFeatureStatus> | null;
+  column_details: Record<string, unknown> | null;
+  ui_tags: BucketUiTagDefinition[];
 };
 
 export type PaginatedCephAdminBucketsResponse = PaginatedResponse<CephAdminBucket> & {
-  stats_available?: boolean;
-  stats_warning?: string | null;
+  stats_available: boolean;
+  stats_warning: string | null;
 };
 
 export type ListCephAdminBucketsParams = {
@@ -68,11 +64,9 @@ type ListCephAdminBucketsOptions = {
   signal?: AbortSignal;
 };
 
-export type BucketListingCacheRefreshResponse = {
+type CephAdminBucketListingCacheRefreshResponse = {
   refreshed: boolean;
-  endpoint_id?: number;
-  contexts?: number;
-  endpoints?: number;
+  endpoint_id: number;
 };
 
 export type CephAdminBucketConfigBackupFeature =
@@ -104,8 +98,8 @@ type CephAdminBucketConfigBackupResponse = {
   generated_at: string;
   source: {
     surface: string;
-    endpoint_id?: number | null;
-    endpoint_name?: string | null;
+    endpoint_id: number | null;
+    endpoint_name: string | null;
   };
   features: CephAdminBucketConfigBackupFeature[];
   buckets: CephAdminBucketConfigBackupBucket[];
@@ -134,8 +128,8 @@ export async function listCephAdminBuckets(
 
 export async function refreshCephAdminBucketListingCache(
   endpointId: number
-): Promise<BucketListingCacheRefreshResponse> {
-  const { data } = await client.post<BucketListingCacheRefreshResponse>(
+): Promise<CephAdminBucketListingCacheRefreshResponse> {
+  const { data } = await client.post<CephAdminBucketListingCacheRefreshResponse>(
     `/ceph-admin/endpoints/${endpointId}/buckets/cache/refresh`
   );
   return data;
@@ -193,22 +187,22 @@ export type CephAdminBucketCompareConfigFeature =
 
 type CephAdminBucketObjectDetail = {
   key: string;
-  size?: number | null;
-  etag?: string | null;
-  last_modified?: string | null;
-  storage_class?: string | null;
+  size: number | null;
+  etag: string | null;
+  last_modified: string | null;
+  storage_class: string | null;
 };
 
 type CephAdminBucketObjectDiffEntry = {
   key: string;
-  source_size?: number | null;
-  target_size?: number | null;
-  source_etag?: string | null;
-  target_etag?: string | null;
-  source_last_modified?: string | null;
-  target_last_modified?: string | null;
-  source_storage_class?: string | null;
-  target_storage_class?: string | null;
+  source_size: number | null;
+  target_size: number | null;
+  source_etag: string | null;
+  target_etag: string | null;
+  source_last_modified: string | null;
+  target_last_modified: string | null;
+  source_storage_class: string | null;
+  target_storage_class: string | null;
   compare_by: "md5" | "size";
 };
 
@@ -219,23 +213,23 @@ export type CephAdminBucketContentDiff = {
   different_count: number;
   only_source_count: number;
   only_target_count: number;
-  ignored_after_cutoff_count?: number;
-  display_limit?: number;
-  only_source_hidden_count?: number;
-  only_target_hidden_count?: number;
-  different_hidden_count?: number;
+  ignored_after_cutoff_count: number;
+  display_limit: number;
+  only_source_hidden_count: number;
+  only_target_hidden_count: number;
+  different_hidden_count: number;
   only_source_sample: string[];
   only_target_sample: string[];
-  only_source_details?: CephAdminBucketObjectDetail[];
-  only_target_details?: CephAdminBucketObjectDetail[];
+  only_source_details: CephAdminBucketObjectDetail[];
+  only_target_details: CephAdminBucketObjectDetail[];
   different_sample: CephAdminBucketObjectDiffEntry[];
 };
 
 type CephAdminBucketConfigDiffSection = {
   key: string;
   label: string;
-  source?: unknown;
-  target?: unknown;
+  source: unknown;
+  target: unknown;
   changed: boolean;
 };
 
@@ -252,8 +246,8 @@ export type CephAdminBucketCompareResult = {
   source_tenant: string;
   target_tenant: string;
   has_differences: boolean;
-  content_diff?: CephAdminBucketContentDiff | null;
-  config_diff?: CephAdminBucketConfigDiff | null;
+  content_diff: CephAdminBucketContentDiff | null;
+  config_diff: CephAdminBucketConfigDiff | null;
 };
 
 export async function compareCephAdminBucketPair(

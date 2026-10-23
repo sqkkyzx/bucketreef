@@ -40,10 +40,7 @@ from app.models.bucket import Bucket
 from app.models.bucket_usage_stats import BucketUsageStatsDistributionEntry, BucketUsageStatsSnapshot
 from app.models.iam import AccessKey as IAMAccessKey, IAMGroup, IAMUser
 from app.models.portal_monitoring import PortalAlert
-from app.models.portal_storage_spaces import (
-    PortalStorageSpaceInitialShare,
-    PortalStorageSpaceSummary,
-)
+from app.models.portal_storage_spaces import PortalStorageSpaceInitialShare
 from app.models.portal_context import PortalState
 from app.models.portal_access_keys import (
     PortalAccessKey,
@@ -94,6 +91,7 @@ from app.services.bucket_purge_service import BucketPurgeCancelled
 from app.services.traffic_service import TrafficWindow
 from app.utils.time import utcnow
 from tests.s3_account_factory import make_s3_account
+from tests.portal_storage_space_factory import portal_storage_space_summary
 
 
 @pytest.mark.parametrize(
@@ -117,6 +115,24 @@ def test_portal_state_rejects_removed_fields(removed_field):
         PortalState(**{removed_field: None})
 
 
+def test_portal_state_requires_the_complete_canonical_payload():
+    assert set(PortalState.model_json_schema()["required"]) == {
+        "portal_role",
+        "can_manage_buckets",
+        "can_create_private_storage_spaces",
+        "can_create_team_storage_spaces",
+        "can_create_external_sharing",
+        "can_manage_portal_users",
+        "portal_collaborator_role_management_delegated",
+        "portal_collaborator_addition_delegated",
+        "allow_named_bucket_create",
+        "server_access_logging_enabled",
+        "storage_space_version_cleanup_enabled",
+        "bucket_usage_stats_enabled",
+        "cost_estimation_enabled",
+    }
+
+
 def _portal_access(account, user, portal_role=PortalAccountRole.PORTAL_USER.value, can_manage_buckets=False):
     return AccountAccess(
         account=account,
@@ -131,6 +147,26 @@ def _portal_access(account, user, portal_role=PortalAccountRole.PORTAL_USER.valu
             using_root_key=False,
         ),
     )
+
+
+def _portal_access_key(access_key_id: str, **overrides) -> PortalAccessKey:
+    payload = {
+        "status": None,
+        "created_at": None,
+        "is_active": False,
+        "is_portal": False,
+        "deletable": True,
+        "secret_access_key": None,
+        "expires_at": None,
+        "session_token": None,
+        "target_type": "self",
+        "external_email": None,
+        "storage_space_name": None,
+        "bucket_name": None,
+        "permission": None,
+    }
+    payload.update(overrides)
+    return PortalAccessKey(access_key_id=access_key_id, **payload)
 
 
 def test_portal_manager_bucket_stats_rejects_out_of_scope_bucket_before_admin(monkeypatch, db_session):
@@ -209,6 +245,7 @@ def _bucket_usage_snapshot(bucket_name: str, *, scope_id: str, bytes_value: int)
         scope_id=scope_id,
         scope_name="Portal source",
         bucket_name=bucket_name,
+        bucket_tenant="",
         scan_mode="versions",
         version_listing_available=True,
         object_version_count=1,
@@ -1021,7 +1058,7 @@ def test_portal_traffic_aggregates_visible_buckets_for_portal_user(monkeypatch, 
         portal_service=service,
     )
 
-    assert result["totals"]["bytes_in"] == 2
+    assert result.totals.bytes_in == 2
     assert captured["account"] == account
     assert captured["bucket"] is None
     assert captured["bucket_filters"] == {"bucket-a", "bucket-b"}
@@ -1047,7 +1084,20 @@ def test_portal_traffic_filters_to_requested_visible_bucket(monkeypatch, db_sess
         def get_traffic(self, *, window, bucket=None, bucket_filters=None):
             captured["bucket"] = bucket
             captured["bucket_filters"] = bucket_filters
-            return {"window": window.value}
+            return {
+                "window": window.value,
+                "start": "2026-06-10T00:00:00+00:00",
+                "end": "2026-06-11T00:00:00+00:00",
+                "resolution": "daily",
+                "bucket_filter": bucket,
+                "data_points": 0,
+                "series": [],
+                "totals": {"bytes_in": 0, "bytes_out": 0, "ops": 0, "success_ops": 0, "success_rate": None},
+                "bucket_rankings": [],
+                "user_rankings": [],
+                "request_breakdown": [],
+                "category_breakdown": [],
+            }
 
     monkeypatch.setattr(portal_traffic_router, "TrafficService", FakeTrafficService)
 
@@ -1177,8 +1227,8 @@ def test_access_keys_state_hides_portal_key_and_exposes_policy(monkeypatch, db_s
 
         def list_access_keys(self, iam_username):  # noqa: ARG002
             return [
-                PortalAccessKey(access_key_id="AK-PORTAL", status="Active", created_at="2026-01-01T00:00:00Z"),
-                PortalAccessKey(access_key_id="AK-USER", status="Inactive", created_at="2026-01-02T00:00:00Z"),
+                _portal_access_key("AK-PORTAL", status="Active", created_at="2026-01-01T00:00:00Z"),
+                _portal_access_key("AK-USER", status="Inactive", created_at="2026-01-02T00:00:00Z"),
             ]
 
     monkeypatch.setattr(service, "_get_iam_service", lambda acc: _FakeIAMService())
@@ -2264,14 +2314,14 @@ def test_portal_browser_allowed_buckets_use_content_access(monkeypatch, db_sessi
         PortalService,
         "list_storage_spaces",
         lambda *_args, **_kwargs: [
-            PortalStorageSpaceSummary(
+            portal_storage_space_summary(
                 id="owner-private",
                 name="Owner Private",
                 role="Manager",
                 can_browse=False,
                 internal_bucket_name="owner-private",
             ),
-            PortalStorageSpaceSummary(
+            portal_storage_space_summary(
                 id="shared-data",
                 name="Shared Data",
                 role="Manager",
@@ -2654,7 +2704,7 @@ def test_create_storage_space_generic_uses_managed_uuid_bucket_and_editable_name
     monkeypatch.setattr(
         service,
         "get_storage_space",
-        lambda _user, _access, bucket_name: PortalStorageSpaceSummary(
+        lambda _user, _access, bucket_name: portal_storage_space_summary(
             id=bucket_name,
             name="Research Data",
             role="Owner",
@@ -2709,7 +2759,7 @@ def test_create_storage_space_configures_server_access_logging(monkeypatch, db_s
     monkeypatch.setattr(
         service,
         "get_storage_space",
-        lambda _user, _access, bucket_name: PortalStorageSpaceSummary(
+        lambda _user, _access, bucket_name: portal_storage_space_summary(
             id=bucket_name,
             name="Research Data",
             role="Owner",
@@ -2877,7 +2927,7 @@ def test_portal_user_can_create_storage_space_when_setting_is_enabled(monkeypatc
     monkeypatch.setattr(
         service,
         "get_storage_space",
-        lambda _user, _access, bucket_name: PortalStorageSpaceSummary(
+        lambda _user, _access, bucket_name: portal_storage_space_summary(
             id=bucket_name,
             name="Research Data",
             role="Owner",
@@ -2998,7 +3048,7 @@ def test_create_restricted_storage_space_persists_initial_shares_atomically(monk
     monkeypatch.setattr(
         service,
         "get_storage_space",
-        lambda _user, _access, bucket_name: PortalStorageSpaceSummary(
+        lambda _user, _access, bucket_name: portal_storage_space_summary(
             id=bucket_name,
             name="Restricted Research",
             role="Owner",
@@ -3130,7 +3180,7 @@ def test_create_storage_space_named_bucket_preserves_exact_name_and_locks_name(m
         service,
         "list_storage_spaces",
         lambda *_args, **_kwargs: [
-            PortalStorageSpaceSummary(
+            portal_storage_space_summary(
                 id="research-data",
                 name="Research Data",
                 role="Owner",
@@ -3146,7 +3196,7 @@ def test_create_storage_space_named_bucket_preserves_exact_name_and_locks_name(m
     monkeypatch.setattr(
         service,
         "get_storage_space",
-        lambda _user, _access, bucket_name: PortalStorageSpaceSummary(
+        lambda _user, _access, bucket_name: portal_storage_space_summary(
             id=bucket_name,
             name="Research Data",
             role="Owner",
@@ -3184,7 +3234,7 @@ def test_create_named_space_rejects_invalid_or_duplicate_name_without_mutation(n
         allow_private_storage_space_create=True, allow_portal_named_bucket_create=True,
     ))
     monkeypatch.setattr(service, "list_storage_spaces", lambda *_args, **_kwargs: [
-        PortalStorageSpaceSummary(id="research-data", name="Research Data", role="Owner"),
+        portal_storage_space_summary(id="research-data", name="Research Data", role="Owner"),
     ])
     monkeypatch.setattr(service, "create_bucket", lambda *_args, **_kwargs: pytest.fail("Invalid named bucket must not be created"))
     with pytest.raises(RuntimeError, match="Invalid bucket name|already exists"):
@@ -3236,7 +3286,7 @@ def test_import_storage_space_uses_existing_bucket_name_and_locks_name(monkeypat
     monkeypatch.setattr(
         service,
         "get_storage_space",
-        lambda _user, _access, bucket_name: PortalStorageSpaceSummary(
+        lambda _user, _access, bucket_name: portal_storage_space_summary(
             id=bucket_name,
             name=bucket_name,
             role="Owner",
@@ -3285,7 +3335,7 @@ def test_import_restricted_storage_space_persists_initial_shares(monkeypatch, db
     monkeypatch.setattr(
         service,
         "get_storage_space",
-        lambda _user, _access, bucket_name: PortalStorageSpaceSummary(
+        lambda _user, _access, bucket_name: portal_storage_space_summary(
             id=bucket_name,
             name=bucket_name,
             role="Owner",
@@ -3338,7 +3388,7 @@ def test_update_storage_space_locked_names_reject_rename_but_accept_description(
     monkeypatch.setattr(
         service,
         "get_storage_space",
-        lambda _user, _access, bucket_name: PortalStorageSpaceSummary(
+        lambda _user, _access, bucket_name: portal_storage_space_summary(
             id=bucket_name,
             name=metadata.display_name or bucket_name,
             role="Owner",
@@ -3380,7 +3430,7 @@ def test_update_storage_space_allows_rename_when_name_is_editable(monkeypatch, d
     monkeypatch.setattr(
         service,
         "get_storage_space",
-        lambda _user, _access, bucket_name: PortalStorageSpaceSummary(
+        lambda _user, _access, bucket_name: portal_storage_space_summary(
             id=bucket_name,
             name=metadata.display_name or bucket_name,
             role="Owner",
@@ -3433,7 +3483,7 @@ def test_update_storage_space_restores_archived_space_without_deleting_links(mon
     monkeypatch.setattr(
         service,
         "get_storage_space",
-        lambda _user, _access, bucket_name: PortalStorageSpaceSummary(
+        lambda _user, _access, bucket_name: portal_storage_space_summary(
             id=bucket_name,
             name=metadata.display_name or bucket_name,
             role="Owner",
@@ -4134,7 +4184,7 @@ def test_storage_space_role_matrix_for_files_shares_and_portal_settings(monkeypa
         service,
         "list_storage_spaces",
         lambda *_args, **_kwargs: [
-            PortalStorageSpaceSummary(
+            portal_storage_space_summary(
                 id="research-data",
                 name="Research Data",
                 role=actor_grant.role,
@@ -4267,7 +4317,7 @@ def test_object_detail_and_delete_use_safe_portal_operations(monkeypatch, db_ses
         service,
         "list_storage_spaces",
         lambda *_args, **_kwargs: [
-            PortalStorageSpaceSummary(
+            portal_storage_space_summary(
                 id="research-data",
                 name="Research Data",
                 role="Editor",
@@ -4764,7 +4814,7 @@ def test_list_storage_space_shares_uses_db_grants(monkeypatch, db_session):
         service,
         "list_storage_spaces",
         lambda *_args, **_kwargs: [
-            PortalStorageSpaceSummary(
+            portal_storage_space_summary(
                 id="research-data",
                 name="Research Data",
                 role="Owner",
@@ -4880,7 +4930,7 @@ def test_storage_space_share_candidates_use_effective_portal_members(monkeypatch
         service,
         "list_storage_spaces",
         lambda *_args, **_kwargs: [
-            PortalStorageSpaceSummary(
+            portal_storage_space_summary(
                 id="research-data",
                 name="Research Data",
                 role="Owner",
@@ -5028,7 +5078,7 @@ def test_portal_collaborators_summarize_effective_members_and_visible_external_a
         service,
         "list_storage_spaces",
         lambda *_args, **_kwargs: [
-            PortalStorageSpaceSummary(
+            portal_storage_space_summary(
                 id="visible-data",
                 name="Visible Data",
                 role="Owner",
@@ -5276,7 +5326,7 @@ def test_storage_space_access_summary_reflects_modes_counts_and_manager_access(m
             ("archived-data", "Archived Data"),
         ]
         return [
-            PortalStorageSpaceSummary(
+            portal_storage_space_summary(
                 id=bucket_name,
                 name=display_name,
                 role="Manager",
@@ -5340,7 +5390,7 @@ def test_set_storage_space_share_requires_existing_portal_member(monkeypatch, db
         service,
         "list_storage_spaces",
         lambda *_args, **_kwargs: [
-            PortalStorageSpaceSummary(
+            portal_storage_space_summary(
                 id="research-data",
                 name="Research Data",
                 role="Owner",
@@ -5383,7 +5433,7 @@ def test_set_storage_space_share_rolls_back_db_grant_when_projection_fails(monke
         service,
         "list_storage_spaces",
         lambda *_args, **_kwargs: [
-            PortalStorageSpaceSummary(
+            portal_storage_space_summary(
                 id="research-data",
                 name="Research Data",
                 role="Owner",
@@ -5439,7 +5489,7 @@ def test_storage_space_share_mutations_resync_bucket_policy(monkeypatch, db_sess
         service,
         "list_storage_spaces",
         lambda *_args, **_kwargs: [
-            PortalStorageSpaceSummary(
+            portal_storage_space_summary(
                 id="research-data",
                 name="Research Data",
                 role="Owner",
@@ -5490,7 +5540,7 @@ def test_public_links_are_scoped_expirable_and_revocable(monkeypatch, db_session
         service,
         "list_storage_spaces",
         lambda *_args, **_kwargs: [
-            PortalStorageSpaceSummary(
+            portal_storage_space_summary(
                 id="research-data",
                 name="Research Data",
                 role="Owner",
@@ -5566,7 +5616,7 @@ def test_public_link_creation_rejects_missing_objects(monkeypatch, db_session):
         service,
         "list_storage_spaces",
         lambda *_args, **_kwargs: [
-            PortalStorageSpaceSummary(
+            portal_storage_space_summary(
                 id="research-data",
                 name="Research Data",
                 role="Owner",
@@ -5630,7 +5680,7 @@ def test_private_storage_space_blocks_new_shares_and_public_links(monkeypatch, d
         service,
         "list_storage_spaces",
         lambda *_args, **_kwargs: [
-            PortalStorageSpaceSummary(
+            portal_storage_space_summary(
                 id="private-data",
                 name="Private Data",
                 role="Owner",
@@ -5673,7 +5723,7 @@ def test_portal_user_owner_can_create_private_public_link_when_external_sharing_
         service,
         "list_storage_spaces",
         lambda *_args, **_kwargs: [
-            PortalStorageSpaceSummary(
+            portal_storage_space_summary(
                 id="private-public-data",
                 name="Private Public Data",
                 role="Owner",
@@ -5808,7 +5858,7 @@ def test_portal_governance_activity_is_filtered_by_visible_storage_spaces(monkey
         service,
         "list_storage_spaces",
         lambda *_args, **_kwargs: [
-            PortalStorageSpaceSummary(id="research-data", name="Research Data", role="Owner", internal_bucket_name="research-data")
+            portal_storage_space_summary(id="research-data", name="Research Data", role="Owner", internal_bucket_name="research-data")
         ],
     )
     access = _portal_access(account, user, portal_role=PortalAccountRole.PORTAL_MANAGER.value, can_manage_buckets=True)
@@ -5923,8 +5973,8 @@ def test_portal_usage_exposes_quota_and_real_storage_space_breakdown(monkeypatch
         service,
         "list_storage_spaces",
         lambda *_args, **_kwargs: [
-            PortalStorageSpaceSummary(id="research-data", name="Research Data", role="Owner", internal_bucket_name="research-data"),
-            PortalStorageSpaceSummary(id="archive", name="Archive", role="Owner", internal_bucket_name="archive"),
+            portal_storage_space_summary(id="research-data", name="Research Data", role="Owner", internal_bucket_name="research-data"),
+            portal_storage_space_summary(id="archive", name="Archive", role="Owner", internal_bucket_name="archive"),
         ],
     )
 
@@ -6188,13 +6238,13 @@ def test_portal_usage_stats_latest_filters_to_visible_storage_spaces(monkeypatch
         service,
         "list_storage_spaces",
         lambda *_args, **_kwargs: [
-            PortalStorageSpaceSummary(
+            portal_storage_space_summary(
                 id="visible-space",
                 name="Visible",
                 role="Viewer",
                 internal_bucket_name="visible-space",
             ),
-            PortalStorageSpaceSummary(
+            portal_storage_space_summary(
                 id="missing-space",
                 name="Missing",
                 role="Viewer",
@@ -6253,7 +6303,7 @@ def test_portal_storage_space_usage_stats_returns_sanitized_snapshot(monkeypatch
         service,
         "list_storage_spaces",
         lambda *_args, **_kwargs: [
-            PortalStorageSpaceSummary(
+            portal_storage_space_summary(
                 id="space-id",
                 name="Space",
                 role="Viewer",
@@ -6302,7 +6352,7 @@ def test_portal_storage_space_usage_stats_returns_empty_without_snapshot(monkeyp
         service,
         "list_storage_spaces",
         lambda *_args, **_kwargs: [
-            PortalStorageSpaceSummary(
+            portal_storage_space_summary(
                 id="space-id",
                 name="Space",
                 role="Viewer",
@@ -6347,7 +6397,7 @@ def test_portal_storage_space_usage_stats_rejects_inaccessible_space(
         service,
         "list_storage_spaces",
         lambda *_args, **_kwargs: [
-            PortalStorageSpaceSummary(
+            portal_storage_space_summary(
                 id="space-id",
                 name="Space",
                 role="Viewer",
@@ -6515,13 +6565,21 @@ def test_portal_alerts_are_derived_from_quota_and_public_sharing(monkeypatch, db
         service,
         "list_storage_spaces",
         lambda *_args, **_kwargs: [
-            PortalStorageSpaceSummary(id="public-data", name="Public Data", role="Owner", internal_bucket_name="public-data")
+            portal_storage_space_summary(id="public-data", name="Public Data", role="Owner", internal_bucket_name="public-data")
         ],
     )
     monkeypatch.setattr(
         service,
         "get_usage",
-        lambda *_args, **_kwargs: PortalUsage(used_bytes=90, used_objects=None, quota_max_size_bytes=100),
+        lambda *_args, **_kwargs: PortalUsage(
+            used_bytes=90,
+            used_objects=None,
+            quota_max_size_bytes=100,
+            quota_max_objects=None,
+            max_buckets=None,
+            storage_spaces=[],
+            other_storage_space=None,
+        ),
     )
     access = _portal_access(account, user, portal_role=PortalAccountRole.PORTAL_MANAGER.value, can_manage_buckets=True)
 
@@ -6546,6 +6604,8 @@ def test_portal_alert_deduplication_keeps_highest_severity():
                 title="Endpoint degraded",
                 description="Storage is degraded.",
                 severity_label="Warning",
+                storage_space_id=None,
+                created_at=None,
             ),
             PortalAlert(
                 id="endpoint-degraded",
@@ -6553,6 +6613,8 @@ def test_portal_alert_deduplication_keeps_highest_severity():
                 title="Endpoint down",
                 description="Storage is unavailable.",
                 severity_label="Critical",
+                storage_space_id=None,
+                created_at=None,
             ),
         ]
     )
@@ -6789,7 +6851,15 @@ def test_portal_alerts_are_empty_for_isolated_tenant_and_no_signals(monkeypatch,
     monkeypatch.setattr(
         service,
         "get_usage",
-        lambda *_args, **_kwargs: PortalUsage(used_bytes=None, used_objects=None, quota_max_size_bytes=None),
+        lambda *_args, **_kwargs: PortalUsage(
+            used_bytes=None,
+            used_objects=None,
+            quota_max_size_bytes=None,
+            quota_max_objects=None,
+            max_buckets=None,
+            storage_spaces=[],
+            other_storage_space=None,
+        ),
     )
     access = _portal_access(account, user, portal_role=PortalAccountRole.PORTAL_MANAGER.value, can_manage_buckets=True)
 
@@ -6818,7 +6888,7 @@ def test_download_storage_space_object_streams_visible_object(monkeypatch, db_se
         service,
         "list_storage_spaces",
         lambda *_args, **_kwargs: [
-            PortalStorageSpaceSummary(
+            portal_storage_space_summary(
                 id="research-data",
                 name="Research Data",
                 role="Editor",
@@ -6917,6 +6987,7 @@ def test_portal_object_restore_route_does_not_require_application_audit(db_sessi
             return PortalStorageObjectRestoreResponse(
                 key=key,
                 restored_from_version_id=version_id,
+                message="Restored",
             )
 
     response = portal_objects_router.portal_restore_storage_space_object(
@@ -7021,8 +7092,8 @@ def test_create_access_key_rejects_when_limit_reached(monkeypatch, db_session):
         service,
         "_list_access_keys",
         lambda link_obj, iam_obj, include_portal=False: [
-            PortalAccessKey(access_key_id="AK-1", is_portal=False),
-            PortalAccessKey(access_key_id="AK-2", is_portal=False),
+            _portal_access_key("AK-1"),
+            _portal_access_key("AK-2"),
         ],
     )
 
@@ -7078,7 +7149,7 @@ def test_create_access_key_allows_when_below_limit(monkeypatch, db_session):
     monkeypatch.setattr(
         service,
         "_list_access_keys",
-        lambda link_obj, iam_obj, include_portal=False: [PortalAccessKey(access_key_id="AK-1", is_portal=False)],
+        lambda link_obj, iam_obj, include_portal=False: [_portal_access_key("AK-1")],
     )
 
     created = service.create_access_key(user, access)
@@ -7535,14 +7606,14 @@ def test_portal_access_key_routes_record_audit(db_session):
         def create_access_key(self, user_obj, access_obj, payload=None):  # noqa: ARG002
             assert user_obj == user
             assert access_obj == access
-            return PortalAccessKey(access_key_id="AK-NEW", secret_access_key="SK-NEW", is_portal=False)
+            return _portal_access_key("AK-NEW", secret_access_key="SK-NEW")
 
         def update_access_key_status(self, user_obj, access_obj, access_key_id, active):
             assert user_obj == user
             assert access_obj == access
             assert access_key_id == "AK-NEW"
             assert active is False
-            return PortalAccessKey(access_key_id="AK-NEW", status="Inactive", is_active=False, is_portal=False)
+            return _portal_access_key("AK-NEW", status="Inactive")
 
         def delete_access_key(self, user_obj, access_obj, access_key_id):
             assert user_obj == user
@@ -7608,8 +7679,8 @@ def test_portal_access_key_route_audits_external_metadata_without_secret(db_sess
             assert user_obj == user
             assert access_obj == access
             assert payload_obj == payload
-            return PortalAccessKey(
-                access_key_id="AK-EXT",
+            return _portal_access_key(
+                "AK-EXT",
                 secret_access_key="SK-EXT",
                 target_type="external",
                 external_email="partner@example.org",
@@ -7623,8 +7694,8 @@ def test_portal_access_key_route_audits_external_metadata_without_secret(db_sess
             assert access_obj == access
             assert access_key_id == "AK-EXT"
             assert active is False
-            return PortalAccessKey(
-                access_key_id="AK-EXT",
+            return _portal_access_key(
+                "AK-EXT",
                 target_type="external",
                 external_email="partner@example.org",
                 storage_space_name="Research Data",
@@ -7637,8 +7708,8 @@ def test_portal_access_key_route_audits_external_metadata_without_secret(db_sess
             assert user_obj == user
             assert access_obj == access
             assert access_key_id == "AK-EXT"
-            return PortalAccessKey(
-                access_key_id="AK-EXT",
+            return _portal_access_key(
+                "AK-EXT",
                 target_type="external",
                 external_email="partner@example.org",
                 storage_space_name="Research Data",

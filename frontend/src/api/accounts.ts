@@ -13,47 +13,58 @@ import type { AccountAccessGrant } from "./accountAccess";
 
 export type AccountUserLink = AccountAccessGrant & {
   user_id: number;
-  user_email?: string | null;
-  user_full_name?: string | null;
-  user_avatar?: UserAvatarDescriptor | null;
+  user_email: string | null;
+  user_full_name: string | null;
+  user_avatar: UserAvatarDescriptor | null;
 };
 
 export type AccountGroupLink = AccountAccessGrant & {
   group_id: number;
-  group_name?: string | null;
-  group_avatar?: UiGroupAvatarDescriptor | null;
+  group_name: string | null;
+  group_avatar: UiGroupAvatarDescriptor | null;
 };
+
+type AccountUserLinkInput = Pick<
+  AccountUserLink,
+  "user_id" | "manager_role" | "portal_role" | "allow_manager_browser_data_access"
+>;
+
+type AccountGroupLinkInput = Pick<
+  AccountGroupLink,
+  "group_id" | "manager_role" | "portal_role" | "allow_manager_browser_data_access"
+>;
 
 export type S3Account = {
   id: number;
   name: string;
   tags: TagDefinitionSummary[];
-  quota_max_size_gb?: number | null;
-  quota_max_objects?: number | null;
+  quota_max_size_gb: number | null;
+  quota_max_objects: number | null;
   rgw_account_id: string;
   rgw_tenant: string;
-  email?: string | null;
-  used_bytes?: number | null;
+  email: string | null;
+  used_bytes: number | null;
+  used_objects: number | null;
   user_links: AccountUserLink[];
   group_links: AccountGroupLink[];
-  bucket_count?: number | null;
-  rgw_user_count?: number | null;
-  rgw_user_uids?: string[] | null;
-  rgw_topic_count?: number | null;
-  rgw_topics?: string[] | null;
+  bucket_count: number | null;
+  rgw_user_count: number | null;
+  rgw_user_uids: string[] | null;
+  rgw_topic_count: number | null;
+  rgw_topics: string[] | null;
   storage_endpoint_id: number;
   storage_endpoint_name: string;
   storage_endpoint_url: string;
   storage_endpoint_is_default: boolean;
   storage_endpoint_capabilities: Record<string, boolean>;
-  allow_bucket_quota_management?: boolean | null;
-  allow_access_key_metadata?: boolean | null;
-  allow_access_key_expiration?: boolean | null;
-  allow_activity_history?: boolean | null;
-  allow_rgw_usage_metrics?: boolean | null;
-  allow_cost_estimation?: boolean | null;
-  allow_bucket_usage_stats?: boolean | null;
-  allow_bucket_usage_stats_collection?: boolean | null;
+  allow_bucket_quota_management: boolean | null;
+  allow_access_key_metadata: boolean | null;
+  allow_access_key_expiration: boolean | null;
+  allow_activity_history: boolean | null;
+  allow_rgw_usage_metrics: boolean | null;
+  allow_cost_estimation: boolean | null;
+  allow_bucket_usage_stats: boolean | null;
+  allow_bucket_usage_stats_collection: boolean | null;
 };
 
 export type S3AccountSummary = {
@@ -69,14 +80,14 @@ export type S3AccountSummary = {
   storage_endpoint_url: string;
   storage_endpoint_is_default: boolean;
   storage_endpoint_capabilities: Record<string, boolean>;
-  allow_bucket_quota_management?: boolean | null;
-  allow_access_key_metadata?: boolean | null;
-  allow_access_key_expiration?: boolean | null;
-  allow_activity_history?: boolean | null;
-  allow_rgw_usage_metrics?: boolean | null;
-  allow_cost_estimation?: boolean | null;
-  allow_bucket_usage_stats?: boolean | null;
-  allow_bucket_usage_stats_collection?: boolean | null;
+  allow_bucket_quota_management: boolean | null;
+  allow_access_key_metadata: boolean | null;
+  allow_access_key_expiration: boolean | null;
+  allow_activity_history: boolean | null;
+  allow_rgw_usage_metrics: boolean | null;
+  allow_cost_estimation: boolean | null;
+  allow_bucket_usage_stats: boolean | null;
+  allow_bucket_usage_stats_collection: boolean | null;
 };
 
 type PaginatedS3AccountsResponse = PaginatedResponse<S3Account>;
@@ -131,8 +142,8 @@ type UpdateS3AccountPayload = {
   quota_max_size_gb?: number | null;
   quota_max_size_unit?: string | null;
   quota_max_objects?: number | null;
-  user_links?: AccountUserLink[];
-  group_links?: AccountGroupLink[];
+  user_links?: AccountUserLinkInput[];
+  group_links?: AccountGroupLinkInput[];
   name?: string | null;
   email?: string | null;
   storage_endpoint_id?: number;

@@ -2,7 +2,7 @@ import { DEFAULT_MANAGER_FEATURE_POLICIES, DEFAULT_PORTAL_FEATURE_POLICIES, DEFA
 import type { BrowserFavorite } from "../api/browserFavorites";
 import type { User } from "../api/users";
 import type { S3Account } from "../api/accounts";
-import type { UiGroup } from "../api/groups";
+import type { UiGroup, UiGroupUserDetail } from "../api/groups";
 import type { StorageEndpoint } from "../api/storageEndpoints";
 import type { Bucket } from "../api/bucketContracts";
 import type { ObjectMetadata, ObjectTag } from "../api/browserContracts";
@@ -16,7 +16,7 @@ import type { IAMGroup } from "../api/managerIamGroups";
 import type { IAMRole } from "../api/managerIamRoles";
 import type { IamPolicy, InlinePolicy } from "../api/managerIamPolicies";
 import type { S3Connection } from "../api/connections";
-import type { S3ConnectionAdminItem } from "../api/s3ConnectionsAdmin";
+import type { S3ConnectionAdminItem, S3ConnectionUserDetail } from "../api/s3ConnectionsAdmin";
 import type { UserNotification } from "../api/userNotifications";
 import type { CephAdminRgwAccountDetail } from "../api/cephAdminAccounts";
 
@@ -36,6 +36,146 @@ export type DemoIam = {
   keys: Record<string, AccessKey[]>; attachments: Record<string, IamPolicy[]>; inline: Record<string, InlinePolicy[]>;
 };
 export type DemoUser = Omit<User, "effective_access">;
+
+export function createDemoSpace(
+  input: Pick<DemoSpace, "id" | "name" | "accountId" | "bucketName" | "internal_bucket_name" | "role"> & Partial<DemoSpace>,
+): DemoSpace {
+  return {
+    id: input.id,
+    name: input.name,
+    accountId: input.accountId,
+    bucketName: input.bucketName,
+    internal_bucket_name: input.internal_bucket_name,
+    role: input.role,
+    can_browse: input.can_browse ?? true,
+    can_delete: input.can_delete ?? false,
+    can_take_ownership: input.can_take_ownership ?? false,
+    status: input.status ?? "Active",
+    description: input.description ?? null,
+    owner_label: input.owner_label ?? null,
+    owner_user_id: input.owner_user_id ?? null,
+    collaborators: input.collaborators ?? [],
+    collaborator_count: input.collaborator_count ?? 0,
+    visibility: input.visibility ?? "private",
+    share_scope: input.share_scope ?? "restricted",
+    account_member_role: input.account_member_role ?? null,
+    project_key: input.project_key ?? null,
+    dataset_label: input.dataset_label ?? null,
+    region: input.region ?? null,
+    created_at: input.created_at ?? null,
+    used_bytes: input.used_bytes ?? null,
+    object_count: input.object_count ?? null,
+    quota_max_size_bytes: input.quota_max_size_bytes ?? null,
+    quota_max_objects: input.quota_max_objects ?? null,
+    archived_at: input.archived_at ?? null,
+    origin: input.origin ?? "imported",
+    name_editable: input.name_editable ?? false,
+    icon: input.icon ?? { source: "preset", preset: "bucket", url: null, updated_at: null },
+    shares: input.shares ?? [],
+  };
+}
+
+export function createDemoUser(input: Pick<DemoUser, "id" | "email"> & Partial<DemoUser>): DemoUser {
+  const role = input.role ?? "ui_user";
+  const fullName = input.full_name ?? null;
+  const initials = fullName
+    ? fullName.split(/\s+/).filter(Boolean).slice(0, 2).map(part => part[0]?.toUpperCase() ?? "").join("")
+    : input.email.slice(0, 1).toUpperCase();
+  return {
+    id: input.id,
+    email: input.email,
+    full_name: fullName,
+    picture_url: input.picture_url ?? null,
+    avatar: input.avatar ?? {
+      preference: "auto",
+      source: "initials",
+      url: null,
+      initials,
+      updated_at: null,
+    },
+    has_local_password: input.has_local_password ?? true,
+    is_active: input.is_active ?? true,
+    is_admin: input.is_admin ?? (role === "ui_admin" || role === "ui_superadmin"),
+    role,
+    can_access_ceph_admin: input.can_access_ceph_admin ?? false,
+    can_access_storage_ops: input.can_access_storage_ops ?? false,
+    can_create_manual_private_connections: input.can_create_manual_private_connections ?? false,
+    can_provision_managed_private_connections: input.can_provision_managed_private_connections ?? false,
+    manager_tool_access: input.manager_tool_access ?? { ...tools },
+    browser_advanced_features_enabled: input.browser_advanced_features_enabled ?? false,
+    ui_language: input.ui_language ?? "en",
+    quota_alerts_enabled: input.quota_alerts_enabled ?? true,
+    quota_alerts_global_watch: input.quota_alerts_global_watch ?? false,
+    ui_preferences: input.ui_preferences ?? { theme: null, selected_portal_account_id: null },
+    account_links: input.account_links ?? [],
+    group_details: input.group_details ?? [],
+    s3_user_links: input.s3_user_links ?? [],
+    s3_user_details: input.s3_user_details ?? [],
+    s3_connection_details: input.s3_connection_details ?? [],
+    last_login_at: input.last_login_at ?? null,
+  };
+}
+
+export function demoGroupUser(user: DemoUser): UiGroupUserDetail {
+  return {
+    id: user.id,
+    email: user.email,
+    role: user.role,
+    full_name: user.full_name,
+    avatar: user.avatar,
+  };
+}
+
+export function demoConnectionUser(user: DemoUser): S3ConnectionUserDetail {
+  return {
+    id: user.id,
+    email: user.email,
+    full_name: user.full_name,
+    avatar: user.avatar,
+  };
+}
+
+export function createDemoGroup(input: Pick<UiGroup, "id" | "name"> & Partial<UiGroup>): UiGroup {
+  const initials = input.name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map(part => part[0]?.toUpperCase() ?? "")
+    .join("");
+  return {
+    id: input.id,
+    name: input.name,
+    description: input.description ?? null,
+    avatar: input.avatar ?? {
+      source: "initials",
+      initials,
+      icon: null,
+      url: null,
+      updated_at: null,
+    },
+    can_access_ceph_admin: input.can_access_ceph_admin ?? false,
+    can_access_storage_ops: input.can_access_storage_ops ?? false,
+    can_create_manual_private_connections: input.can_create_manual_private_connections ?? false,
+    can_provision_managed_private_connections: input.can_provision_managed_private_connections ?? false,
+    manager_tool_access: input.manager_tool_access ?? {
+      bucket_compare: false,
+      bucket_migration: false,
+      bucket_integrity_check: false,
+      bucket_purge: false,
+      feature_rules: false,
+    },
+    browser_advanced_features_enabled: input.browser_advanced_features_enabled ?? false,
+    user_details: input.user_details ?? [],
+    account_details: input.account_details ?? [],
+    account_links: input.account_links ?? [],
+    s3_user_links: input.s3_user_links ?? [],
+    s3_user_details: input.s3_user_details ?? [],
+    s3_connection_details: input.s3_connection_details ?? [],
+    created_at: input.created_at ?? null,
+    updated_at: input.updated_at ?? null,
+  };
+}
+
 export type DemoState = {
   browserFavorites?: Record<number, BrowserFavorite[]>;
   initializedAt: string; nextId: number; users: DemoUser[]; groups: UiGroup[];
@@ -95,8 +235,10 @@ export function putObject(bucket: DemoBucket, key: string, body: Blob, imported:
   let object = bucket.objects.find(item => item.key === key);
   if (!object) { object = { key, tags: [], versions: [] }; bucket.objects.push(object); }
   const version: DemoObjectVersion = { key, body, size: body.size, content_type: body.type || "application/octet-stream",
-    imported, metadata: { source: imported ? "local-upload" : "demo-scenario" }, last_modified: date,
-    etag: `"demo-${body.size}-${date.replace(/\D/g, "")}"`, storage_class: "STANDARD", version_id: crypto.randomUUID() };
+    cache_control: null, content_disposition: null, content_encoding: null, content_language: null,
+    expires: null, restore_status: null, imported, metadata: { source: imported ? "local-upload" : "demo-scenario" },
+    last_modified: date, etag: `"demo-${body.size}-${date.replace(/\D/g, "")}"`, storage_class: "STANDARD",
+    version_id: crypto.randomUUID() };
   if (!(bucket.config.versioning as { enabled: boolean }).enabled) object.versions = [];
   object.versions.unshift(version);
   return object;
@@ -138,35 +280,43 @@ export function createSeed(): DemoState {
   const accounts: S3Account[] = names.map((name, i) => ({
     id: 101 + i, name, rgw_account_id: `RGW${58084876167649330n + BigInt(i)}`, rgw_tenant: "", email: `team-${i}@example.com`,
     tags: [], user_links: [], group_links: [], quota_max_size_gb: 500, quota_max_objects: 500000,
+    used_bytes: null, used_objects: null, bucket_count: null, rgw_user_count: null, rgw_user_uids: null, rgw_topic_count: null, rgw_topics: null,
     storage_endpoint_id: endpoints[i % 2].id, storage_endpoint_name: endpoints[i % 2].name,
     storage_endpoint_url: endpoints[i % 2].endpoint_url, storage_endpoint_is_default: i % 2 === 0,
     storage_endpoint_capabilities: endpoints[i % 2].capabilities!, allow_bucket_quota_management: true,
+    allow_access_key_metadata: null, allow_access_key_expiration: null, allow_activity_history: null,
+    allow_rgw_usage_metrics: null, allow_cost_estimation: null, allow_bucket_usage_stats: null,
+    allow_bucket_usage_stats_collection: null,
   }));
   const first = ["Alex", "Sam", "Jordan", "Morgan", "Taylor", "Casey", "Robin", "Avery", "Jamie", "Riley", "Cameron", "Drew"];
   const last = ["Martin", "Chen", "Patel", "Garcia", "Kim"];
   const users: DemoUser[] = Array.from({ length: 60 }, (_, i) => {
     const full_name = `${first[i % 12]} ${last[Math.floor(i / 12)]}`;
-    return { id: i + 1, email: `${full_name.toLowerCase().replace(" ", ".")}@example.com`, full_name,
+    return createDemoUser({ id: i + 1, email: `${full_name.toLowerCase().replace(" ", ".")}@example.com`, full_name,
       role: i === 0 ? "ui_superadmin" : i === 4 ? "ui_admin" : "ui_user", is_active: true, has_local_password: true,
       can_access_ceph_admin: i === 0 || i === 4, can_access_storage_ops: false, ui_language: "en",
       can_create_manual_private_connections: true, can_provision_managed_private_connections: false,
       browser_advanced_features_enabled: true, manager_tool_access: { ...tools }, last_login_at: at(i % 9),
       account_links: [{ account_id: 101 + (i < 5 ? 0 : i % 5), manager_role: i === 1 ? "account_administrator" : null,
         portal_role: i === 3 ? "portal_manager" : i === 1 ? null : "portal_user", allow_manager_browser_data_access: i === 1 }],
-      group_details: [], s3_user_details: [], s3_connection_details: [] };
+      group_details: [], s3_user_details: [], s3_connection_details: [] });
   });
   users[1].account_links = accounts.map(a => ({ account_id: a.id, manager_role: "account_administrator", portal_role: null, allow_manager_browser_data_access: true }));
-  users[2].account_links = accounts.slice(0, 2).map(a => ({ account_id: a.id, manager_role: null, portal_role: "portal_user" }));
-  users[3].account_links = accounts.slice(0, 2).map(a => ({ account_id: a.id, manager_role: null, portal_role: "portal_manager" }));
-  for (const account of accounts) account.user_links = users.flatMap(user => user.account_links?.filter(link => link.account_id === account.id).map(link => ({ ...link, user_id: user.id, user_email: user.email, user_full_name: user.full_name })) ?? []);
-  const groups: UiGroup[] = ["Platform", "Engineering", "Design", "Research", "Operations", "Contractors"].map((name, i) => ({
-    id: 201 + i, name, description: `${name} team · demo organisation`, user_details: users.filter(u => u.id % 6 === i),
-    account_links: [], account_details: [], s3_user_details: [], s3_connection_details: [], created_at: at(90), updated_at: at(i),
+  users[2].account_links = accounts.slice(0, 2).map(a => ({ account_id: a.id, manager_role: null, portal_role: "portal_user", allow_manager_browser_data_access: false }));
+  users[3].account_links = accounts.slice(0, 2).map(a => ({ account_id: a.id, manager_role: null, portal_role: "portal_manager", allow_manager_browser_data_access: false }));
+  for (const account of accounts) account.user_links = users.flatMap(user => user.account_links?.filter(link => link.account_id === account.id).map(link => ({ ...link, user_id: user.id, user_email: user.email, user_full_name: user.full_name, user_avatar: user.avatar })) ?? []);
+  const groups: UiGroup[] = ["Platform", "Engineering", "Design", "Research", "Operations", "Contractors"].map((name, i) => createDemoGroup({
+    id: 201 + i,
+    name,
+    description: `${name} team · demo organisation`,
+    user_details: users.filter(u => u.id % 6 === i).map(demoGroupUser),
+    created_at: at(90),
+    updated_at: at(i),
   }));
   const designGroupGrant = { account_id: accounts[0].id, manager_role: "account_administrator" as const, portal_role: null, allow_manager_browser_data_access: true };
   groups[2].account_links = [designGroupGrant];
   groups[2].account_details = [{ id: accounts[0].id, name: accounts[0].name, rgw_account_id: accounts[0].rgw_account_id }];
-  accounts[0].group_links = [{ ...designGroupGrant, group_id: groups[2].id, group_name: groups[2].name }];
+  accounts[0].group_links = [{ ...designGroupGrant, group_id: groups[2].id, group_name: groups[2].name, group_avatar: groups[2].avatar }];
   const buckets: DemoBucket[] = [];
   // Different account workloads, ordered as documents/media/reports/backups/logs/datasets.
   const objectCounts = [
@@ -188,7 +338,7 @@ export function createSeed(): DemoState {
     for (let i = 0; i < exportCount; i++) { const object = putObject(bucket, `exports/2026/${String(i + 1).padStart(4, "0")}.json`, new Blob([JSON.stringify({ record: i + 1, project: account.name, status: "processed", amount: 120 + i * 7, note: "Demo payload excerpt. Seeded dataset sizes represent a production inventory." })], { type: "application/json" }), false, at(i % 90)); object.versions[0].size = (4 + (i % 32) * 16) * MiB; }
     buckets.push(bucket);
   }
-  const spaces: DemoSpace[] = buckets.slice(0, 12).map((b, i) => ({
+  const spaces: DemoSpace[] = buckets.slice(0, 12).map((b, i) => createDemoSpace({
     id: `space-${i + 1}`, name: `${b.name.split("-").at(-1)!.replace(/^./, s => s.toUpperCase())} · ${accounts.find(a => a.id === b.accountId)!.name}`,
     accountId: b.accountId, bucketName: b.name, internal_bucket_name: b.name, description: "Shared working files and project deliverables.",
     role: "Editor", visibility: i % 4 === 0 ? "private" : "shared", share_scope: "account", account_member_role: "Editor",
@@ -199,7 +349,9 @@ export function createSeed(): DemoState {
   const requests: PortalAdminRequest[] = ["account_quota_change", "portal_user_access", "portal_user_access"].map((type, i) => ({
     id: 501 + i, account_id: 101, account_name: accounts[0].name, request_type: type as PortalAdminRequest["request_type"], status: "pending",
     payload: type === "account_quota_change" ? { direction: "increase", target_quota_value: 750, target_quota_unit: "GiB", reason: "Upcoming autumn campaign" } : { intent: "add", target_name: `${first[6 + i]} Williams`, target_email: `new-colleague-${i}@example.com`, portal_role: "portal_user", reason: "Join the project team" },
-    requester_user_id: 4, requester_email: users[3].email, created_at: at(i + 1), updated_at: at(i + 1), messages: [],
+    result: null, error_message: null, requester_user_id: 4, requester_email: users[3].email,
+    decided_by_user_id: null, decided_by_email: null, decided_at: null,
+    created_at: at(i + 1), updated_at: at(i + 1), messages: [],
   }));
   const iam: Record<number, DemoIam> = {};
   for (const account of accounts) {
@@ -209,8 +361,71 @@ export function createSeed(): DemoState {
   }
   for (const u of users) u.group_details = groups.filter(g => g.user_details?.some(m => m.id === u.id)).map(g => ({ id: g.id, name: g.name }));
   return { initializedAt: now.toISOString(), nextId: 1000, endpoints, accounts, users, groups, buckets, spaces, requests, iam,
-    connections: endpoints.map((e, i) => ({ id: 301 + i, name: `${e.name} · service connection`, storage_endpoint_id: e.id, endpoint_url: e.endpoint_url, region: e.region, provider_hint: "ceph", created_by_user_id: 2, created_by_email: users[1].email, is_shared: true, is_active: true, access_manager: true, access_browser: false, access_key_id: "DEMO_NOT_A_REAL_KEY", execution_status: "ready", user_count: 1, user_details: [users[1]], group_details: [], tags: [], created_at: at(60) })),
-    notifications: Object.fromEntries(users.map(u => [u.id, [{ id: 1, type: "demo", severity: "info", title: "Welcome to your live demo", message: "Changes stay in this browser. Use the profile bar to follow a Portal request through approval.", created_at: at(0), read_at: null }, { id: 2, type: "endpoint", severity: "warning", title: "Paris latency recovered", message: "Historical incident · service returned to normal after 8 minutes.", created_at: at(2), read_at: at(0) }]])),
+    connections: endpoints.map((e, i) => ({
+      id: 301 + i,
+      name: `${e.name} · service connection`,
+      storage_endpoint_id: e.id,
+      endpoint_url: e.endpoint_url,
+      is_active: true,
+      execution_status: "ready",
+      remediation_reason: null,
+      capabilities: {},
+      rgw_user_uid: null,
+      rgw_tenant: null,
+      rgw_account_id: null,
+      provider_hint: "ceph",
+      region: e.region ?? null,
+      force_path_style: false,
+      verify_tls: true,
+      allow_activity_history: null,
+      created_by_user_id: 2,
+      created_by_email: users[1].email,
+      created_by_full_name: users[1].full_name,
+      created_by_avatar: users[1].avatar,
+      user_count: 1,
+      user_details: [demoConnectionUser(users[1])],
+      group_details: [],
+      tags: [],
+      last_used_at: null,
+      created_at: at(60),
+      updated_at: null,
+      is_shared: true,
+      access_manager: true,
+      access_browser: false,
+      server_managed: false,
+      managed_access_state: null,
+      access_key_id: "DEMO_NOT_A_REAL_KEY",
+    })),
+    notifications: Object.fromEntries(users.map(u => [u.id, [
+      {
+        id: 1,
+        type: "demo",
+        severity: "info",
+        title: "Welcome to your live demo",
+        message: "Changes stay in this browser. Use the profile bar to follow a Portal request through approval.",
+        subject_type: null,
+        storage_endpoint_id: null,
+        s3_account_id: null,
+        s3_user_id: null,
+        payload: {},
+        created_at: at(0),
+        read_at: null,
+      },
+      {
+        id: 2,
+        type: "endpoint",
+        severity: "warning",
+        title: "Paris latency recovered",
+        message: "Historical incident · service returned to normal after 8 minutes.",
+        subject_type: null,
+        storage_endpoint_id: null,
+        s3_account_id: null,
+        s3_user_id: null,
+        payload: {},
+        created_at: at(2),
+        read_at: at(0),
+      },
+    ]])),
     snapshotInventory: buckets.map(b => ({ accountId: b.accountId, endpointId: b.endpointId, bucketName: b.name, bytes: bucketView(b).used_bytes ?? 0, objects: bucketView(b).object_count ?? 0 })),
     history: Array.from({ length: 90 }, (_, i) => ({ timestamp: at(89 - i), bytes_in: (2 + i / 18 + Math.sin(i) * .4) * GiB, bytes_out: (3 + i / 12) * GiB, ops: 24000 + i * 850, success_ops: 23980 + i * 849 })),
   };

@@ -67,8 +67,8 @@ function getConnectionSearchCandidates(connection: S3ConnectionAdminItem): Array
     connection.name,
     connection.endpoint_url,
     connection.created_by_email,
-    ...(connection.user_details ?? []).flatMap((user) => [user.email, user.full_name]),
-    ...(connection.group_details ?? []).map((group) => group.name),
+    ...connection.user_details.flatMap((user) => [user.email, user.full_name]),
+    ...connection.group_details.map((group) => group.name),
     ...extractUiTagLabels(connection.tags),
   ];
 }
@@ -511,12 +511,12 @@ export default function S3ConnectionsPage() {
       rgw_account_id: conn.rgw_account_id || "",
       endpoint_url: conn.endpoint_url,
       region: conn.region || "",
-      force_path_style: Boolean(conn.force_path_style),
-      verify_tls: conn.verify_tls !== false,
+      force_path_style: conn.force_path_style,
+      verify_tls: conn.verify_tls,
       allow_activity_history: conn.allow_activity_history ?? null,
     };
-    const nextLinkedUserIds = normalizeS3ConnectionLinkedIds(conn.user_details?.map((user) => user.id));
-    const nextLinkedGroupIds = normalizeS3ConnectionLinkedIds(conn.group_details?.map((group) => group.id));
+    const nextLinkedUserIds = normalizeS3ConnectionLinkedIds(conn.user_details.map((user) => user.id));
+    const nextLinkedGroupIds = normalizeS3ConnectionLinkedIds(conn.group_details.map((group) => group.id));
     setEditing(conn);
     setEditEndpointMode(nextEndpointMode);
     setEditEndpointPresetId(nextEndpointPresetId);
@@ -626,7 +626,7 @@ export default function S3ConnectionsPage() {
       }
       return;
     }
-    const nextIsActive = conn.is_active !== false ? false : true;
+    const nextIsActive = !conn.is_active;
     setStatusBusyId(conn.id);
     setError(null);
     setActionMessage(null);
@@ -836,10 +836,10 @@ export default function S3ConnectionsPage() {
               </div>
             </SettingsSection>
             <SettingsSection title={adminText("Access")} presentation="compact">
-              <p className="settings-label">{adminText("Admin assignment")}</p>
-              <p className="settings-description mt-1">{adminText("Admin S3 connections are available to linked UI users and groups.")}</p>
-              <p className="settings-label mt-3">{adminText("Manager-only execution")}</p>
-              <p className="settings-description mt-1">{adminText("Admin S3 connections are never exposed to Browser. Browser users must create a private connection.")}</p>
+              <p className="settings-label">{adminText("Manager access")}</p>
+              <p className="settings-description mt-1">{adminText("Assign this shared connection to UI users or groups to make it available as a Manager execution context.")}</p>
+              <p className="settings-label mt-3">{adminText("Browser access")}</p>
+              <p className="settings-description mt-1">{adminText("Shared connections are not available in Browser. Browser access requires an eligible private connection.")}</p>
             </SettingsSection>
           </SettingsForm>
           {createCloseGuard.confirmationDialog}
@@ -908,10 +908,12 @@ export default function S3ConnectionsPage() {
                 <SettingsSection title={adminText("Access and RGW identity")} presentation="compact"
                   description={adminText("Persist the canonical RGW principal used for metrics and identity resolution when it is known.")}>
                   <div className="settings-stack">
-                    <div><p className="settings-label">{adminText("Admin assignment")}</p>
-                      <p className="settings-description mt-1 [overflow-wrap:anywhere]">{adminText("Created by:")}{editing.created_by_email || editing.created_by_user_id}</p></div>
-                    <div><p className="settings-label">{adminText("Manager-only execution")}</p>
-                      <p className="settings-description mt-1">{adminText("Browser access is disabled for Admin S3 connections.")}</p></div>
+                    <div><p className="settings-label">{adminText("Created by:")}</p>
+                      <p className="settings-description mt-1 [overflow-wrap:anywhere]">{editing.created_by_email || editing.created_by_user_id}</p></div>
+                    <div><p className="settings-label">{adminText("Manager access")}</p>
+                      <p className="settings-description mt-1">{adminText("Assign this shared connection to UI users or groups to make it available as a Manager execution context.")}</p></div>
+                    <div><p className="settings-label">{adminText("Browser access")}</p>
+                      <p className="settings-description mt-1">{adminText("Shared connections are not available in Browser. Browser access requires an eligible private connection.")}</p></div>
                     <div className="settings-fields sm:grid-cols-3">
                     <UiInput
                       label={adminText("RGW user UID")}

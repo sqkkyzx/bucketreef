@@ -22,7 +22,7 @@ const managerToolRights = {
 } as const satisfies Record<string, AccessAuditRightCode>;
 
 function directSource(): AuditSource {
-  return { kind: "direct" };
+  return { kind: "direct", group_id: null, group_name: null };
 }
 
 function groupSource(group: UiGroup): AuditSource {
@@ -30,7 +30,7 @@ function groupSource(group: UiGroup): AuditSource {
 }
 
 function groupsForUser(state: DemoState, userId: number): UiGroup[] {
-  return state.groups.filter(group => group.user_details?.some(member => member.id === userId));
+  return state.groups.filter(group => group.user_details.some(member => member.id === userId));
 }
 
 function flagSources(
@@ -86,7 +86,7 @@ function addRight(
 function addPlatformRows(rows: Map<string, AccessAuditRow>, user: DemoUser, groups: UiGroup[]): void {
   const supportsManagerTools = user.role !== "ui_none";
   const supportsCephAdmin = user.role === "ui_admin" || user.role === "ui_superadmin";
-  const target = { name: "Platform" };
+  const target: AuditTarget = { id: null, name: "Platform", identifier: null };
 
   if (supportsCephAdmin) {
     addRight(rows, user, "platform", target, "ceph_admin", flagSources(
@@ -118,7 +118,7 @@ function addPlatformRows(rows: Map<string, AccessAuditRow>, user: DemoUser, grou
       addRight(rows, user, "platform", target, code, flagSources(
         user.manager_tool_access?.[tool],
         groups,
-        group => group.manager_tool_access?.[tool],
+        group => group.manager_tool_access[tool],
       ));
     }
   }
@@ -140,7 +140,7 @@ function addAccountRows(rows: Map<string, AccessAuditRow>, state: DemoState, use
       ? sourcesFor(link => link.portal_role === resolved.portal_role)
       : [];
     const browserSources = sourcesFor(link =>
-      link.manager_role === "account_administrator" && Boolean(link.allow_manager_browser_data_access));
+      link.manager_role === "account_administrator" && link.allow_manager_browser_data_access);
     const target = { id: account.id, name: account.name, identifier: account.rgw_account_id };
     addRight(rows, user, "rgw_account", target, "account_administrator", managerSources);
     if (resolved.portal_role) addRight(rows, user, "rgw_account", target, resolved.portal_role, portalSources);
@@ -161,7 +161,7 @@ function demoS3Users(state: DemoState) {
 function addS3UserRows(rows: Map<string, AccessAuditRow>, state: DemoState, user: DemoUser, groups: UiGroup[]): void {
   for (const rgwUser of demoS3Users(state)) {
     const direct = user.s3_user_links?.find(link => link.s3_user_id === rgwUser.id);
-    const inherited = groups.flatMap(group => (group.s3_user_links ?? [])
+    const inherited = groups.flatMap(group => group.s3_user_links
       .filter(link => link.s3_user_id === rgwUser.id)
       .map(link => ({ group, link })));
     const accessSources = [
@@ -179,14 +179,21 @@ function addS3UserRows(rows: Map<string, AccessAuditRow>, state: DemoState, user
 }
 
 function addConnectionRows(rows: Map<string, AccessAuditRow>, state: DemoState, user: DemoUser, groups: UiGroup[]): void {
-  for (const connection of state.connections.filter(candidate => candidate.is_shared !== false)) {
+  for (const connection of state.connections.filter(candidate => candidate.is_shared)) {
     const sources = [
-      ...(connection.user_details?.some(member => member.id === user.id) ? [directSource()] : []),
+      ...(connection.user_details.some(member => member.id === user.id) ? [directSource()] : []),
       ...groups
-        .filter(group => connection.group_details?.some(candidate => candidate.id === group.id))
+        .filter(group => connection.group_details.some(candidate => candidate.id === group.id))
         .map(groupSource),
     ];
-    addRight(rows, user, "s3_connection", { id: connection.id, name: connection.name }, "shared_connection_access", sources);
+    addRight(
+      rows,
+      user,
+      "s3_connection",
+      { id: connection.id, name: connection.name, identifier: null },
+      "shared_connection_access",
+      sources,
+    );
   }
 }
 
@@ -214,7 +221,7 @@ export function listDemoS3Users(state: DemoState) {
         user_full_name: user.full_name,
         allow_manager_browser_data_access: link.allow_manager_browser_data_access,
       }))),
-    group_links: state.groups.flatMap(group => (group.s3_user_links ?? [])
+    group_links: state.groups.flatMap(group => group.s3_user_links
       .filter(link => link.s3_user_id === rgwUser.id)
       .map(link => ({
         group_id: group.id,

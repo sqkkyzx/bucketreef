@@ -3,6 +3,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import GroupsPage from "./GroupsPage";
 import { DEFAULT_MANAGER_FEATURE_POLICIES } from "../../api/featurePolicies";
+import type { UiGroup } from "../../api/groups";
+import type { S3UserSummary } from "../../api/s3Users";
+import type { S3ConnectionSummary } from "../../api/s3ConnectionsAdmin";
 
 const listGroupsMock = vi.fn();
 const createGroupMock = vi.fn();
@@ -14,6 +17,93 @@ const listMinimalUsersMock = vi.fn();
 const listMinimalS3AccountsMock = vi.fn();
 const listMinimalS3UsersMock = vi.fn();
 const listMinimalS3ConnectionsMock = vi.fn();
+
+function canonicalS3UserSummary(id: number, name: string): S3UserSummary {
+  return {
+    id,
+    name,
+    rgw_user_uid: name,
+    rgw_tenant: "",
+    tags: [],
+    storage_endpoint_id: 1,
+    storage_endpoint_name: "default",
+    storage_endpoint_url: "https://s3.example.test",
+    allow_bucket_quota_management: null,
+    allow_access_key_management: null,
+    allow_access_key_metadata: null,
+    allow_access_key_expiration: null,
+    allow_activity_history: null,
+    allow_rgw_usage_metrics: null,
+    allow_cost_estimation: null,
+    allow_managed_private_connection_provisioning: null,
+  };
+}
+
+function canonicalS3ConnectionSummary(id: number, name: string): S3ConnectionSummary {
+  return {
+    id,
+    name,
+    created_by_user_id: 1,
+    is_active: true,
+    execution_status: "ready",
+  };
+}
+
+function canonicalGroup(input: Pick<UiGroup, "id" | "name"> & Partial<UiGroup>): UiGroup {
+  const initials = input.name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? "")
+    .join("");
+  return {
+    id: input.id,
+    name: input.name,
+    description: input.description ?? null,
+    avatar: {
+      source: input.avatar?.source ?? "initials",
+      initials: input.avatar?.initials ?? initials,
+      icon: input.avatar?.icon ?? null,
+      url: input.avatar?.url ?? null,
+      updated_at: input.avatar?.updated_at ?? null,
+    },
+    can_access_ceph_admin: input.can_access_ceph_admin ?? false,
+    can_access_storage_ops: input.can_access_storage_ops ?? false,
+    can_create_manual_private_connections: input.can_create_manual_private_connections ?? false,
+    can_provision_managed_private_connections: input.can_provision_managed_private_connections ?? false,
+    manager_tool_access: {
+      bucket_compare: input.manager_tool_access?.bucket_compare ?? false,
+      bucket_integrity_check: input.manager_tool_access?.bucket_integrity_check ?? false,
+      bucket_migration: input.manager_tool_access?.bucket_migration ?? false,
+      bucket_purge: input.manager_tool_access?.bucket_purge ?? false,
+      feature_rules: input.manager_tool_access?.feature_rules ?? false,
+    },
+    browser_advanced_features_enabled: input.browser_advanced_features_enabled ?? false,
+    user_details: (input.user_details ?? []).map((user) => ({
+      id: user.id,
+      email: user.email,
+      role: user.role ?? "ui_user",
+      full_name: user.full_name ?? null,
+      avatar: user.avatar
+        ? {
+            ...user.avatar,
+            url: user.avatar.url ?? null,
+            updated_at: user.avatar.updated_at ?? null,
+          }
+        : null,
+    })),
+    account_details: input.account_details ?? [],
+    account_links: (input.account_links ?? []).map((link) => ({
+      ...link,
+      allow_manager_browser_data_access: link.allow_manager_browser_data_access ?? false,
+    })),
+    s3_user_links: input.s3_user_links ?? [],
+    s3_user_details: input.s3_user_details ?? [],
+    s3_connection_details: input.s3_connection_details ?? [],
+    created_at: input.created_at ?? null,
+    updated_at: input.updated_at ?? null,
+  };
+}
 
 const generalSettingsState = {
   manager_feature_policies: {
@@ -48,12 +138,18 @@ vi.mock("../../components/GeneralSettingsContext", () => ({
 }));
 
 vi.mock("../../api/groups", () => ({
-  listGroups: (params?: unknown) => listGroupsMock(params),
-  createGroup: (payload: unknown) => createGroupMock(payload),
-  updateGroup: (groupId: number, payload: unknown) => updateGroupMock(groupId, payload),
+  listGroups: async (params?: unknown) => {
+    const result = await listGroupsMock(params);
+    return { ...result, items: result.items.map(canonicalGroup) };
+  },
+  createGroup: async (payload: unknown) => canonicalGroup(await createGroupMock(payload)),
+  updateGroup: async (groupId: number, payload: unknown) =>
+    canonicalGroup(await updateGroupMock(groupId, payload)),
   deleteGroup: (groupId: number) => deleteGroupMock(groupId),
-  uploadGroupAvatar: (groupId: number, file: File) => uploadGroupAvatarMock(groupId, file),
-  deleteGroupAvatar: (groupId: number) => deleteGroupAvatarMock(groupId),
+  uploadGroupAvatar: async (groupId: number, file: File) =>
+    canonicalGroup(await uploadGroupAvatarMock(groupId, file)),
+  deleteGroupAvatar: async (groupId: number) =>
+    canonicalGroup(await deleteGroupAvatarMock(groupId)),
 }));
 
 vi.mock("../../api/users", () => ({
@@ -97,10 +193,8 @@ describe("GroupsPage", () => {
     listMinimalS3AccountsMock.mockResolvedValue([
       { id: 1, name: "acc-1", rgw_account_id: "RGW-ACC-1", user_links: [], group_links: [] },
     ]);
-    listMinimalS3UsersMock.mockResolvedValue([{ id: 11, name: "s3-user-1" }]);
-    listMinimalS3ConnectionsMock.mockResolvedValue([
-      { id: 21, name: "shared-conn" },
-    ]);
+    listMinimalS3UsersMock.mockResolvedValue([canonicalS3UserSummary(11, "s3-user-1")]);
+    listMinimalS3ConnectionsMock.mockResolvedValue([canonicalS3ConnectionSummary(21, "shared-conn")]);
     createGroupMock.mockResolvedValue({ id: 50, name: "ops-group" });
     updateGroupMock.mockResolvedValue({ id: 50, name: "ops-group-updated" });
     deleteGroupMock.mockResolvedValue(undefined);
@@ -311,7 +405,7 @@ describe("GroupsPage", () => {
             feature_rules: false,
           },
           user_details: [],
-          account_links: [{ account_id: 99, manager_role: null, portal_role: "portal_user" }],
+          account_links: [{ account_id: 99, manager_role: null, portal_role: "portal_user", allow_manager_browser_data_access: false }],
           account_details: [{ id: 99, name: "production-account", rgw_account_id: "RGW-PROD" }],
         },
       ],

@@ -137,9 +137,7 @@ export async function applyBucketOpsConfigPaste({
             : {};
         const currentObjectLock = normalizeObjectLockSnapshot({
           ...rawCurrentObjectLock,
-          enabled: Boolean(
-            properties?.object_lock_enabled ?? rawCurrentObjectLock.enabled,
-          ),
+          enabled: Boolean(rawCurrentObjectLock.enabled),
         });
         if (!isObjectLockSnapshotEqual(currentObjectLock, source.objectLock)) {
           await updateBucketObjectLock(
@@ -174,12 +172,10 @@ export async function applyBucketOpsConfigPaste({
       }
 
       if (features.lifecycle && source.lifecycleRules) {
-        const currentLifecycle = (
-          (await getBucketLifecycle(
-            targetEndpointId,
-            mapping.destinationBucket,
-          )).rules ?? []
-        ) as Record<string, unknown>[];
+        const currentLifecycle = (await getBucketLifecycle(
+          targetEndpointId,
+          mapping.destinationBucket,
+        )).rules;
         if (stableStringify(currentLifecycle) !== stableStringify(source.lifecycleRules)) {
           if (source.lifecycleRules.length === 0) {
             if (currentLifecycle.length > 0) {
@@ -201,9 +197,10 @@ export async function applyBucketOpsConfigPaste({
       }
 
       if (features.cors && source.corsRules) {
-        const currentCors = (
-          (await getBucketCors(targetEndpointId, mapping.destinationBucket)).rules ?? []
-        ) as Record<string, unknown>[];
+        const currentCors = (await getBucketCors(
+          targetEndpointId,
+          mapping.destinationBucket,
+        )).rules;
         if (stableStringify(currentCors) !== stableStringify(source.corsRules)) {
           if (source.corsRules.length === 0) {
             if (currentCors.length > 0) {
@@ -245,10 +242,10 @@ export async function applyBucketOpsConfigPaste({
 
       if (features.access_logging && source.accessLogging) {
         const currentAccessLogging = normalizeAccessLoggingSnapshot(
-          (await getBucketLogging(
+          await getBucketLogging(
             targetEndpointId,
             mapping.destinationBucket,
-          )) as unknown as Record<string, unknown>,
+          ),
         );
         if (!isAccessLoggingSnapshotEqual(currentAccessLogging, source.accessLogging)) {
           if (!source.accessLogging.enabled || !source.accessLogging.target_bucket) {

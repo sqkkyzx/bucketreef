@@ -14,18 +14,55 @@ export type CostCoverage = {
   days_collected: number;
   days_in_month: number;
   coverage_ratio: number;
-  storage_days_collected?: number | null;
-  usage_days_collected?: number | null;
+  storage_days_collected: number | null;
+  usage_days_collected: number | null;
+};
+
+export type CostEndpointCollectionError = {
+  stage: "endpoint";
+  endpoint_id: number;
+};
+
+export type CostSubjectCollectionError = {
+  stage: "usage" | "storage";
+  endpoint_id: number;
+  subject: "account" | "s3_user";
+  subject_id: number;
+};
+
+export type CostCollectionError = CostEndpointCollectionError | CostSubjectCollectionError;
+
+export type DataRetentionResult = {
+  quota_history: {
+    hourly_retention_days: number;
+    daily_retention_days: number;
+    deleted_hourly: number;
+    deleted_daily: number;
+  };
+  cost_history: {
+    daily_retention_days: number;
+    deleted_usage_daily: number;
+    deleted_storage_daily: number;
+  };
+};
+
+export type CostCollectionResult = {
+  day: string;
+  endpoints: number;
+  usage_records: number;
+  storage_records: number;
+  errors: CostCollectionError[];
+  retention: DataRetentionResult;
 };
 
 export type CostBreakdown = {
-  currency?: string | null;
-  storage_cost?: number | null;
-  egress_cost?: number | null;
-  ingress_cost?: number | null;
-  requests_cost?: number | null;
-  total_cost?: number | null;
-  pricing_source?: "global" | "endpoint_override" | "mixed" | null;
+  currency: string | null;
+  storage_cost: number | null;
+  egress_cost: number | null;
+  ingress_cost: number | null;
+  requests_cost: number | null;
+  total_cost: number | null;
+  pricing_source: "global" | "endpoint_override" | "mixed" | null;
 };
 
 export type CostRateValues = {
@@ -44,7 +81,7 @@ export type CostEndpointOverride = CostRateValues & {
 };
 
 export type CostSettings = {
-  model?: CostGlobalModel | null;
+  model: CostGlobalModel | null;
   endpoint_overrides: CostEndpointOverride[];
 };
 
@@ -52,22 +89,22 @@ export type CostUsageTotals = {
   bytes_in: number;
   bytes_out: number;
   ops_total: number;
-  ops_breakdown?: Record<string, number> | null;
+  ops_breakdown: Record<string, number> | null;
 };
 
 export type CostStorageTotals = {
-  avg_bytes?: number | null;
-  avg_gb_month?: number | null;
-  total_objects?: number | null;
+  avg_bytes: number | null;
+  avg_gb_month: number | null;
+  total_objects: number | null;
 };
 
 export type CostSummary = {
   month: string;
-  storage_endpoint_id?: number | null;
+  storage_endpoint_id: number | null;
   usage: CostUsageTotals;
   storage: CostStorageTotals;
   coverage: CostCoverage;
-  cost?: CostBreakdown | null;
+  cost: CostBreakdown | null;
 };
 
 export type CostSubjectSummary = {
@@ -76,10 +113,10 @@ export type CostSubjectSummary = {
   subject_type: string;
   subject_id: number;
   name: string;
-  rgw_identifier?: string | null;
+  rgw_identifier: string | null;
   storage: CostStorageTotals;
   usage: CostUsageTotals;
-  cost?: CostBreakdown | null;
+  cost: CostBreakdown | null;
 };
 
 type CostSubjectsResponse = {
@@ -92,10 +129,10 @@ type CostSubjectsResponse = {
 
 export type CostDailySeriesPoint = {
   day: string;
-  storage_bytes?: number | null;
-  bytes_in?: number | null;
-  bytes_out?: number | null;
-  ops_total?: number | null;
+  storage_bytes: number | null;
+  bytes_in: number | null;
+  bytes_out: number | null;
+  ops_total: number | null;
 };
 
 export type CostSubjectDetail = {
@@ -105,18 +142,18 @@ export type CostSubjectDetail = {
   subject_type: string;
   subject_id: number;
   name: string;
-  rgw_identifier?: string | null;
+  rgw_identifier: string | null;
   daily: CostDailySeriesPoint[];
   usage: CostUsageTotals;
   storage: CostStorageTotals;
   coverage: CostCoverage;
-  cost?: CostBreakdown | null;
+  cost: CostBreakdown | null;
 };
 
 export type CostSubjectHistoryPoint = {
   month: string;
   coverage: CostCoverage;
-  cost?: CostBreakdown | null;
+  cost: CostBreakdown | null;
 };
 
 export type AdminCostSubjectDetail = CostSubjectDetail & {
@@ -127,13 +164,13 @@ export type CostAnalyticsEndpoint = {
   storage_endpoint_id: number;
   storage_endpoint_name: string;
   coverage: CostCoverage;
-  cost?: CostBreakdown | null;
+  cost: CostBreakdown | null;
 };
 
 export type CostAnalyticsHistoryPoint = {
   month: string;
   coverage: CostCoverage;
-  cost?: CostBreakdown | null;
+  cost: CostBreakdown | null;
 };
 
 export type CostAnalyticsConcentration = {
@@ -145,7 +182,7 @@ export type CostAnalyticsConcentration = {
 
 export type CostAnalyticsResponse = {
   month: string;
-  storage_endpoint_id?: number | null;
+  storage_endpoint_id: number | null;
   subject_type: "all" | "account" | "s3_user";
   summary: CostSummary;
   by_endpoint: CostAnalyticsEndpoint[];
@@ -185,7 +222,7 @@ export async function getCostSubjects(
 ): Promise<CostSubjectsResponse> {
   const params: Record<string, string | number> = {
     month,
-    type: subjectType,
+    subject_type: subjectType,
     page,
     page_size: pageSize,
     sort_by: sortBy,
@@ -202,7 +239,7 @@ export async function getCostAnalytics(
   endpointId: number | null,
   subjectType: "all" | "account" | "s3_user",
 ): Promise<CostAnalyticsResponse> {
-  const params: Record<string, string | number> = { month, type: subjectType };
+  const params: Record<string, string | number> = { month, subject_type: subjectType };
   if (endpointId != null) params.endpoint_id = endpointId;
   const { data } = await client.get<CostAnalyticsResponse>("/admin/cost/analytics", { params });
   return data;
@@ -226,7 +263,7 @@ export async function downloadCostCsv(
   endpointId: number | null,
   subjectType: "all" | "account" | "s3_user" = "all",
 ): Promise<Blob> {
-  const params: Record<string, string | number> = { month, type: subjectType };
+  const params: Record<string, string | number> = { month, subject_type: subjectType };
   if (endpointId != null) params.endpoint_id = endpointId;
   const response = await client.get("/admin/cost/export.csv", {
     params,
@@ -236,9 +273,9 @@ export async function downloadCostCsv(
   return response.data as Blob;
 }
 
-export async function collectCostDaily(day: string): Promise<Record<string, unknown>> {
+export async function collectCostDaily(day: string): Promise<CostCollectionResult> {
   const params: Record<string, string> = { day };
-  const { data } = await client.post<Record<string, unknown>>("/admin/cost/collect/daily", null, { params });
+  const { data } = await client.post<CostCollectionResult>("/admin/cost/collect/daily", null, { params });
   return data;
 }
 

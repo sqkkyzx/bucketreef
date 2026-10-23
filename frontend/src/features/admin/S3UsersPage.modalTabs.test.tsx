@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import S3UsersPage from "./S3UsersPage";
 import { setSessionUserCache } from "../../utils/workspaces";
+import type { S3User } from "../../api/s3Users";
 
 const listS3UsersMock = vi.fn();
 const getS3UserMock = vi.fn();
@@ -27,6 +28,37 @@ const makeTag = (id: number, label: string, color_key = "neutral", scope = "stan
   color_key,
   scope,
 });
+
+function makeS3User(overrides: Partial<S3User> = {}): S3User {
+  return {
+    id: 5,
+    name: "rgw-user-1",
+    rgw_user_uid: "rgw-uid-1",
+    rgw_tenant: "",
+    tags: [],
+    email: null,
+    created_at: null,
+    user_links: [],
+    group_links: [],
+    quota_max_size_gb: null,
+    quota_max_objects: null,
+    storage_endpoint_id: 10,
+    storage_endpoint_name: "ceph-main",
+    storage_endpoint_url: "https://ceph.example.test",
+    bucket_count: null,
+    allow_bucket_quota_management: null,
+    allow_access_key_management: null,
+    allow_access_key_metadata: null,
+    allow_access_key_expiration: null,
+    allow_activity_history: null,
+    allow_rgw_usage_metrics: null,
+    allow_cost_estimation: null,
+    allow_bucket_usage_stats: null,
+    allow_bucket_usage_stats_collection: null,
+    allow_managed_private_connection_provisioning: null,
+    ...overrides,
+  };
+}
 
 function featureOverrideGroup(name: string) {
   return screen.getByRole("radiogroup", { name });
@@ -83,19 +115,13 @@ describe("S3UsersPage modal tabs", () => {
 
     listS3UsersMock.mockResolvedValue({
       items: [
-        {
-          id: 5,
-          name: "rgw-user-1",
-          rgw_user_uid: "rgw-uid-1",
+        makeS3User({
           tags: [makeTag(601, "legacy")],
           email: "rgw-user-1@example.com",
-          storage_endpoint_id: 10,
-          storage_endpoint_name: "ceph-main",
-          storage_endpoint_url: "https://ceph.example.test",
           quota_max_size_gb: 1,
           quota_max_objects: 100,
           bucket_count: 0,
-        },
+        }),
       ],
       total: 1,
       page: 1,
@@ -141,7 +167,13 @@ describe("S3UsersPage modal tabs", () => {
     });
 
     getS3UserWithBucketsMock.mockResolvedValue({ id: 5, bucket_count: 0 });
-    updateS3UserMock.mockResolvedValue(undefined);
+    updateS3UserMock.mockResolvedValue(makeS3User({
+      tags: [makeTag(601, "legacy")],
+      email: "rgw-user-1@example.com",
+      quota_max_size_gb: 1,
+      quota_max_objects: 100,
+      bucket_count: 0,
+    }));
     createS3UserMock.mockResolvedValue(undefined);
     importS3UsersMock.mockResolvedValue(undefined);
     deleteS3UserMock.mockResolvedValue(undefined);
@@ -170,32 +202,22 @@ describe("S3UsersPage modal tabs", () => {
   it("shows a tenant qualifier beside the RGW user name only for non-default tenants", async () => {
     listS3UsersMock.mockResolvedValueOnce({
       items: [
-        {
-          id: 5,
+        makeS3User({
           name: "default-user",
           rgw_user_uid: "default-user",
-          rgw_tenant: "",
-          tags: [],
-          storage_endpoint_id: 10,
-          storage_endpoint_name: "ceph-main",
-          storage_endpoint_url: "https://ceph.example.test",
           quota_max_size_gb: 1,
           quota_max_objects: 100,
           bucket_count: 0,
-        },
-        {
+        }),
+        makeS3User({
           id: 6,
           name: "tenant-user",
           rgw_user_uid: "tenant-user-uid",
           rgw_tenant: "customer01",
-          tags: [],
-          storage_endpoint_id: 10,
-          storage_endpoint_name: "ceph-main",
-          storage_endpoint_url: "https://ceph.example.test",
           quota_max_size_gb: 1,
           quota_max_objects: 100,
           bucket_count: 0,
-        },
+        }),
       ],
       total: 2,
       page: 1,
@@ -253,6 +275,10 @@ describe("S3UsersPage modal tabs", () => {
     expect(within(generalPanel).getByRole("meter", { name: "Objects quota usage" })).toHaveAttribute("aria-valuenow", "25");
     expect(within(generalPanel).getByText("Active buckets")).toBeInTheDocument();
     expect(within(generalPanel).getByRole("heading", { name: "Quotas" })).toBeInTheDocument();
+    expect(within(generalPanel).getByRole("heading", { name: "Services and monitoring" })).toBeInTheDocument();
+    const sectionHeadings = within(generalPanel).getAllByRole("heading").map((heading) => heading.textContent);
+    expect(sectionHeadings.indexOf("Usage")).toBeLessThan(sectionHeadings.indexOf("Quotas"));
+    expect(sectionHeadings.indexOf("Quotas")).toBeLessThan(sectionHeadings.indexOf("Services and monitoring"));
     expect(within(generalPanel).getByLabelText("Storage quota")).toHaveClass("ui-control");
     expect(within(generalPanel).getByLabelText("Storage quota unit")).toHaveClass("ui-control");
     expect(within(generalPanel).getByLabelText("Object quota")).toHaveClass("ui-control");
@@ -277,21 +303,14 @@ describe("S3UsersPage modal tabs", () => {
   it("renders direct UI users and UI groups in the combined listing column", async () => {
     listS3UsersMock.mockResolvedValueOnce({
       items: [
-        {
-          id: 5,
-          name: "rgw-user-1",
-          rgw_user_uid: "rgw-uid-1",
-          tags: [],
+        makeS3User({
           email: "rgw-user-1@example.com",
-          storage_endpoint_id: 10,
-          storage_endpoint_name: "ceph-main",
-          storage_endpoint_url: "https://ceph.example.test",
-          user_links: [{ user_id: 33, user_email: "ui33@example.com" }],
-          group_links: [{ group_id: 31, group_name: "Storage Group" }],
+          user_links: [{ user_id: 33, user_email: "ui33@example.com", allow_manager_browser_data_access: false }],
+          group_links: [{ group_id: 31, group_name: "Storage Group", allow_manager_browser_data_access: false }],
           quota_max_size_gb: 1,
           quota_max_objects: 100,
           bucket_count: 0,
-        },
+        }),
       ],
       total: 1,
       page: 1,
@@ -327,19 +346,12 @@ describe("S3UsersPage modal tabs", () => {
   it("requests default sorting and toggles RGW user table headers", async () => {
     listS3UsersMock.mockResolvedValue({
       items: [
-        {
-          id: 5,
-          name: "rgw-user-1",
-          rgw_user_uid: "rgw-uid-1",
-          tags: [],
+        makeS3User({
           email: "rgw-user-1@example.com",
-          storage_endpoint_id: 10,
-          storage_endpoint_name: "ceph-main",
-          storage_endpoint_url: "https://ceph.example.test",
           quota_max_size_gb: 1,
           quota_max_objects: 100,
           bucket_count: 0,
-        },
+        }),
       ],
       total: 30,
       page: 1,
@@ -538,6 +550,30 @@ describe("S3UsersPage modal tabs", () => {
     );
   });
 
+  it("submits bucket composition service overrides from the General tab", async () => {
+    render(
+      <MemoryRouter>
+        <S3UsersPage />
+      </MemoryRouter>
+    );
+
+    await screen.findByText("rgw-user-1");
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    expectInheritedFeatureOverride("Bucket composition statistics");
+    expectInheritedFeatureOverride("Automatic bucket composition collection");
+    selectFeatureOverride("Bucket composition statistics", "Enabled");
+    selectFeatureOverride("Automatic bucket composition collection", "Enabled");
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+    await waitFor(() => expect(updateS3UserMock).toHaveBeenCalled());
+    expect(updateS3UserMock.mock.calls.at(-1)?.[1]).toEqual(
+      expect.objectContaining({
+        allow_bucket_usage_stats: true,
+        allow_bucket_usage_stats_collection: true,
+      }),
+    );
+  });
+
   it("preserves inherited Manager feature choices when saving an unrelated identity change", async () => {
     render(<MemoryRouter><S3UsersPage /></MemoryRouter>);
     await screen.findByText("rgw-user-1");
@@ -670,32 +706,22 @@ describe("S3UsersPage modal tabs", () => {
 
   it("keeps tagged users visible with exact quick filter mode", async () => {
     listS3UsersMock.mockImplementation((params?: { search?: string }) => {
-      const taggedUser = {
-        id: 5,
-        name: "rgw-user-1",
-        rgw_user_uid: "rgw-uid-1",
+      const taggedUser = makeS3User({
         tags: [makeTag(601, "legacy")],
         email: "rgw-user-1@example.com",
-        storage_endpoint_id: 10,
-        storage_endpoint_name: "ceph-main",
-        storage_endpoint_url: "https://ceph.example.test",
         quota_max_size_gb: 1,
         quota_max_objects: 100,
         bucket_count: 0,
-      };
-      const plainUser = {
+      });
+      const plainUser = makeS3User({
         id: 6,
         name: "rgw-user-2",
         rgw_user_uid: "rgw-uid-2",
-        tags: [],
         email: "rgw-user-2@example.com",
-        storage_endpoint_id: 10,
-        storage_endpoint_name: "ceph-main",
-        storage_endpoint_url: "https://ceph.example.test",
         quota_max_size_gb: 1,
         quota_max_objects: 100,
         bucket_count: 0,
-      };
+      });
       const items = params?.search === "legacy" ? [taggedUser] : [taggedUser, plainUser];
       return Promise.resolve({
         items,

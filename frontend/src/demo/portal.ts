@@ -1,7 +1,7 @@
 import { resolvePortalSettings } from "../api/featurePolicies";
 import type { PortalAdminRequest } from "../api/portalRequests";
 import type { PortalStorageSpaceShare } from "../api/portalSharing";
-import { bucketView, newBucket, settings, type DemoSpace } from "./state";
+import { bucketView, createDemoSpace, createDemoUser, newBucket, settings, type DemoSpace } from "./state";
 import { accountGrant, spaceRole, DemoError, done, json, required, scopedAccount, textField, type DemoRequest } from "./http";
 
 type PortalAccessIntent = "add" | "role_change";
@@ -37,7 +37,16 @@ function spaceView(c: DemoRequest, s: DemoSpace) {
   const { accountId: _account, bucketName: _bucket, shares: _shares, ...view } = s;
   return { ...view, ...Object.fromEntries(Object.entries(bucketView(bucket)).filter(([key]) => ["used_bytes", "object_count", "quota_max_size_bytes", "quota_max_objects"].includes(key))),
     role, can_browse: true, can_delete: role === "Owner" || role === "Manager", can_take_ownership: false,
-    collaborator_count: s.shares.length, collaborators: s.shares.map(share => ({ user_id: share.user_id, email: share.email, role: share.role })) };
+    collaborator_count: s.shares.length, collaborators: s.shares.map(share => {
+      const user = c.state.users.find(candidate => candidate.id === share.user_id);
+      return {
+        user_id: share.user_id,
+        email: share.email,
+        display_name: user?.full_name ?? null,
+        role: share.role,
+        avatar: user?.avatar ?? { preference: "auto", source: "initials", url: null, initials: share.email.slice(0, 1).toUpperCase(), updated_at: null },
+      };
+    }) };
 }
 
 export function portal(c: DemoRequest): Response | undefined {
@@ -55,7 +64,7 @@ export function portal(c: DemoRequest): Response | undefined {
       if (!["portal_user_access", "portal_user_removal", "account_quota_change"].includes(type)) throw new DemoError(403, "Global and project settings stay locked in this demo. Try a membership or quota request.");
       const now = new Date().toISOString(); const { request_type: _type, ...payload } = body;
       if (type === "portal_user_access") portalAccessRequest(payload);
-      const request: PortalAdminRequest = { id: state.nextId++, account_id: account!.id, account_name: account!.name, request_type: type, status: "pending", payload, requester_user_id: c.user.id, requester_email: c.user.email, created_at: now, updated_at: now, messages: [] };
+      const request: PortalAdminRequest = { id: state.nextId++, account_id: account!.id, account_name: account!.name, request_type: type, status: "pending", payload, result: null, error_message: null, requester_user_id: c.user.id, requester_email: c.user.email, decided_by_user_id: null, decided_by_email: null, decided_at: null, created_at: now, updated_at: now, messages: [] };
       state.requests.push(request); return json(request, 201);
     }
     if (admin && method === "POST" && requestMatch[2]) {
@@ -74,14 +83,21 @@ export function portal(c: DemoRequest): Response | undefined {
             const { intent, portalRole } = portalAccessRequest(request.payload);
             if (intent === "role_change") {
               const user = required(state.users.find(u => u.id === Number(request.payload.target_user_id)));
-              user.account_links = [...(user.account_links ?? []).filter(l => l.account_id !== account.id), { account_id: account.id, manager_role: null, portal_role: portalRole }];
-              account.user_links = [...account.user_links.filter(l => l.user_id !== user.id), { user_id: user.id, user_email: user.email, user_full_name: user.full_name, manager_role: null, portal_role: portalRole }];
+              user.account_links = [...(user.account_links ?? []).filter(l => l.account_id !== account.id), { account_id: account.id, manager_role: null, portal_role: portalRole, allow_manager_browser_data_access: false }];
+              account.user_links = [...account.user_links.filter(l => l.user_id !== user.id), { user_id: user.id, user_email: user.email, user_full_name: user.full_name, user_avatar: user.avatar, manager_role: null, portal_role: portalRole, allow_manager_browser_data_access: false }];
               request.result = { target_user_id: user.id, portal_role: portalRole };
             } else {
               const email = textField(request.payload, "target_email"); let user = state.users.find(u => u.email === email);
-              if (!user) { user = { id: state.nextId++, email, full_name: String(request.payload.target_name ?? ""), role: "ui_user", is_active: true, ui_language: "en", account_links: [] }; state.users.push(user); }
-              user.account_links = [...(user.account_links ?? []).filter(l => l.account_id !== account.id), { account_id: account.id, manager_role: null, portal_role: portalRole }];
-              account.user_links = [...account.user_links.filter(l => l.user_id !== user!.id), { user_id: user.id, user_email: email, user_full_name: user.full_name, manager_role: null, portal_role: portalRole }];
+              if (!user) {
+                user = createDemoUser({
+                  id: state.nextId++,
+                  email,
+                  full_name: String(request.payload.target_name ?? ""),
+                });
+                state.users.push(user);
+              }
+              user.account_links = [...(user.account_links ?? []).filter(l => l.account_id !== account.id), { account_id: account.id, manager_role: null, portal_role: portalRole, allow_manager_browser_data_access: false }];
+              account.user_links = [...account.user_links.filter(l => l.user_id !== user!.id), { user_id: user.id, user_email: email, user_full_name: user.full_name, user_avatar: user.avatar, manager_role: null, portal_role: portalRole, allow_manager_browser_data_access: false }];
               request.result = { user_id: user.id, email, portal_role: portalRole };
             }
           } else if (request.request_type === "portal_user_removal") {
@@ -106,10 +122,10 @@ export function portal(c: DemoRequest): Response | undefined {
     const l = accountGrant(c, account, user.id);
     return { user_id: user.id, email: user.email, display_name: user.full_name, portal_role: l.portal_role, access_source: "direct", member_since: state.initializedAt, can_review_access: manager };
   });
-  if (path === "/portal/state" && method === "GET") return json({ portal_role: manager ? "portal_manager" : "portal_user", can_manage_buckets: manager, can_create_private_storage_spaces: true, can_create_team_storage_spaces: manager, can_create_external_sharing: false, can_manage_portal_users: manager, portal_collaborator_role_management_delegated: false, portal_collaborator_addition_delegated: false, allow_named_bucket_create: true, storage_space_version_cleanup_enabled: false, server_access_logging_enabled: true });
+  if (path === "/portal/state" && method === "GET") return json({ portal_role: manager ? "portal_manager" : "portal_user", can_manage_buckets: manager, can_create_private_storage_spaces: true, can_create_team_storage_spaces: manager, can_create_external_sharing: false, can_manage_portal_users: manager, portal_collaborator_role_management_delegated: false, portal_collaborator_addition_delegated: false, allow_named_bucket_create: true, storage_space_version_cleanup_enabled: false, server_access_logging_enabled: true, bucket_usage_stats_enabled: true, cost_estimation_enabled: false });
   if (path === "/portal/settings") {
     if (method !== "GET") throw new DemoError(403, "Project settings are read-only in this demo");
-    return json({ effective: resolvePortalSettings(settings.portal), project_override: {}, delegated_to_portal_managers: false, portal_collaborator_role_management_delegated: false, portal_collaborator_addition_delegated: false, can_update: false });
+    return json({ effective: resolvePortalSettings(settings.portal), feature_states: {}, project_override: {}, delegated_to_portal_managers: false, portal_collaborator_role_management_delegated: false, portal_collaborator_addition_delegated: false, can_update: false });
   }
   if (path === "/portal/collaborators" && method === "GET") return json({ summary: { collaborator_count: candidates.length, external_access_key_count: 0 }, collaborators: candidates });
   if (path === "/portal/share-candidates" && method === "GET") return json(candidates);
@@ -128,11 +144,11 @@ export function portal(c: DemoRequest): Response | undefined {
       const bucketName = body.naming_mode === "named_bucket" ? name : `portal-space-${id}`;
       if (state.buckets.some(b => b.name === bucketName)) throw new DemoError(409, "This bucket already exists");
       const bucket = newBucket(bucketName, account); state.buckets.push(bucket);
-      const space: DemoSpace = { id: `space-${id}`, name, accountId: account.id, bucketName, internal_bucket_name: bucketName, description: String(body.description ?? ""), role: manager ? "Manager" : "Owner", visibility: body.visibility === "shared" ? "shared" : "private", owner_user_id: body.visibility === "shared" ? null : c.user.id, share_scope: body.share_scope === "restricted" ? "restricted" : "account", account_member_role: body.account_member_role === "Viewer" ? "Viewer" : "Editor", shares: [], status: "active", origin: "portal_generic", created_at: bucket.creation_date, name_editable: true };
+      const space: DemoSpace = createDemoSpace({ id: `space-${id}`, name, accountId: account.id, bucketName, internal_bucket_name: bucketName, description: String(body.description ?? ""), role: manager ? "Manager" : "Owner", visibility: body.visibility === "shared" ? "shared" : "private", owner_user_id: body.visibility === "shared" ? null : c.user.id, share_scope: body.share_scope === "restricted" ? "restricted" : "account", account_member_role: body.account_member_role === "Viewer" ? "Viewer" : "Editor", shares: [], status: "active", origin: "portal_generic", created_at: bucket.creation_date ?? null, name_editable: true });
       if (Array.isArray(body.initial_shares)) space.shares = body.initial_shares.map((input: { user_id: number; role: string }) => {
         const target = required(candidates.find(u => u.user_id === input.user_id));
         if (input.role !== "Viewer" && input.role !== "Editor") throw new DemoError(422, "Choose Viewer or Editor");
-        return { id: `share-${state.nextId++}`, storage_space_id: space.id, storage_space_name: space.name, user_id: target.user_id, email: target.email, role: input.role, direction: "by_me" };
+        return { id: `share-${state.nextId++}`, storage_space_id: space.id, storage_space_name: space.name, user_id: target.user_id, email: target.email, role: input.role, direction: "by_me", activity_label: "Just now" };
       });
       state.spaces.push(space); return json(spaceView(c, space), 201);
     }

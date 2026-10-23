@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createMemoryRouter, MemoryRouter, RouterProvider } from "react-router-dom";
 import { LanguageProvider } from "../../components/language";
 import PortalAccessKeysPage from "./PortalAccessKeysPage";
-import type { PortalAccessKeysState } from "../../api/portalAccessKeys";
+import type { PortalAccessKey, PortalAccessKeysState } from "../../api/portalAccessKeys";
 import { setSessionUserCache } from "../../utils/workspaces";
 
 let downloadedBlobs: Blob[] = [];
@@ -21,6 +21,27 @@ function readDownloadedBlobText(blob: Blob | undefined): Promise<string> {
   });
 }
 
+function portalAccessKey(
+  overrides: Pick<PortalAccessKey, "access_key_id"> & Partial<PortalAccessKey>,
+): PortalAccessKey {
+  return {
+    status: null,
+    created_at: null,
+    is_active: false,
+    is_portal: false,
+    deletable: true,
+    secret_access_key: null,
+    session_token: null,
+    expires_at: null,
+    target_type: "self",
+    external_email: null,
+    storage_space_name: null,
+    bucket_name: null,
+    permission: null,
+    ...overrides,
+  };
+}
+
 const mocks = vi.hoisted(() => ({
   account: {
     accountIdForApi: 101 as number | null,
@@ -29,14 +50,15 @@ const mocks = vi.hoisted(() => ({
     error: null as string | null,
   },
   state: {
-    iam_user: { iam_username: "portal-101-7" },
+    iam_user: { iam_user_id: null, iam_username: "portal-101-7", arn: null, created_at: null },
     s3_endpoint: "https://s3.example.test",
+    force_path_style: false,
     can_manage_access_keys: true,
     can_create_external_access: true,
     max_access_keys: 2,
     access_keys: [
-      { access_key_id: "AK-PORTAL", status: "Active", is_active: true, is_portal: true },
-      { access_key_id: "AK-USER", status: "Active", created_at: "2026-06-10T10:00:00Z", is_active: true },
+      portalAccessKey({ access_key_id: "AK-PORTAL", status: "Active", is_active: true, is_portal: true }),
+      portalAccessKey({ access_key_id: "AK-USER", status: "Active", created_at: "2026-06-10T10:00:00Z", is_active: true }),
     ],
   } as PortalAccessKeysState,
   fetchPortalAccessKeysState: vi.fn(),
@@ -111,14 +133,15 @@ describe("PortalAccessKeysPage", () => {
     vi.clearAllMocks();
     mocks.account = { accountIdForApi: 101, hasAccountContext: true, loading: false, error: null };
     mocks.state = {
-      iam_user: { iam_username: "portal-101-7" },
+      iam_user: { iam_user_id: null, iam_username: "portal-101-7", arn: null, created_at: null },
       s3_endpoint: "https://s3.example.test",
+      force_path_style: false,
       can_manage_access_keys: true,
       can_create_external_access: true,
       max_access_keys: 2,
       access_keys: [
-        { access_key_id: "AK-PORTAL", status: "Active", is_active: true, is_portal: true },
-        { access_key_id: "AK-USER", status: "Active", created_at: "2026-06-10T10:00:00Z", is_active: true },
+        portalAccessKey({ access_key_id: "AK-PORTAL", status: "Active", is_active: true, is_portal: true }),
+        portalAccessKey({ access_key_id: "AK-USER", status: "Active", created_at: "2026-06-10T10:00:00Z", is_active: true }),
       ],
     };
     mocks.fetchPortalAccessKeysState.mockImplementation(async () => mocks.state);
@@ -198,8 +221,8 @@ describe("PortalAccessKeysPage", () => {
     mocks.state = {
       ...mocks.state,
       access_keys: [
-        { access_key_id: "AK-PORTAL", status: "Active", is_active: true, is_portal: true },
-        { access_key_id: "AK-USER", status: "Active", is_active: false },
+        portalAccessKey({ access_key_id: "AK-PORTAL", status: "Active", is_active: true, is_portal: true }),
+        portalAccessKey({ access_key_id: "AK-USER", status: "Active", is_active: false }),
       ],
     };
 
@@ -423,13 +446,13 @@ describe("PortalAccessKeysPage", () => {
       ...mocks.state,
       max_access_keys: 1,
       access_keys: [
-        {
+        portalAccessKey({
           access_key_id: "AK-PERSONAL",
           status: "Active",
           is_active: true,
           target_type: "self",
-        },
-        {
+        }),
+        portalAccessKey({
           access_key_id: "AK-EXTERNAL",
           status: "Active",
           is_active: true,
@@ -438,7 +461,7 @@ describe("PortalAccessKeysPage", () => {
           storage_space_name: "Research Data",
           bucket_name: "research-data-internal",
           permission: "read_only",
-        },
+        }),
       ],
     };
     const user = userEvent.setup();
@@ -523,7 +546,7 @@ describe("PortalAccessKeysPage", () => {
       ...mocks.state,
       max_access_keys: 4,
       access_keys: [
-        {
+        portalAccessKey({
           access_key_id: "AK-EXT-OLD",
           status: "Active",
           created_at: "2026-06-10T10:00:00Z",
@@ -533,7 +556,7 @@ describe("PortalAccessKeysPage", () => {
           storage_space_name: "Research Data",
           bucket_name: "research-data-internal",
           permission: "read_only",
-        },
+        }),
       ],
     };
     renderPage();
@@ -668,7 +691,10 @@ describe("PortalAccessKeysPage", () => {
     const view = renderPage();
     await waitFor(() => expect(mocks.fetchPortalAccessKeysState).toHaveBeenCalledWith(101));
     mocks.account = { ...mocks.account, accountIdForApi: 102 };
-    mocks.fetchPortalAccessKeysState.mockResolvedValueOnce({ ...mocks.state, access_keys: [{ access_key_id: "NEW-PROJECT", is_active: true }] });
+    mocks.fetchPortalAccessKeysState.mockResolvedValueOnce({
+      ...mocks.state,
+      access_keys: [portalAccessKey({ access_key_id: "NEW-PROJECT", is_active: true })],
+    });
     view.rerender(<LanguageProvider><MemoryRouter><main><PortalAccessKeysPage /></main></MemoryRouter></LanguageProvider>);
     expect(await screen.findByText("NEW-PROJECT")).toBeVisible();
     await act(async () => finish(mocks.state));
@@ -722,7 +748,7 @@ describe("PortalAccessKeysPage", () => {
       can_manage_access_keys: false,
       can_create_external_access: false,
       access_keys: [
-        {
+        portalAccessKey({
           access_key_id: "AK-EXT-EXISTING",
           status: "Active",
           is_active: true,
@@ -731,7 +757,7 @@ describe("PortalAccessKeysPage", () => {
           storage_space_name: "Research Data",
           bucket_name: "research-data-internal",
           permission: "read_only",
-        },
+        }),
       ],
     };
     const user = userEvent.setup();

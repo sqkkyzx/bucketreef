@@ -1,8 +1,15 @@
 import { projectGeneralSettings, resolvePortalSettings } from "../api/featurePolicies";
 import type { CurrentSessionResponse } from "../api/auth";
+import type { BrowserUsageSummary } from "../api/browserContracts";
 import type { ExecutionContext, WorkspaceAccess } from "../api/executionContexts";
+import type { ManagerContext } from "../api/managerContext";
 import type { ManagerTrafficStats, ManagerUsageTrendBaseline } from "../api/stats";
-import type { UsageHistoryTrendPoint } from "../api/usageHistory";
+import type {
+  UsageHistoryRecord,
+  UsageHistoryResponse,
+  UsageHistoryTrendPoint,
+  UsageHistoryTrendResponse,
+} from "../api/usageHistory";
 import { bucketView, GiB, settings, type DemoState } from "./state";
 import { accountView } from "./governance";
 import { accountGrant, json, page, required, scopedAccount, type DemoRequest } from "./http";
@@ -57,8 +64,11 @@ export function readModels(c: DemoRequest): Response | undefined {
   const admin = persona === "admin"; const ceph = persona === "ceph-admin";
   const endUser = persona === "member" || persona === "project-manager";
   if (path === "/auth/session") return json({ authenticated: true, user: currentUser, session: null,
-    auth_session: { id: `demo-${user.id}`, auth_type: "password", mfa_verified_at: null,
-      idle_expires_at: "2099-01-01T00:00:00Z", absolute_expires_at: "2099-01-01T00:00:00Z" } } satisfies CurrentSessionResponse);
+    auth_session: { id: `demo-${user.id}`, principal_type: "user", auth_type: "password",
+      created_at: "2026-01-01T00:00:00Z", last_activity_at: "2026-01-01T00:00:00Z",
+      idle_expires_at: "2099-01-01T00:00:00Z", absolute_expires_at: "2099-01-01T00:00:00Z",
+      mfa_verified_at: null, ip_address: null, user_agent: null, revoked_at: null, revoke_reason: null,
+      current: true, user_id: user.id, s3_session_id: null } } satisfies CurrentSessionResponse);
   if (path === "/users/me") return json(currentUser);
   if (path === "/settings/general") return json(projectGeneralSettings(settings));
   if (path === "/settings/branding") return json(settings.branding);
@@ -99,7 +109,7 @@ export function readModels(c: DemoRequest): Response | undefined {
     const browser = c.url.searchParams.get("workspace") === "browser";
     const selected = state.accounts.filter(a => (browser ? accountGrant(c, a).portal_role : accountGrant(c, a).manager_role));
     return json(selected.map(a => ({ kind: browser ? "portal_account" : "account", id: String(a.id), display_name: a.name,
-      tags: a.tags, endpoint_tags: [], manager_role: browser ? null : "account_administrator", portal_role: browser ? accountGrant(c, a).portal_role : null,
+      connection_scope: null, tags: a.tags, endpoint_tags: [], manager_role: browser ? null : "account_administrator", portal_role: browser ? accountGrant(c, a).portal_role : null,
       rgw_account_id: a.rgw_account_id, endpoint_id: a.storage_endpoint_id, endpoint_name: a.storage_endpoint_name, endpoint_url: a.storage_endpoint_url,
       endpoint_provider: "ceph", endpoint_is_default: a.storage_endpoint_is_default, storage_endpoint_capabilities: a.storage_endpoint_capabilities,
       capabilities: { can_manage_iam: !browser, sts_capable: false, admin_api_capable: !browser },
@@ -107,7 +117,29 @@ export function readModels(c: DemoRequest): Response | undefined {
   }
   if (path === "/manager/context") {
     const account = scopedAccount(c);
-    return json({ access_mode: "admin", iam_identity: "account-root", manager_stats_enabled: true, manager_browser_enabled: true, manager_bucket_quota_enabled: true, manager_ceph_keys_enabled: true, manager_private_access_enabled: false, quota_max_size_gb: account.quota_max_size_gb, quota_max_objects: account.quota_max_objects, max_buckets: 100, max_users: 100, max_roles: 100, max_groups: 100 });
+    const includeLimits = c.url.searchParams.get("include_limits") === "true";
+    return json({
+      feature_states: {},
+      naming_validation_profile: "ceph",
+      access_mode: "admin",
+      context_kind: "account",
+      iam_identity: "account-root",
+      manager_stats_enabled: true,
+      manager_stats_message: null,
+      manager_browser_enabled: true,
+      manager_browser_message: null,
+      manager_bucket_quota_enabled: true,
+      manager_ceph_keys_enabled: true,
+      manager_access_key_metadata_enabled: false,
+      manager_access_key_expiration_enabled: false,
+      manager_private_access_enabled: false,
+      quota_max_size_gb: includeLimits ? account.quota_max_size_gb : null,
+      quota_max_objects: includeLimits ? account.quota_max_objects : null,
+      max_buckets: includeLimits ? 100 : null,
+      max_users: includeLimits ? 100 : null,
+      max_roles: includeLimits ? 100 : null,
+      max_groups: includeLimits ? 100 : null,
+    } satisfies ManagerContext);
   }
   if (path === "/manager/iam/overview") { const data = required(state.iam[scopedAccount(c).id]); return json({ iam_users: data.users.length, iam_groups: data.groups.length, iam_roles: data.roles.length, iam_policies: data.policies.length, warnings: [] }); }
   if (path === "/users/me/notifications") { const items = state.notifications[user.id] ?? []; return json({ items, unread_count: items.filter(n => !n.read_at).length }); }
@@ -185,16 +217,19 @@ export function readModels(c: DemoRequest): Response | undefined {
         ops: Math.round(point.ops * share), success_ops: Math.round(point.success_ops * share),
       }));
       const totals = series.reduce((t, p) => ({ bytes_in: t.bytes_in + p.bytes_in, bytes_out: t.bytes_out + p.bytes_out, ops: t.ops + p.ops, success_ops: t.success_ops + p.success_ops }), { bytes_in: 0, bytes_out: 0, ops: 0, success_ops: 0 });
-      return json({ ...(dashboardKind ? { coverage, cache } : {}), window, start: dashboardKind ? new Date(Date.parse(state.initializedAt) - 86400000).toISOString() : series[0].timestamp, end: series.at(-1)!.timestamp, resolution: dashboardKind ? "hourly" : "daily", data_points: series.length, series, totals: { ...totals, success_rate: totals.success_ops / totals.ops }, bucket_rankings: selected.map((b, i) => ({ bucket: b.name, bytes_total: (40 + i) * GiB, bytes_in: (20 + i) * GiB, bytes_out: 20 * GiB, ops: 25000 + i * 1500, success_ops: 24980 + i * 1500, success_ratio: .999 })), user_rankings: [], request_breakdown: [{ group: "GetObject", bytes_in: 0, bytes_out: totals.bytes_out, ops: totals.ops / 2 }], category_breakdown: [{ category: "write", bytes_in: totals.bytes_in, bytes_out: 0, ops: totals.ops / 2 }] } satisfies ManagerTrafficStats);
+      return json({ ...(dashboardKind ? { coverage, cache } : {}), window, start: dashboardKind ? new Date(Date.parse(state.initializedAt) - 86400000).toISOString() : series[0].timestamp, end: series.at(-1)!.timestamp, resolution: dashboardKind ? "hourly" : "daily", bucket_filter: c.url.searchParams.get("bucket"), data_points: series.length, series, totals: { ...totals, success_rate: totals.success_ops / totals.ops }, bucket_rankings: selected.map((b, i) => ({ bucket: b.name, bytes_total: (40 + i) * GiB, bytes_in: (20 + i) * GiB, bytes_out: 20 * GiB, ops: 25000 + i * 1500, success_ops: 24980 + i * 1500, success_ratio: .999 })), user_rankings: [], request_breakdown: [{ group: "GetObject", bytes_in: 0, bytes_out: totals.bytes_out, ops: totals.ops / 2 }], category_breakdown: [{ category: "write", bytes_in: totals.bytes_in, bytes_out: 0, ops: totals.ops / 2 }] } satisfies ManagerTrafficStats);
     }
     if (path.endsWith("usage-history-trends") || path.endsWith("usage-history/trends")) {
       const subjects = new Set(snapshot.map(b => b.accountId)).size;
-      const points = state.history.map((p, i) => ({ period_start: p.timestamp.slice(0, 10), ...historicalUsage(snapshot, i), subjects_count: subjects, samples_count: 24, collected_at: p.timestamp }));
-      return json({ window: c.url.searchParams.get("window") ?? "month", granularity: "daily", available: true, points, summary: { total_records: points.length * subjects, points_count: points.length, subjects_count: subjects, latest_used_bytes: points.at(-1)!.used_bytes, latest_used_objects: points.at(-1)!.used_objects, latest_bucket_count: points.at(-1)!.bucket_count, latest_collected_at: state.initializedAt } });
+      const requestedWindow = c.url.searchParams.get("window");
+      const window = requestedWindow === "day" || requestedWindow === "week" ? requestedWindow : "month";
+      const points = state.history.map((p, i) => ({ period_start: p.timestamp.slice(0, 10), ...historicalUsage(snapshot, i), max_usage_ratio_pct: null, subjects_count: subjects, samples_count: 24, collected_at: p.timestamp }));
+      return json({ window, granularity: window === "day" ? "hourly" : "daily", available: true, unavailable_reason: null, points, summary: { total_records: points.length * subjects, points_count: points.length, subjects_count: subjects, latest_used_bytes: points.at(-1)!.used_bytes, latest_used_objects: points.at(-1)!.used_objects, latest_bucket_count: points.at(-1)!.bucket_count, latest_collected_at: state.initializedAt, max_usage_ratio_pct: null } } satisfies UsageHistoryTrendResponse);
     }
-    if (path === "/admin/usage-history") { const records = state.history.flatMap((p, i) => state.accounts.map(a => ({ id: i * 10000 + a.id, granularity: "daily", period_start: p.timestamp, storage_endpoint_id: a.storage_endpoint_id, endpoint_name: a.storage_endpoint_name, subject_type: "account", subject_id: a.id, subject_name: a.name, ...historicalUsage(state.snapshotInventory.filter(b => b.accountId === a.id), i), quota_size_bytes: 500 * GiB, samples_count: 24, collected_at: p.timestamp })));
-      return json({ ...page(records, c.url), summary: { total_records: records.length, subjects_count: 5, latest_collected_at: state.initializedAt } }); }
-    if (path.endsWith("/usage") || path.endsWith("usage-summary")) return json({ available: true, source: "portal", label: account?.name, used_bytes: bytes, used_objects: count, object_count: count, quota_max_size_bytes: (account?.quota_max_size_gb ?? 500) * GiB, quota_max_objects: account?.quota_max_objects });
+    if (path === "/admin/usage-history") { const records: UsageHistoryRecord[] = state.history.flatMap((p, i) => state.accounts.map(a => ({ id: i * 10000 + a.id, granularity: "daily", period_start: p.timestamp, storage_endpoint_id: a.storage_endpoint_id, endpoint_name: a.storage_endpoint_name, subject_type: "account", subject_id: a.id, subject_name: a.name, subject_identifier: a.rgw_account_id, ...historicalUsage(state.snapshotInventory.filter(b => b.accountId === a.id), i), quota_size_bytes: 500 * GiB, quota_objects: a.quota_max_objects ?? null, usage_ratio_pct: null, samples_count: 24, collected_at: p.timestamp })));
+      return json({ ...page(records, c.url), summary: { total_records: records.length, subjects_count: 5, latest_collected_at: state.initializedAt, max_usage_ratio_pct: null } } satisfies UsageHistoryResponse); }
+    if (path.endsWith("usage-summary")) return json({ available: true, source: "portal", label: account?.name ?? null, used_bytes: bytes, object_count: count, quota_max_size_bytes: (account?.quota_max_size_gb ?? 500) * GiB, quota_max_objects: account?.quota_max_objects ?? null } satisfies BrowserUsageSummary);
+    if (path.endsWith("/usage")) return json({ available: true, source: "portal", label: account?.name, used_bytes: bytes, used_objects: count, object_count: count, quota_max_size_bytes: (account?.quota_max_size_gb ?? 500) * GiB, quota_max_objects: account?.quota_max_objects });
     if (path.includes("usage-stats")) {
       const aggregate = { scope_kind: "account", scope_id: String(account?.id ?? eid), scope_name: account?.name ?? "Demo Ceph", bucket_count: selected.length, buckets_with_snapshot: selected.length, missing_bucket_count: 0, partial_scan_count: 0, object_version_count: count + selected.length, current_version_count: count, noncurrent_version_count: selected.length, delete_marker_count: 0, total_bytes: bytes, current_bytes: bytes, noncurrent_bytes: 0, data_type_distribution: [{ key: "json", label: "JSON datasets", count: Math.max(0, count - selected.length * 3), bytes: bytes * .995, ratio_count: .975, ratio_bytes: .995 }, { key: "documents", label: "Documents and media", count: selected.length * 3, bytes: bytes * .005, ratio_count: .025, ratio_bytes: .005 }], storage_class_distribution: [{ key: "STANDARD", label: "Standard", count, bytes, ratio_count: 1, ratio_bytes: 1 }], size_distribution: [{ key: "large", label: "1 MiB – 1 GiB", count: count - selected.length * 4, bytes: bytes * .99, ratio_count: .967, ratio_bytes: .99 }], age_distribution: [{ key: "recent", label: "0 – 90 days", count, bytes, ratio_count: 1, ratio_bytes: 1 }], current_vs_noncurrent: [{ key: "current", label: "Current", count, bytes, ratio_count: .992, ratio_bytes: .999 }, { key: "noncurrent", label: "Previous", count: selected.length, bytes: 100 * selected.length, ratio_count: .008, ratio_bytes: .001 }], warnings: ["Historical demo snapshot; no scan is executed."], oldest_snapshot_at: state.initializedAt, newest_snapshot_at: state.initializedAt };
       return json(path.includes("/buckets/") || path.includes("/storage-spaces/") ? { snapshot: { ...aggregate, bucket_name: path.split("/").at(-2), scan_mode: "versions", version_listing_available: true, calculated_at: state.initializedAt } } : { aggregate });
@@ -202,7 +237,10 @@ export function readModels(c: DemoRequest): Response | undefined {
     return json({ ...(dashboardKind ? { coverage, cache, measurements: Object.fromEntries(["bucket_count", "object_count", "used_bytes"].map(key => [key, { contributing_count: dashboardIds.length, complete_count: dashboardIds.length }])) } : {}), total_accounts: state.accounts.length, total_users: state.users.length, total_admins: 2, total_s3_users: 15, total_buckets: selected.length, total_bytes: bytes, total_objects: count, bucket_count: selected.length, bucket_usage: selected,
       bucket_overview: { bucket_count: selected.length, non_empty_buckets: selected.filter(b => b.object_count).length, empty_buckets: selected.filter(b => !b.object_count).length, avg_bucket_size_bytes: bytes / (selected.length || 1), avg_objects_per_bucket: count / (selected.length || 1), largest_bucket: [...selected].sort((a, b) => (b.used_bytes ?? 0) - (a.used_bytes ?? 0))[0], most_objects_bucket: [...selected].sort((a, b) => (b.object_count ?? 0) - (a.object_count ?? 0))[0] },
       storage_totals: { used_bytes: bytes, object_count: count, bucket_count: selected.length, accounts_with_usage: state.accounts.length, owners_with_usage: state.accounts.length },
-      account_usage: state.accounts.map(a => ({ account_id: String(a.id), account_name: a.name, ...accountView(c, a) })), owner_usage: state.accounts.map(a => ({ owner: a.rgw_account_id, used_bytes: accountView(c, a).used_bytes, bucket_count: accountView(c, a).bucket_count })), s3_user_usage: [], generated_at: state.initializedAt });
+      account_usage: state.accounts.map(a => ({ account_id: String(a.id), account_name: a.name, ...accountView(c, a) })), owner_usage: state.accounts.map(a => {
+        const view = accountView(c, a);
+        return { owner: a.rgw_account_id, used_bytes: view.used_bytes, object_count: view.used_objects, bucket_count: view.bucket_count };
+      }), s3_user_usage: [], generated_at: state.initializedAt });
   }
   return undefined;
 }

@@ -48,24 +48,24 @@ class CephAdminEndpoint(ApiModel):
 
 class CephAdminEndpointAccess(ApiModel):
     endpoint_id: int
-    can_admin: bool = False
-    can_accounts: bool = False
-    can_metrics: bool = False
-    admin_warning: Optional[str] = None
-    accounts_warning: Optional[str] = None
-    active_rgw_uid: Optional[str] = None
-    active_rgw_tenant: Optional[str] = None
-    availability_status: Literal["unknown", "available", "unavailable", "denied", "misconfigured"] = "unknown"
-    availability_checked_at: Optional[str] = None
+    can_admin: bool
+    can_accounts: bool
+    can_metrics: bool
+    admin_warning: Optional[str]
+    accounts_warning: Optional[str]
+    active_rgw_uid: Optional[str]
+    active_rgw_tenant: Optional[str]
+    availability_status: Literal["unknown", "available", "unavailable", "denied", "misconfigured"]
+    availability_checked_at: Optional[str]
 
 
 class CephAdminAdminOpsResult(ApiModel):
     operation: str
     success: bool
-    rgw_status_code: Optional[int] = None
-    rgw_error_code: Optional[str] = None
+    rgw_status_code: Optional[int]
+    rgw_error_code: Optional[str]
     message: str
-    result: Any = None
+    result: Any
 
 
 class CephAdminAdminOpsConfirmation(ApiModel):
@@ -142,35 +142,35 @@ CephAdminBucketIndexCheckBatchStatus = Literal["completed", "completed_with_erro
 
 class CephAdminBucketIndexCheckBatchBucketResult(ApiModel):
     name: str
-    tenant: Optional[str] = None
+    tenant: Optional[str]
     status: Literal["completed", "failed"]
-    duration_seconds: float = 0
-    operation: str = "check_bucket_index"
-    rgw_status_code: Optional[int] = None
-    rgw_error_code: Optional[str] = None
+    duration_seconds: float
+    operation: Literal["check_bucket_index"]
+    rgw_status_code: Optional[int]
+    rgw_error_code: Optional[str]
     message: str
-    result: Any = None
+    result: Any
 
 
 class CephAdminBucketIndexCheckBatchProgress(ApiModel):
-    request_id: Optional[str] = None
-    stage: Literal["prepare", "completed"] = "prepare"
-    bucket_name: Optional[str] = None
-    tenant: Optional[str] = None
-    total_buckets: int = 0
-    completed_buckets: int = 0
-    failed_buckets: int = 0
-    message: Optional[str] = None
+    request_id: Optional[str]
+    stage: Literal["prepare", "completed"]
+    bucket_name: Optional[str]
+    tenant: Optional[str]
+    total_buckets: int
+    completed_buckets: int
+    failed_buckets: int
+    message: Optional[str]
 
 
 class CephAdminBucketIndexCheckBatchResult(ApiModel):
     status: CephAdminBucketIndexCheckBatchStatus
-    total_buckets: int = 0
-    completed_buckets: int = 0
-    failed_buckets: int = 0
+    total_buckets: int
+    completed_buckets: int
+    failed_buckets: int
     started_at: datetime
     finished_at: datetime
-    buckets: list[CephAdminBucketIndexCheckBatchBucketResult] = Field(default_factory=list)
+    buckets: list[CephAdminBucketIndexCheckBatchBucketResult]
 
 
 class CephAdminRgwAccountSummary(ApiModel):
@@ -205,8 +205,13 @@ class CephAdminRgwUserSummary(ApiModel):
 
 class PaginatedCephAdminBucketsResponse(PaginatedResponse):
     items: list[BucketListingSummary]
-    stats_available: bool = True
-    stats_warning: Optional[str] = None
+    stats_available: bool
+    stats_warning: Optional[str]
+
+
+class CephAdminBucketListingCacheRefreshResponse(ApiModel):
+    refreshed: bool
+    endpoint_id: int
 
 
 class PaginatedCephAdminAccountsResponse(PaginatedResponse):
@@ -245,38 +250,38 @@ class CephAdminRgwAccessKeyStatusChange(ApiModel):
 
 class CephAdminRgwAccountDetail(ApiModel):
     account_id: str
-    tenant: Optional[str] = None
-    account_name: Optional[str] = None
-    email: Optional[str] = None
-    max_users: Optional[int] = None
-    max_buckets: Optional[int] = None
-    max_roles: Optional[int] = None
-    max_groups: Optional[int] = None
-    max_access_keys: Optional[int] = None
-    bucket_count: Optional[int] = None
-    user_count: Optional[int] = None
-    quota: Optional[CephAdminRgwQuotaConfig] = None
-    bucket_quota: Optional[CephAdminRgwQuotaConfig] = None
+    tenant: Optional[str]
+    account_name: Optional[str]
+    email: Optional[str]
+    max_users: Optional[int]
+    max_buckets: Optional[int]
+    max_roles: Optional[int]
+    max_groups: Optional[int]
+    max_access_keys: Optional[int]
+    bucket_count: Optional[int]
+    user_count: Optional[int]
+    quota: Optional[CephAdminRgwQuotaConfig]
+    bucket_quota: Optional[CephAdminRgwQuotaConfig]
 
 
 class CephAdminRgwUserDetail(ApiModel):
     uid: str
-    tenant: Optional[str] = None
-    display_name: Optional[str] = None
-    email: Optional[str] = None
-    account_id: Optional[str] = None
-    account_name: Optional[str] = None
-    suspended: Optional[bool] = None
-    admin: Optional[bool] = None
-    system: Optional[bool] = None
-    account_root: Optional[bool] = None
-    max_buckets: Optional[int] = None
-    op_mask: Optional[str] = None
-    default_placement: Optional[str] = None
-    default_storage_class: Optional[str] = None
-    caps: list[str] = Field(default_factory=list)
-    quota: Optional[CephAdminRgwQuotaConfig] = None
-    keys: list[CephAdminRgwAccessKey] = Field(default_factory=list)
+    tenant: Optional[str]
+    display_name: Optional[str]
+    email: Optional[str]
+    account_id: Optional[str]
+    account_name: Optional[str]
+    suspended: Optional[bool]
+    admin: Optional[bool]
+    system: Optional[bool]
+    account_root: Optional[bool]
+    max_buckets: Optional[int]
+    op_mask: Optional[str]
+    default_placement: Optional[str]
+    default_storage_class: Optional[str]
+    caps: list[str]
+    quota: Optional[CephAdminRgwQuotaConfig]
+    keys: list[CephAdminRgwAccessKey]
 
 
 class CephAdminRgwUserCapsUpdate(ApiModel):
@@ -363,7 +368,7 @@ class CephAdminRgwUserCreate(ApiModel):
 
 class CephAdminRgwUserCreateResponse(ApiModel):
     detail: CephAdminRgwUserDetail
-    generated_key: Optional[CephAdminRgwGeneratedAccessKey] = None
+    generated_key: Optional[CephAdminRgwGeneratedAccessKey]
 
 
 class CephAdminRgwAccountConfigUpdate(ApiModel):
@@ -408,15 +413,37 @@ class CephAdminRgwUserConfigUpdate(ApiModel):
 
 class CephAdminBucketUsagePoint(ApiModel):
     name: str
-    used_bytes: Optional[int] = None
-    object_count: Optional[int] = None
+    used_bytes: Optional[int]
+    object_count: Optional[int]
 
 
 class CephAdminEntityMetrics(ApiModel):
-    total_bytes: Optional[int] = None
-    total_objects: Optional[int] = None
-    bucket_count: int = 0
-    bucket_usage: list[CephAdminBucketUsagePoint] = Field(default_factory=list)
+    total_bytes: Optional[int]
+    total_objects: Optional[int]
+    bucket_count: int
+    bucket_usage: list[CephAdminBucketUsagePoint]
+    generated_at: datetime
+
+
+class CephAdminClusterOwnerUsagePoint(ApiModel):
+    owner: str
+    used_bytes: Optional[int]
+    object_count: Optional[int]
+    bucket_count: int
+
+
+class CephAdminClusterStorageTotals(ApiModel):
+    used_bytes: Optional[int]
+    object_count: Optional[int]
+    bucket_count: int
+    owners_with_usage: int
+
+
+class CephAdminClusterStorageMetrics(ApiModel):
+    total_buckets: int
+    bucket_usage: list[CephAdminBucketUsagePoint]
+    owner_usage: list[CephAdminClusterOwnerUsagePoint]
+    storage_totals: CephAdminClusterStorageTotals
     generated_at: datetime
 
 
@@ -448,11 +475,11 @@ class CephAdminBucketCompareResult(ApiModel):
     target_endpoint_id: int
     source_bucket: str
     target_bucket: str
-    source_tenant: str = ""
-    target_tenant: str = ""
-    has_differences: bool = False
-    content_diff: Optional[BucketContentDiff] = None
-    config_diff: Optional[BucketConfigDiff] = None
+    source_tenant: str
+    target_tenant: str
+    has_differences: bool
+    content_diff: Optional[BucketContentDiff]
+    config_diff: Optional[BucketConfigDiff]
 
 
 UserFilterField = Literal[
@@ -469,7 +496,8 @@ UserFilterField = Literal[
     "quota_usage_size_percent",
     "quota_usage_object_percent",
 ]
-UserFilterOp = Literal[
+CephAdminFilterMatch = Literal["all", "any"]
+CephAdminFilterOp = Literal[
     "eq",
     "neq",
     "contains",
@@ -484,22 +512,41 @@ UserFilterOp = Literal[
     "is_null",
     "not_null",
 ]
+CephAdminFilterValue = Union[
+    str,
+    int,
+    float,
+    bool,
+    list[str],
+    list[int],
+    list[float],
+    list[bool],
+]
+
+
+def _validate_ceph_admin_filter_rule_value(
+    op: CephAdminFilterOp,
+    value: Optional[CephAdminFilterValue],
+    *,
+    subject: str,
+) -> None:
+    if op not in ("is_null", "not_null") and value is None:
+        raise ValueError(f"{subject} filter rule requires value.")
 
 
 class CephAdminUserFilterRule(ApiModel):
     field: UserFilterField
-    op: UserFilterOp
-    value: Optional[Union[str, int, float, bool, list[str], list[int], list[float], list[bool]]] = None
+    op: CephAdminFilterOp
+    value: Optional[CephAdminFilterValue] = None
 
     @model_validator(mode="after")
     def validate_rule(self):
-        if self.op not in ("is_null", "not_null") and self.value is None:
-            raise ValueError("User filter rule requires value.")
+        _validate_ceph_admin_filter_rule_value(self.op, self.value, subject="User")
         return self
 
 
 class CephAdminUserFilterQuery(ApiModel):
-    match: Literal["all", "any"] = "all"
+    match: CephAdminFilterMatch = "all"
     rules: list[CephAdminUserFilterRule] = Field(default_factory=list)
 
 
@@ -516,35 +563,19 @@ AccountFilterField = Literal[
     "bucket_count",
     "user_count",
 ]
-AccountFilterOp = Literal[
-    "eq",
-    "neq",
-    "contains",
-    "starts_with",
-    "ends_with",
-    "gt",
-    "gte",
-    "lt",
-    "lte",
-    "in",
-    "not_in",
-    "is_null",
-    "not_null",
-]
 
 
 class CephAdminAccountFilterRule(ApiModel):
     field: AccountFilterField
-    op: AccountFilterOp
-    value: Optional[Union[str, int, float, bool, list[str], list[int], list[float], list[bool]]] = None
+    op: CephAdminFilterOp
+    value: Optional[CephAdminFilterValue] = None
 
     @model_validator(mode="after")
     def validate_rule(self):
-        if self.op not in ("is_null", "not_null") and self.value is None:
-            raise ValueError("Account filter rule requires value.")
+        _validate_ceph_admin_filter_rule_value(self.op, self.value, subject="Account")
         return self
 
 
 class CephAdminAccountFilterQuery(ApiModel):
-    match: Literal["all", "any"] = "all"
+    match: CephAdminFilterMatch = "all"
     rules: list[CephAdminAccountFilterRule] = Field(default_factory=list)

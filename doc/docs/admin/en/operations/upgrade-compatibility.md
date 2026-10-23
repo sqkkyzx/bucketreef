@@ -1,5 +1,79 @@
 # Operations: Upgrade and Compatibility Notes
 
+## 2026-10 canonical SNS policy and configuration payloads
+
+Manager SNS topic policy responses and updates now require `policy`, and topic
+configuration responses and updates require `configuration`. Empty state is an
+explicit empty object instead of an omitted field or model default.
+
+Deploy the backend and bundled frontend together. Direct callers must send the
+canonical objects for update requests. No database migration is required.
+
+## 2026-10 canonical bucket scalar configuration responses
+
+Bucket versioning responses now always include nullable `status` plus boolean
+`enabled`. Bucket policy responses always include nullable `policy`, and access
+logging responses always include `enabled`, `target_bucket`, and
+`target_prefix`; disabled logging uses explicit `null` targets.
+
+Deploy the backend and bundled frontend together. Direct callers should no
+longer rely on omitted fields for these successful reads. No database migration
+is required.
+
+## 2026-10 canonical bucket detail collections
+
+Bucket property responses now always include `lifecycle_rules`, ACL responses
+always include `grants`, and static website responses always include
+`routing_rules`. Empty state is represented by an empty array instead of an
+omitted field or a model default.
+
+Deploy the backend and bundled frontend together. Direct callers should expect
+these collections on successful reads. No database migration is required.
+
+## 2026-10 canonical encryption, notification, and replication payloads
+
+Bucket encryption responses and updates now require a `rules` array. Bucket
+notification and replication responses and updates likewise require their
+`configuration` objects. The backend already materialized these fields for
+successful reads, and the bundled frontend already models them as required.
+
+Deploy the backend and bundled frontend together. Direct callers must send the
+canonical fields instead of relying on empty defaults. No database migration
+is required.
+
+## 2026-10 canonical lifecycle and CORS rule collections
+
+Bucket lifecycle and CORS application responses now always require their
+`rules` arrays. The backend already materialized these collections for every
+successful read and update, and the bundled frontend already treats them as
+required fields; omission fallbacks have been removed from shared bucket
+operations.
+
+Deploy the backend and bundled frontend together. Direct callers must include
+`rules` when updating lifecycle configuration and must expect `rules` on
+successful lifecycle and CORS responses. No database migration is required.
+
+## 2026-10 canonical OIDC provider collection payloads
+
+Admin OIDC provider create and update requests now require JSON arrays for
+`scopes` and `trusted_email_domains`. The application API no longer accepts
+comma-separated strings or explicit `null` for those fields. The bundled
+frontend already sends canonical arrays.
+
+Environment OIDC configuration keeps its existing string parsing because
+environment variables are text. No database migration is required.
+
+## 2026-10 canonical bucket Object Lock properties
+
+Bucket property responses now expose Object Lock state only through the
+`object_lock` object. The redundant top-level `object_lock_enabled` field has
+been removed because it duplicated `object_lock.enabled` from the same storage
+read and could drift from the detailed configuration.
+
+Deploy the backend and bundled frontend together. Internal callers of bucket
+property routes must read `object_lock.enabled`. No database migration is
+required.
+
 ## 2026-10 API prefix configuration rename
 
 The backend runtime setting formerly named `API_V1_PREFIX` has been renamed to
@@ -11,6 +85,18 @@ Update custom environment files, deployment manifests, and secret/configuration
 management to use `API_PREFIX`. The removed `API_V1_PREFIX` variable is no
 longer read by the backend and has no compatibility alias. The bundled Helm
 values now use `API_PREFIX`.
+
+## 2026-10 canonical bucket migration diagnostic metadata
+
+Migration `0182_canonical_bucket_migration_diagnostics` makes nullable
+diagnostic metadata explicit in persisted bucket migration precheck reports.
+Existing checks gain `null` values for missing `impact`, `remediation`,
+`permission`, `context_id`, `bucket`, and `details` fields instead of relying on
+field omission.
+
+Deploy the migration, backend, and frontend together. New diagnostics always
+emit the complete canonical shape. Downgrade removes nullable fields whose value
+is `null` for compatibility with the previous application version.
 
 ## 2026-10 bucket migration execution strategy column
 
