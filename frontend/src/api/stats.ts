@@ -17,8 +17,6 @@ export type BucketOverview = {
   empty_buckets: number;
   avg_bucket_size_bytes?: number | null;
   avg_objects_per_bucket?: number | null;
-  largest_bucket?: BucketUsagePoint | null;
-  most_objects_bucket?: BucketUsagePoint | null;
 };
 
 export type S3AccountUsagePoint = {
@@ -144,7 +142,6 @@ export type StorageTotals = {
   used_bytes: number | null;
   object_count: number | null;
   bucket_count: number | null;
-  accounts_with_usage: number;
 };
 
 export type AdminTrafficStats = ManagerTrafficStats;
@@ -152,9 +149,6 @@ export type AdminDashboardScope = {
   endpoints: {
     endpoint_id: number;
     name: string;
-    admin_endpoint_url: string | null;
-    storage_enabled: boolean;
-    traffic_enabled: boolean;
   }[];
 };
 
@@ -218,9 +212,7 @@ export type AdminSummary = {
   };
   total_s3_users: number;
   assigned_accounts: number;
-  unassigned_accounts: number;
   assigned_s3_users: number;
-  unassigned_s3_users: number;
   total_endpoints: number;
   total_ceph_endpoints: number;
   total_other_endpoints: number;

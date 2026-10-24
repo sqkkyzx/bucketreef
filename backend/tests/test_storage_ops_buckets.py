@@ -181,12 +181,12 @@ def test_get_current_storage_ops_admin_accepts_standard_user_with_storage_ops_ri
     assert dependencies.get_current_storage_ops_admin(user=user).id == user.id
 
 
-def test_require_storage_ops_enabled_blocks_when_feature_is_disabled(monkeypatch):
+def test_require_storage_ops_enabled_blocks_when_feature_is_disabled(db_session, monkeypatch):
     settings = app_settings_service.load_default_app_settings()
     settings.general.storage_ops_enabled = False
-    monkeypatch.setattr(app_settings_service, "load_app_settings", lambda: settings)
+    monkeypatch.setattr(app_settings_service, "load_app_settings_for_db_readonly", lambda _db: settings)
     with pytest.raises(HTTPException) as exc:
-        dependencies.require_storage_ops_enabled()
+        dependencies.require_storage_ops_enabled(db=db_session)
     assert exc.value.status_code == 403
 
 
@@ -1179,6 +1179,48 @@ def test_storage_ops_context_id_prefilter_skips_non_matching_contexts(client, mo
         app.dependency_overrides.pop(storage_ops_router.get_buckets_service, None)
 
 
+def test_storage_ops_context_prefilter_applies_context_only_match_any():
+    refs = [
+        storage_ops_listing_service.StorageOpsContextRef(
+            context_id="1",
+            context_name="Account A",
+            context_kind="account",
+            endpoint_id=7,
+            endpoint_name="Primary",
+        ),
+        storage_ops_listing_service.StorageOpsContextRef(
+            context_id="conn-2",
+            context_name="Connection B",
+            context_kind="connection",
+            endpoint_id=8,
+            endpoint_name="Archive",
+        ),
+        storage_ops_listing_service.StorageOpsContextRef(
+            context_id="s3u-3",
+            context_name="User C",
+            context_kind="s3_user",
+            endpoint_id=7,
+            endpoint_name="Primary",
+        ),
+    ]
+    parsed_filter = BucketFilterQuery.model_validate(
+        {
+            "match": "any",
+            "rules": [
+                {"field": "context_kind", "op": "eq", "value": "account"},
+                {"field": "endpoint_name", "op": "eq", "value": "archive"},
+            ],
+        }
+    )
+
+    filtered = storage_ops_listing_service._filter_context_refs_by_advanced_filter(
+        refs,
+        parsed_filter,
+    )
+
+    assert [ref.context_id for ref in filtered] == ["1", "conn-2"]
+
+
 def test_storage_ops_context_prefilter_keeps_other_contexts_for_match_any_mixed_rules(client, monkeypatch):
     resolved_contexts: list[str] = []
 
@@ -1304,6 +1346,64 @@ def test_storage_ops_applies_cheap_field_prefilter_before_feature_enrichment(cli
         app.dependency_overrides.pop(dependencies.require_storage_ops_enabled, None)
         app.dependency_overrides.pop(dependencies.get_current_storage_ops_admin, None)
         app.dependency_overrides.pop(storage_ops_router.get_buckets_service, None)
+
+
+@pytest.mark.parametrize(
+    ("match", "rules", "expected_fields", "expected_complete"),
+    [
+        (
+            "all",
+            [{"field": "name", "op": "eq", "value": "alpha"}],
+            ["name"],
+            True,
+        ),
+        (
+            "all",
+            [
+                {"field": "name", "op": "eq", "value": "alpha"},
+                {"feature": "versioning", "state": "enabled"},
+            ],
+            ["name"],
+            False,
+        ),
+        (
+            "any",
+            [
+                {"field": "name", "op": "eq", "value": "alpha"},
+                {"feature": "versioning", "state": "enabled"},
+            ],
+            None,
+            False,
+        ),
+        (
+            "any",
+            [
+                {"field": "name", "op": "eq", "value": "alpha"},
+                {"field": "context_kind", "op": "eq", "value": "account"},
+            ],
+            ["name", "context_kind"],
+            True,
+        ),
+    ],
+)
+def test_storage_ops_cheap_field_prefilter_plan(
+    match,
+    rules,
+    expected_fields,
+    expected_complete,
+):
+    parsed_filter = BucketFilterQuery.model_validate({"match": match, "rules": rules})
+
+    cheap_filter, complete = storage_ops_filtering.build_storage_ops_cheap_field_prefilter(
+        parsed_filter
+    )
+
+    assert complete is expected_complete
+    if expected_fields is None:
+        assert cheap_filter is None
+    else:
+        assert cheap_filter is not None
+        assert [rule.field for rule in cheap_filter.rules] == expected_fields
 
 
 def test_storage_ops_notifications_feature_filter_uses_enrichment(monkeypatch):

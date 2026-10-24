@@ -148,7 +148,7 @@ def _delete_bucket(
         manager_session.delete(
             f"/manager/buckets/{bucket_name}",
             params={"context_id": account_id, "force": "true"},
-            expected_status=(200, 404),
+            expected_status=(204, 404),
         )
     except BackendAPIError:
         return
@@ -276,6 +276,7 @@ def _copy_object(
             ],
             "replace_tags": replace_tags,
         },
+        expected_status=204,
     )
 
 
@@ -602,7 +603,6 @@ def _create_migration(
     target_bucket: str,
     mode: str = "one_shot",
     copy_bucket_settings: bool = False,
-    delete_source: bool = False,
     strong_integrity_check: bool = False,
     lock_target_writes: bool = True,
     use_same_endpoint_copy: bool = False,
@@ -615,7 +615,6 @@ def _create_migration(
         "buckets": [{"source_bucket": source_bucket, "target_bucket": target_bucket}],
         "mode": mode,
         "copy_bucket_settings": copy_bucket_settings,
-        "delete_source": delete_source,
         "strong_integrity_check": strong_integrity_check,
         "lock_target_writes": lock_target_writes,
         "use_same_endpoint_copy": use_same_endpoint_copy,
@@ -805,6 +804,8 @@ def _configure_unsupported_bucket_setting(
     website_payload = {
         "index_document": "index.html",
         "error_document": "error.html",
+        "redirect_all_requests_to": None,
+        "routing_rules": [],
     }
     try:
         manager_session.put(
@@ -880,6 +881,7 @@ def _configure_unsupported_bucket_setting(
             f"/manager/buckets/{bucket_name}/versioning",
             params=_context_params(account_id),
             json={"enabled": True},
+            expected_status=204,
         )
         _wait_for_value(
             "bucket versioning",
@@ -894,6 +896,7 @@ def _configure_unsupported_bucket_setting(
             f"/manager/buckets/{replication_target}/versioning",
             params=_context_params(account_id),
             json={"enabled": True},
+            expected_status=204,
         )
         _wait_for_value(
             "replication target versioning",
@@ -1154,7 +1157,6 @@ def test_bucket_migration_one_shot_current_only_same_endpoint(
         target_bucket=target_bucket,
         mode="one_shot",
         copy_bucket_settings=False,
-        delete_source=False,
         use_same_endpoint_copy=True,
         auto_grant_source_read_for_copy=True,
     )
@@ -1313,7 +1315,6 @@ def test_bucket_migration_pre_sync_current_only_replays_delta(
         target_bucket=target_bucket,
         mode="pre_sync",
         copy_bucket_settings=False,
-        delete_source=False,
     )
     detail = _run_precheck(super_admin_session, int(migration["id"]))
     assert detail["precheck_status"] == "passed"
@@ -1394,7 +1395,6 @@ def test_bucket_migration_version_aware_retains_source_until_separate_cleanup(
         target_context_id=str(target.account_id),
         source_bucket=source_bucket,
         target_bucket=target_bucket,
-        delete_source=False,
         use_same_endpoint_copy=True,
         auto_grant_source_read_for_copy=True,
     )
@@ -1470,7 +1470,6 @@ def test_bucket_migration_pre_sync_version_aware_replays_delta(
         target_bucket=target_bucket,
         mode="pre_sync",
         copy_bucket_settings=False,
-        delete_source=False,
         use_same_endpoint_copy=False,
     )
     detail = _run_precheck(super_admin_session, int(migration["id"]))
@@ -1625,7 +1624,7 @@ def test_bucket_migration_precheck_fails_for_object_lock_governance_when_support
         source.manager_session.put(
             f"/manager/buckets/{source_bucket}/object-lock",
             params=_context_params(source.account_id),
-            json={"enabled": True, "mode": "GOVERNANCE", "days": 1},
+            json={"enabled": True, "mode": "GOVERNANCE", "days": 1, "years": None},
         )
     except BackendAPIError as exc:
         _skip_if_cluster_unavailable("manager bucket object-lock", exc)

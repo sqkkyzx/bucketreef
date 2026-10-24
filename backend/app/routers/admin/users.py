@@ -26,7 +26,8 @@ from app.services.user_associations_service import (
     get_user_associations_service,
 )
 from app.services.users_service import UsersService
-from app.services.user_avatar_service import MAX_AVATAR_BYTES, UserAvatarService
+from app.services.avatar_image_service import MAX_AVATAR_BYTES
+from app.services.user_avatar_service import UserAvatarService
 from app.services.identity_security_policy import (
     admin_user_update_requires_step_up,
     ensure_actor_can_assign_role,
@@ -169,7 +170,7 @@ def create_user(
         raise_bad_request_from_value_error(exc)
 
 
-@router.put("/{user_id}", response_model=UserOut)
+@router.patch("/{user_id}", response_model=UserOut)
 def update_user(
     request: Request,
     user_id: int,

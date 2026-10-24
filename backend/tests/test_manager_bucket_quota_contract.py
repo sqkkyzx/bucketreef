@@ -19,7 +19,7 @@ from app.services.s3_execution_context import S3ExecutionContext
 def _enable_manager_bucket_quota(monkeypatch):
     settings = AppSettings()
     settings.manager.feature_policies.bucket_quota_management = "targeted"
-    monkeypatch.setattr(app_settings_service, "load_app_settings", lambda: settings)
+    monkeypatch.setattr(app_settings_service, "load_app_settings_for_db_readonly", lambda _db: settings)
 
 
 def _quota_user(db_session) -> User:
@@ -83,7 +83,7 @@ def test_manager_bucket_quota_update_requires_effective_manager_access(client, d
     app.dependency_overrides[dependencies.get_current_user] = lambda: user
     app.dependency_overrides[dependencies.get_current_actor] = lambda: user
     try:
-        response = client.put(
+        response = client.patch(
             "/api/manager/buckets/demo-bucket/quota",
             params={"context_id": account.id},
             json={"max_size_gb": 1, "max_objects": 1000},
@@ -103,7 +103,7 @@ def test_manager_bucket_quota_update_requires_target_grant(client, db_session):
     app.dependency_overrides[dependencies.get_current_user] = lambda: user
     app.dependency_overrides[dependencies.get_current_actor] = lambda: user
     try:
-        response = client.put(
+        response = client.patch(
             "/api/manager/buckets/demo-bucket/quota",
             params={"context_id": account.id},
             json={"max_size_gb": 1, "max_objects": 1000},
@@ -135,10 +135,19 @@ def test_manager_bucket_quota_update_succeeds_with_privileged_access(client, db_
     app.dependency_overrides[manager_buckets_router.get_audit_service] = lambda: _FakeAuditService()
     monkeypatch.setattr(
         "app.services.manager_ceph_management_access_service._resolve_endpoint_admin_ops_permissions",
-        lambda _endpoint: StorageEndpointAdminOpsPermissions(buckets_read=True, buckets_write=True),
+        lambda _endpoint: StorageEndpointAdminOpsPermissions(
+            users_read=False,
+            users_write=False,
+            buckets_read=True,
+            buckets_write=True,
+            accounts_read=False,
+            accounts_write=False,
+            usage_read=False,
+            usage_write=False,
+        ),
     )
     try:
-        response = client.put(
+        response = client.patch(
             "/api/manager/buckets/demo-bucket/quota",
             params={"context_id": account.id},
             json={"max_size_gb": 2, "max_size_unit": "GiB", "max_objects": 2000},
@@ -191,7 +200,7 @@ def test_embedded_browser_private_connection_cannot_forge_manager_quota_update(c
     app.dependency_overrides[dependencies.get_s3_execution_context] = lambda: context
     app.dependency_overrides[manager_buckets_router.get_bucket_configuration_service] = fail_if_ceph_service_is_resolved
     try:
-        response = client.put(
+        response = client.patch(
             "/api/manager/buckets/demo-bucket/quota",
             params={"context_id": "conn-44"},
             json={"max_size_gb": 1},

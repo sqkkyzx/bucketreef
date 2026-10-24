@@ -57,7 +57,6 @@ def test_postgresql_migration_rotation_rollback_and_concurrent_consumption(monke
         }
         assert set(columns) >= {
             "token_digest",
-            "issued_at",
             "expires_at",
             "consumed_at",
             "created_user_id",
@@ -115,7 +114,7 @@ def test_postgresql_migration_rotation_rollback_and_concurrent_consumption(monke
                 password=PASSWORD,
             )
         monkeypatch.setattr(db, "flush", original_flush)
-        assert db.query(User).count() == 0
+        assert db.scalar(sa.select(sa.func.count()).select_from(User)) == 0
         assert service.is_available() is True
 
     barrier = Barrier(2)
@@ -147,16 +146,14 @@ def test_postgresql_migration_rotation_rollback_and_concurrent_consumption(monke
 
     with session_factory() as db:
         assert sorted(results) == ["created", "unavailable"]
-        assert db.query(User).count() == 1
+        assert db.scalar(sa.select(sa.func.count()).select_from(User)) == 1
         row = db.get(FirstAdminBootstrap, FIRST_ADMIN_BOOTSTRAP_ID)
         assert row is not None
         assert row.consumed_at is not None
         assert row.token_digest is None
-        audit = (
-            db.query(AuditLog)
-            .filter(AuditLog.action == "first_admin_bootstrap_completed")
-            .one()
-        )
+        audit = db.scalars(
+            sa.select(AuditLog).where(AuditLog.action == "first_admin_bootstrap_completed")
+        ).one()
         audit_text = " ".join(
             filter(
                 None,

@@ -39,10 +39,10 @@ export type BucketTag = {
 };
 
 export type BucketObjectLockConfiguration = {
-  enabled?: boolean | null;
-  mode?: string | null;
-  days?: number | null;
-  years?: number | null;
+  enabled: boolean | null;
+  mode: string | null;
+  days: number | null;
+  years: number | null;
 };
 
 export type BucketNotificationConfiguration = {
@@ -60,10 +60,17 @@ export type BucketLoggingConfiguration = {
 };
 
 export type BucketPublicAccessBlock = {
-  block_public_acls?: boolean | null;
-  ignore_public_acls?: boolean | null;
-  block_public_policy?: boolean | null;
-  restrict_public_buckets?: boolean | null;
+  block_public_acls: boolean | null;
+  ignore_public_acls: boolean | null;
+  block_public_policy: boolean | null;
+  restrict_public_buckets: boolean | null;
+};
+
+export type BucketPublicAccessBlockUpdate = {
+  block_public_acls: boolean;
+  ignore_public_acls: boolean;
+  block_public_policy: boolean;
+  restrict_public_buckets: boolean;
 };
 
 export type BucketVersioningStatus = {
@@ -77,9 +84,16 @@ export type BucketWebsiteRedirectAllRequestsTo = {
 };
 
 export type BucketWebsiteConfiguration = {
-  index_document?: string | null;
-  error_document?: string | null;
-  redirect_all_requests_to?: BucketWebsiteRedirectAllRequestsTo | null;
+  index_document: string | null;
+  error_document: string | null;
+  redirect_all_requests_to: BucketWebsiteRedirectAllRequestsTo | null;
+  routing_rules: Record<string, unknown>[];
+};
+
+export type BucketWebsiteUpdate = {
+  index_document: string | null;
+  error_document: string | null;
+  redirect_all_requests_to: BucketWebsiteRedirectAllRequestsTo | null;
   routing_rules: Record<string, unknown>[];
 };
 

@@ -28,14 +28,22 @@ _ProgressModelT = TypeVar("_ProgressModelT", bound=BaseModel)
 _ResultModelT = TypeVar("_ResultModelT", bound=BaseModel)
 
 
-def format_sse_event(event: str, payload: dict[str, object]) -> str:
+def format_sse_event(
+    event: str,
+    payload: dict[str, object],
+    *,
+    event_id: int | str | None = None,
+) -> str:
     payload_json = json.dumps(
         payload,
         separators=(",", ":"),
         ensure_ascii=False,
         default=str,
     )
-    lines = [f"event: {event}"]
+    lines: list[str] = []
+    if event_id is not None:
+        lines.append(f"id: {event_id}")
+    lines.append(f"event: {event}")
     lines.extend(f"data: {line}" for line in payload_json.splitlines() or [payload_json])
     lines.append("")
     return "\n".join(lines) + "\n"
@@ -64,6 +72,12 @@ def stream_status_operation(
     logger: logging.Logger,
     operation: str,
     failure_message: str,
+    on_start: Callable[[str], None] | None = None,
+    on_result: Callable[[str, _ResultModelT], None] | None = None,
+    on_cancel: Callable[[str], None] | None = None,
+    on_error: Callable[[str, str], None] | None = None,
+    unexpected_error_detail: Callable[[Exception], str] | None = None,
+    expose_http_status: bool = True,
 ) -> StreamingResponse:
     request_id = uuid.uuid4().hex
 
@@ -74,8 +88,20 @@ def stream_status_operation(
             if cancel_event.is_set():
                 raise cancelled_error()
 
+        def emit_unexpected_error(exc: Exception) -> None:
+            logger.exception("%s: %s", failure_message, exc)
+            detail = unexpected_error_detail(exc) if unexpected_error_detail else failure_message
+            if on_error:
+                on_error(request_id, detail)
+            push_message(format_sse_event("error", {"request_id": request_id, "detail": detail}))
+            push_message(format_sse_event("done", {"request_id": request_id, "status": "failed"}))
+
         try:
+            if on_start:
+                on_start(request_id)
             result = run_operation(progress_callback, cancel_check)
+            if on_result:
+                on_result(request_id, result)
             result_payload = result.model_dump(mode="json")
             push_message(format_sse_event("result", result_payload))
             push_message(
@@ -85,6 +111,8 @@ def stream_status_operation(
                 )
             )
         except cancelled_error:
+            if on_cancel:
+                on_cancel(request_id)
             push_message(
                 format_sse_event(
                     "done",
@@ -92,12 +120,18 @@ def stream_status_operation(
                 )
             )
         except HTTPException as exc:
+            if not expose_http_status:
+                emit_unexpected_error(exc)
+                return
+            detail = sanitize_error_detail(exc.detail)
+            if on_error:
+                on_error(request_id, str(detail))
             push_message(
                 format_sse_event(
                     "error",
                     {
                         "request_id": request_id,
-                        "detail": sanitize_error_detail(exc.detail),
+                        "detail": detail,
                         "status_code": exc.status_code,
                     },
                 )
@@ -109,19 +143,7 @@ def stream_status_operation(
                 )
             )
         except Exception as exc:  # pragma: no cover
-            logger.exception("%s: %s", failure_message, exc)
-            push_message(
-                format_sse_event(
-                    "error",
-                    {"request_id": request_id, "detail": failure_message},
-                )
-            )
-            push_message(
-                format_sse_event(
-                    "done",
-                    {"request_id": request_id, "status": "failed"},
-                )
-            )
+            emit_unexpected_error(exc)
 
     return stream_cancellable_worker(
         request,

@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Literal, Optional
 
-from pydantic import EmailStr, Field, field_validator
+from pydantic import EmailStr, field_validator
 
 from app.models.account_access import AccountAccessGrant
 from app.models.base import ApiModel
@@ -52,20 +52,20 @@ class S3UserMembership(ApiModel):
 class EffectiveAccountGroupSource(ApiModel):
     group_id: int
     group_name: str
-    manager_role: Optional[ManagerAccountRoleValue] = None
-    portal_role: Optional[PortalAccountRoleValue] = None
-    determines_effective_manager_role: bool = False
-    determines_effective_portal_role: bool = False
-    allow_manager_browser_data_access: bool = False
+    manager_role: Optional[ManagerAccountRoleValue]
+    portal_role: Optional[PortalAccountRoleValue]
+    determines_effective_manager_role: bool
+    determines_effective_portal_role: bool
+    allow_manager_browser_data_access: bool
 
 
 class EffectiveAccountRoleProvenance(ApiModel):
-    direct_manager_role: Optional[ManagerAccountRoleValue] = None
-    direct_portal_role: Optional[PortalAccountRoleValue] = None
-    direct_determines_effective_manager_role: bool = False
-    direct_determines_effective_portal_role: bool = False
-    direct_allow_manager_browser_data_access: bool = False
-    groups: list[EffectiveAccountGroupSource] = Field(default_factory=list)
+    direct_manager_role: Optional[ManagerAccountRoleValue]
+    direct_portal_role: Optional[PortalAccountRoleValue]
+    direct_determines_effective_manager_role: bool
+    direct_determines_effective_portal_role: bool
+    direct_allow_manager_browser_data_access: bool
+    groups: list[EffectiveAccountGroupSource]
 
 
 class EffectiveAccountMembership(AccountMembership):
@@ -116,27 +116,6 @@ class UserAssociationDetail(ApiModel):
     avatar: Optional[UserAvatar]
 
 
-class User(ApiModel):
-    id: int
-    email: EmailStr
-    full_name: Optional[str] = None
-    picture_url: Optional[str] = None
-    avatar: Optional[UserAvatar] = None
-    is_active: bool = True
-    is_admin: bool = False
-    can_access_ceph_admin: bool = False
-    can_access_storage_ops: bool = False
-    can_create_manual_private_connections: bool = False
-    can_provision_managed_private_connections: bool = False
-    manager_tool_access: ManagerToolAccess = Field(default_factory=ManagerToolAccess)
-    browser_advanced_features_enabled: bool = False
-    ui_language: Optional[UiLanguage] = None
-    quota_alerts_enabled: bool = True
-    quota_alerts_global_watch: bool = False
-    ui_preferences: UiPreferences = Field(default_factory=UiPreferences)
-    last_login_at: Optional[datetime] = None
-
-
 class UserCreate(ApiModel):
     email: EmailStr
     password: str
@@ -184,18 +163,18 @@ class UserSelfUpdate(UserProfilePreferencesUpdate):
 
 
 class EffectiveUserAccess(ApiModel):
-    can_access_ceph_admin: bool = False
-    can_access_storage_ops: bool = False
-    can_create_manual_private_connections: bool = False
-    can_provision_managed_private_connections: bool = False
-    group_can_provision_managed_private_connections: bool = False
-    has_owned_private_connections: bool = False
-    manager_tool_access: ManagerToolAccess = Field(default_factory=ManagerToolAccess)
-    group_manager_tool_access: ManagerToolAccess = Field(default_factory=ManagerToolAccess)
-    browser_advanced_features_enabled: bool = False
-    account_links: list[EffectiveAccountMembership] = Field(default_factory=list)
-    s3_user_details: list[LinkedS3User] = Field(default_factory=list)
-    s3_connection_details: list[LinkedS3Connection] = Field(default_factory=list)
+    can_access_ceph_admin: bool
+    can_access_storage_ops: bool
+    can_create_manual_private_connections: bool
+    can_provision_managed_private_connections: bool
+    group_can_provision_managed_private_connections: bool
+    has_owned_private_connections: bool
+    manager_tool_access: ManagerToolAccess
+    group_manager_tool_access: ManagerToolAccess
+    browser_advanced_features_enabled: bool
+    account_links: list[EffectiveAccountMembership]
+    s3_user_details: list[LinkedS3User]
+    s3_connection_details: list[LinkedS3Connection]
 
 
 class UserOut(ApiModel):

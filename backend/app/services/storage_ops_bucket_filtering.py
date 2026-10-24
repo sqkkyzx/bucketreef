@@ -2,7 +2,7 @@
 # Licensed under the Apache License, Version 2.0
 from __future__ import annotations
 
-from app.models.bucket_filter import BucketFilterQuery
+from app.models.bucket_filter import BucketFilterQuery, BucketFilterRule
 from app.models.storage_ops import StorageOpsBucketSummary
 from app.services.bucket_listing_owner_metadata import OWNER_DETAIL_FIELDS
 from app.services.bucket_listing_shared import listing_sort_key
@@ -49,6 +49,23 @@ def match_storage_ops_simple_search(
     return False
 
 
+def _is_cheap_storage_ops_field_rule(rule: BucketFilterRule) -> bool:
+    return bool(
+        rule.field
+        and rule.field != "tag"
+        and rule.field not in OWNER_DETAIL_FIELDS
+    )
+
+
+def _has_deferred_storage_ops_rules(rules: list[BucketFilterRule]) -> bool:
+    return any(
+        rule.feature
+        or rule.field == "tag"
+        or rule.field in OWNER_DETAIL_FIELDS
+        for rule in rules
+    )
+
+
 def build_storage_ops_cheap_field_prefilter(
     parsed_filter: BucketFilterQuery | None,
 ) -> tuple[BucketFilterQuery | None, bool]:
@@ -59,28 +76,21 @@ def build_storage_ops_cheap_field_prefilter(
     cheap_field_rules = [
         rule
         for rule in rules
-        if rule.field and rule.field not in ({"tag"} | OWNER_DETAIL_FIELDS)
+        if _is_cheap_storage_ops_field_rule(rule)
     ]
-    has_feature_rules = any(rule.feature for rule in rules)
-    has_tag_rule = any(rule.field == "tag" for rule in rules)
-    has_owner_enriched_rule = any(rule.field in OWNER_DETAIL_FIELDS for rule in rules)
     if not cheap_field_rules:
         return None, False
 
-    if parsed_filter.match == "all":
-        cheap_filter = parsed_filter.model_copy(update={"rules": cheap_field_rules})
-        is_complete = (
-            not has_feature_rules
-            and not has_tag_rule
-            and not has_owner_enriched_rule
-            and len(cheap_field_rules) == len(rules)
-        )
-        return cheap_filter, is_complete
-
-    if has_feature_rules or has_tag_rule or has_owner_enriched_rule:
+    has_deferred_rules = _has_deferred_storage_ops_rules(rules)
+    if parsed_filter.match == "any" and has_deferred_rules:
         return None, False
     cheap_filter = parsed_filter.model_copy(update={"rules": cheap_field_rules})
-    return cheap_filter, True
+    if parsed_filter.match == "any":
+        return cheap_filter, True
+    return cheap_filter, (
+        not has_deferred_rules
+        and len(cheap_field_rules) == len(rules)
+    )
 
 
 def sort_storage_ops_buckets(
@@ -138,6 +148,61 @@ def match_storage_ops_field_rule(
     return actual_match or encoded_match
 
 
+def _matches_storage_ops_base_rules(
+    bucket: StorageOpsBucketSummary,
+    field_rules: list[BucketFilterRule],
+    feature_state_rules: list[BucketFilterRule],
+    *,
+    match_mode: str,
+    has_feature_param_rules: bool,
+) -> bool:
+    results = [
+        *(match_storage_ops_field_rule(bucket, rule) for rule in field_rules),
+        *(match_bucket_feature_rule(bucket, rule) for rule in feature_state_rules),
+    ]
+    if not results:
+        return not has_feature_param_rules or match_mode == "all"
+    return all(results) if match_mode == "all" else any(results)
+
+
+def _partition_storage_ops_param_candidates(
+    buckets: list[StorageOpsBucketSummary],
+    field_rules: list[BucketFilterRule],
+    feature_state_rules: list[BucketFilterRule],
+    *,
+    match_mode: str,
+) -> tuple[list[StorageOpsBucketSummary], list[StorageOpsBucketSummary]]:
+    if match_mode == "all":
+        return [], [
+            bucket
+            for bucket in buckets
+            if _matches_storage_ops_base_rules(
+                bucket,
+                field_rules,
+                feature_state_rules,
+                match_mode=match_mode,
+                has_feature_param_rules=True,
+            )
+        ]
+
+    pre_matched: list[StorageOpsBucketSummary] = []
+    param_candidates: list[StorageOpsBucketSummary] = []
+    for bucket in buckets:
+        target = (
+            pre_matched
+            if _matches_storage_ops_base_rules(
+                bucket,
+                field_rules,
+                feature_state_rules,
+                match_mode=match_mode,
+                has_feature_param_rules=True,
+            )
+            else param_candidates
+        )
+        target.append(bucket)
+    return pre_matched, param_candidates
+
+
 def apply_storage_ops_advanced_filter(
     buckets: list[StorageOpsBucketSummary],
     parsed_filter: BucketFilterQuery | None,
@@ -151,29 +216,25 @@ def apply_storage_ops_advanced_filter(
         _split_rules(parsed_filter)
     )
 
-    def base_match(bucket: StorageOpsBucketSummary) -> bool:
-        results = [
-            *(match_storage_ops_field_rule(bucket, rule) for rule in field_rules),
-            *(match_bucket_feature_rule(bucket, rule) for rule in feature_state_rules),
-        ]
-        if not results:
-            return not feature_param_rules or match_mode == "all"
-        return all(results) if match_mode == "all" else any(results)
-
     if not feature_param_rules:
-        return [bucket for bucket in buckets if base_match(bucket)]
+        return [
+            bucket
+            for bucket in buckets
+            if _matches_storage_ops_base_rules(
+                bucket,
+                field_rules,
+                feature_state_rules,
+                match_mode=match_mode,
+                has_feature_param_rules=False,
+            )
+        ]
 
-    if match_mode == "all":
-        pre_matched: list[StorageOpsBucketSummary] = []
-        param_candidates = [bucket for bucket in buckets if base_match(bucket)]
-    else:
-        pre_matched = []
-        param_candidates = []
-        for bucket in buckets:
-            if base_match(bucket):
-                pre_matched.append(bucket)
-            else:
-                param_candidates.append(bucket)
+    pre_matched, param_candidates = _partition_storage_ops_param_candidates(
+        buckets,
+        field_rules,
+        feature_state_rules,
+        match_mode=match_mode,
+    )
     if not param_candidates:
         return pre_matched
 
@@ -199,7 +260,12 @@ def apply_storage_ops_advanced_filter(
 
 def _split_rules(
     parsed_filter: BucketFilterQuery | None,
-) -> tuple[list, list, list, str]:
+) -> tuple[
+    list[BucketFilterRule],
+    list[BucketFilterRule],
+    list[BucketFilterRule],
+    str,
+]:
     if not parsed_filter or not parsed_filter.rules:
         return [], [], [], "all"
     field_rules = [rule for rule in parsed_filter.rules if rule.field]

@@ -38,20 +38,33 @@ class StorageEndpointFeatures(ApiModel):
 
 
 class StorageEndpointAdminOpsPermissions(ApiModel):
-    users_read: bool = False
-    users_write: bool = False
-    buckets_read: bool = False
-    buckets_write: bool = False
-    accounts_read: bool = False
-    accounts_write: bool = False
-    usage_read: bool = False
-    usage_write: bool = False
+    users_read: bool
+    users_write: bool
+    buckets_read: bool
+    buckets_write: bool
+    accounts_read: bool
+    accounts_write: bool
+    usage_read: bool
+    usage_write: bool
+
+    @classmethod
+    def empty(cls) -> "StorageEndpointAdminOpsPermissions":
+        return cls(
+            users_read=False,
+            users_write=False,
+            buckets_read=False,
+            buckets_write=False,
+            accounts_read=False,
+            accounts_write=False,
+            usage_read=False,
+            usage_write=False,
+        )
 
 
 class EndpointServiceIdentityStatus(ApiModel):
     kind: Literal["runtime", "supervision", "ceph_admin"]
     mode: Literal["managed", "external"]
-    rgw_uid: Optional[str] = None
+    rgw_uid: Optional[str]
     status: Literal[
         "not_provisioned",
         "missing",
@@ -61,11 +74,11 @@ class EndpointServiceIdentityStatus(ApiModel):
         "revocation_pending",
         "disabled",
     ]
-    credentials_configured: bool = False
-    rotation_pending: bool = False
-    rotation_phase: Optional[Literal["prepared", "activated"]] = None
-    last_error: Optional[str] = None
-    last_reconciled_at: Optional[datetime] = None
+    credentials_configured: bool
+    rotation_pending: bool
+    rotation_phase: Optional[Literal["prepared", "activated"]]
+    last_error: Optional[str]
+    last_reconciled_at: Optional[datetime]
 
 
 class StorageEndpointMetadata(ApiModel):
@@ -152,29 +165,33 @@ class StorageEndpointUpdate(ApiModel):
 
 
 class StorageEndpointTagsUpdate(ApiModel):
-    tags: RequiredTagDefinitionList = Field(default_factory=list)
+    tags: RequiredTagDefinitionList
 
 
 class StorageEndpoint(StorageEndpointMetadata):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    region: Optional[str]
+    force_path_style: bool
+    verify_tls: bool
     provider: StorageProvider
-    is_default: bool = False
-    is_editable: bool = True
+    ceph_admin_allowed: bool
+    features_config: Optional[str]
+    latitude: Optional[float]
+    longitude: Optional[float]
+    is_default: bool
+    is_editable: bool
     created_at: datetime
     updated_at: datetime
-    tags: list[TagDefinitionSummary] = Field(default_factory=list)
-    admin_access_key: Optional[str] = None
-    has_admin_secret: bool = False
-    service_identities: list[EndpointServiceIdentityStatus] = Field(default_factory=list)
-    ceph_admin_active: bool = False
-    capabilities: dict[str, bool] = Field(default_factory=dict)
-    admin_ops_permissions: StorageEndpointAdminOpsPermissions = Field(
-        default_factory=StorageEndpointAdminOpsPermissions
-    )
-    features_config: Optional[str] = None
-    features: StorageEndpointFeatures = Field(default_factory=StorageEndpointFeatures)
+    tags: list[TagDefinitionSummary]
+    admin_access_key: Optional[str]
+    has_admin_secret: bool
+    service_identities: list[EndpointServiceIdentityStatus]
+    ceph_admin_active: bool
+    capabilities: dict[str, bool]
+    admin_ops_permissions: StorageEndpointAdminOpsPermissions
+    features: StorageEndpointFeatures
 
 
 class StorageEndpointPublic(ApiModel):
@@ -263,7 +280,7 @@ class StorageEndpointFeatureDetectionResult(ApiModel):
         default_factory=StorageEndpointHttpCheck
     )
     admin_ops_permissions: StorageEndpointAdminOpsPermissions = Field(
-        default_factory=StorageEndpointAdminOpsPermissions
+        default_factory=StorageEndpointAdminOpsPermissions.empty
     )
     credential_checks: StorageEndpointCredentialChecks = Field(
         default_factory=StorageEndpointCredentialChecks

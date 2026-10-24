@@ -1,8 +1,57 @@
 # Copyright (c) 2026 Laurent Barbe
 # Licensed under the Apache License, Version 2.0
+import pytest
+from pydantic import ValidationError
+
 from app.db import S3Account
-from app.models.bucket import BucketCors, BucketVersioningUpdate
+from app.models.bucket import (
+    BucketCors,
+    BucketObjectLock,
+    BucketObjectLockUpdate,
+    BucketPublicAccessBlock,
+    BucketPublicAccessBlockUpdate,
+    BucketWebsiteConfiguration,
+    BucketWebsiteUpdate,
+    BucketVersioningUpdate,
+)
 from app.services import bucket_config_actions
+
+
+def test_public_access_block_read_and_write_contracts_are_explicit() -> None:
+    expected_fields = {
+        "block_public_acls",
+        "ignore_public_acls",
+        "block_public_policy",
+        "restrict_public_buckets",
+    }
+    assert set(BucketPublicAccessBlock.model_json_schema()["required"]) == expected_fields
+    assert set(BucketPublicAccessBlockUpdate.model_json_schema()["required"]) == expected_fields
+
+    with pytest.raises(ValidationError):
+        BucketPublicAccessBlockUpdate.model_validate({"block_public_acls": True})
+
+
+def test_object_lock_read_and_write_contracts_are_explicit() -> None:
+    expected_fields = {"enabled", "mode", "days", "years"}
+    assert set(BucketObjectLock.model_json_schema()["required"]) == expected_fields
+    assert set(BucketObjectLockUpdate.model_json_schema()["required"]) == expected_fields
+
+    with pytest.raises(ValidationError):
+        BucketObjectLockUpdate.model_validate({"enabled": True})
+
+
+def test_website_read_and_write_contracts_are_explicit() -> None:
+    expected_fields = {
+        "index_document",
+        "error_document",
+        "redirect_all_requests_to",
+        "routing_rules",
+    }
+    assert set(BucketWebsiteConfiguration.model_json_schema()["required"]) == expected_fields
+    assert set(BucketWebsiteUpdate.model_json_schema()["required"]) == expected_fields
+
+    with pytest.raises(ValidationError):
+        BucketWebsiteUpdate.model_validate({"routing_rules": []})
 
 
 def test_get_bucket_cors_config_uses_dedicated_cors_service():

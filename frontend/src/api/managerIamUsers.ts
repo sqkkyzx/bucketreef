@@ -12,10 +12,12 @@ import {
   deleteEntityInlinePolicy,
   deleteIamEntity,
   detachEntityPolicy,
+  getIamEntity,
   listEntityInlinePolicies,
   listEntityPolicies,
   listIamEntities,
   putEntityInlinePolicy,
+  updateIamEntity,
 } from "./managerIamEntityClient";
 
 export type AccessKey = AccessKeyMetadata & {
@@ -48,10 +50,7 @@ export async function listIamUsers(contextId?: S3ExecutionContextSelector): Prom
 }
 
 export async function getIamUser(contextId: S3ExecutionContextSelector, userName: string): Promise<IAMUser> {
-  const { data } = await client.get<IAMUser>(`/manager/iam/users/${encodeURIComponent(userName)}`, {
-    params: withS3ContextParam(undefined, contextId),
-  });
-  return data;
+  return getIamEntity<IAMUser>("users", contextId, userName);
 }
 
 export async function updateIamUser(
@@ -59,10 +58,7 @@ export async function updateIamUser(
   userName: string,
   payload: { name?: string; path?: string },
 ): Promise<IAMUser> {
-  const { data } = await client.put<IAMUser>(`/manager/iam/users/${encodeURIComponent(userName)}`, payload, {
-    params: withS3ContextParam(undefined, contextId),
-  });
-  return data;
+  return updateIamEntity<IAMUser, typeof payload>("users", contextId, userName, payload);
 }
 
 export async function createIamUser(
@@ -112,7 +108,7 @@ export async function updateIamAccessKeyMetadata(
   accessKeyId: string,
   metadata: AccessKeyMetadataInput,
 ): Promise<AccessKeyMetadata> {
-  const { data } = await client.put<AccessKeyMetadata>(
+  const { data } = await client.patch<AccessKeyMetadata>(
     `/manager/iam/users/${encodeURIComponent(userName)}/keys/${encodeURIComponent(accessKeyId)}/metadata`,
     metadata,
     { params: withS3ContextParam(undefined, contextId) },

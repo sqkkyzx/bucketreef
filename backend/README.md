@@ -93,15 +93,16 @@ Environment variables (or `.env` file) supported via `pydantic`:
 
 - `APP_NAME` (default: `BucketReef`)
 - `API_PREFIX` (default: `/api`)
-- `JWT_KEYS` (JSON keyring; first key signs new JWTs)
+- `UI_JWT_KEYS` (JSON keyring; first key signs browser/session JWTs)
+- `API_JWT_KEYS` (JSON keyring; first key signs API-token JWTs)
 - `CREDENTIAL_KEYS` (JSON keyring; first key encrypts new secrets)
-- `ACCESS_TOKEN_EXPIRE_MINUTES` (default: `60`)
-- `REFRESH_TOKEN_EXPIRE_MINUTES` (default: `20160`)
+- `ACCESS_TOKEN_EXPIRE_MINUTES` (default: `5`)
+- `REFRESH_TOKEN_EXPIRE_MINUTES` (default: `10080`)
 - `LOG_LEVEL` (default: `INFO`)
 - `LOGIN_RATE_LIMIT_WINDOW_SECONDS` (default: `300`)
 - `LOGIN_RATE_LIMIT_MAX_ATTEMPTS` (default: `10`)
-- `API_TOKEN_DEFAULT_EXPIRE_DAYS` (default: `90`)
-- `API_TOKEN_MAX_EXPIRE_DAYS` (default: `365`)
+- `API_TOKEN_DEFAULT_EXPIRE_DAYS` (default: `30`)
+- `API_TOKEN_MAX_EXPIRE_DAYS` (default: `90`)
 - `REFRESH_TOKEN_COOKIE_NAME` (default: `refresh_token`)
 - `REFRESH_TOKEN_COOKIE_PATH` (default: `/api/auth`)
 - `REFRESH_TOKEN_COOKIE_DOMAIN` (default: unset)
@@ -126,10 +127,10 @@ Environment variables (or `.env` file) supported via `pydantic`:
 - `OIDC_PROVIDERS__<key>__*` to configure OpenID Connect providers (see below)
 - `LDAP_PROVIDERS__<key>__*` to configure LDAP providers (see below)
 
-JWT signing uses the first key in `JWT_KEYS` and validates against the full list.
+JWT signing uses the first key in the applicable UI or API keyring and validates against the full ring.
 
 Security notes:
-- Production environments should set strong non-default values for `JWT_KEYS` and `CREDENTIAL_KEYS` (>=32 chars, high entropy).
+- Production environments should set strong, mutually distinct values for `UI_JWT_KEYS`, `API_JWT_KEYS`, and `CREDENTIAL_KEYS` (>=32 chars, high entropy).
 - Production environments should set `REFRESH_TOKEN_COOKIE_SECURE=true` when using non-local origins, and `CORS_ORIGINS` should list explicit trusted origins rather than `*`.
 - The web bootstrap is unavailable until an operator explicitly issues a token.
   Tokens expire after 15 minutes, are single-use, and can be rotated while the
@@ -225,9 +226,9 @@ export LDAP_PROVIDERS__corp__subject_attribute="entryUUID"
 
 - Common: `GET /health`, `POST /api/auth/login`, `GET /api/users/me`
 - Admin API tokens: `GET/POST /api/auth/api-tokens`, `DELETE /api/auth/api-tokens/{token_id}`
-- Admin space (`super_admin`): `GET/POST /api/admin/accounts`, `GET /api/admin/stats/overview`
-- Admin users (`super_admin`): `GET/POST /api/admin/users`, `PUT /api/admin/users/{id}`, `DELETE /api/admin/users/{id}`
-- Manager space (`account_admin` or `super_admin`): `GET/POST/DELETE /api/manager/buckets`, `GET /api/manager/iam/policies`, `GET /api/manager/stats/buckets`
+- Admin space (`super_admin`): `GET/POST /api/admin/accounts`, `GET /api/admin/stats/summary`
+- Admin users (`super_admin`): `GET/POST /api/admin/users`, `PATCH /api/admin/users/{id}`, `DELETE /api/admin/users/{id}`
+- Manager space (`account_admin` or `super_admin`): `GET/POST/DELETE /api/manager/buckets`, `GET /api/manager/iam/policies`, `GET /api/manager/stats/overview`
 
 First administrator bootstrap:
 

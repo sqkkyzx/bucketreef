@@ -18,7 +18,7 @@ from app.core.config import get_settings
 from app.db import Base
 
 
-_EXPECTED_ALEMBIC_HEAD = "0181_s3_user_bucket_usage_stats"
+_EXPECTED_ALEMBIC_HEAD = "0193_remove_unused_quota_alert_state"
 
 
 def _alembic_config() -> Config:

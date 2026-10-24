@@ -11,7 +11,7 @@ from alembic.migration import MigrationContext
 from alembic.operations import Operations
 from pydantic import ValidationError
 import sqlalchemy as sa
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, select, text
 
 from app.core.config import OIDCProviderSettings, Settings
 from app.db import AuditLog, OidcLoginState, OidcProvider, User, UserRole
@@ -57,12 +57,43 @@ def test_admin_oidc_payload_requires_list_collection_fields(field: str, value: o
         "client_id": "client-id",
         "redirect_uri": "https://app.example.test/auth/callback",
         "scopes": ["openid", "email"],
+        "prompt": None,
+        "enabled": True,
+        "icon_url": None,
+        "use_pkce": True,
+        "use_nonce": True,
+        "linking_policy": "manual",
         "trusted_email_domains": ["example.com"],
     }
     payload[field] = value
 
     with pytest.raises(ValidationError):
         OIDCProviderAdminPayload.model_validate(payload)
+
+
+def test_admin_oidc_payload_requires_complete_configuration_but_not_secret_controls():
+    payload = {
+        "provider_id": "ui",
+        "display_name": "UI Provider",
+        "discovery_url": "https://issuer.example.test/.well-known/openid-configuration",
+        "client_id": "client-id",
+        "redirect_uri": "https://app.example.test/auth/callback",
+        "scopes": ["openid", "email"],
+        "prompt": None,
+        "enabled": True,
+        "icon_url": None,
+        "use_pkce": True,
+        "use_nonce": True,
+        "linking_policy": "manual",
+        "trusted_email_domains": [],
+    }
+
+    OIDCProviderAdminPayload.model_validate(payload)
+
+    incomplete = dict(payload)
+    incomplete.pop("enabled")
+    with pytest.raises(ValidationError):
+        OIDCProviderAdminPayload.model_validate(incomplete)
 
 
 def test_environment_oidc_provider_rejects_unknown_fields():
@@ -266,7 +297,9 @@ def test_oidc_service_start_login_uses_ui_defined_provider(db_session, monkeypat
 
     assert result["provider"] == "ui"
     assert result["authorization_url"].startswith("https://ui.example.test/auth?")
-    stored = db_session.query(OidcLoginState).filter(OidcLoginState.state == result["state"]).one()
+    stored = db_session.scalars(
+        select(OidcLoginState).where(OidcLoginState.state == result["state"])
+    ).one()
     assert stored.provider == "ui"
     assert stored.redirect_path == "/admin"
 
@@ -308,8 +341,12 @@ def test_admin_oidc_api_never_returns_secret_and_preserves_replaces_clears_it(cl
         text("select client_secret from oidc_providers where provider_id = 'ui'")
     ).scalar_one()
     assert raw_secret != "first-secret"
-    assert db_session.query(OidcProvider).filter(OidcProvider.provider_id == "ui").one().client_secret == "first-secret"
-    provider = db_session.query(OidcProvider).filter(OidcProvider.provider_id == "ui").one()
+    assert db_session.scalars(
+        select(OidcProvider).where(OidcProvider.provider_id == "ui")
+    ).one().client_secret == "first-secret"
+    provider = db_session.scalars(
+        select(OidcProvider).where(OidcProvider.provider_id == "ui")
+    ).one()
     assert provider.linking_policy == "trusted_email"
     assert provider.trusted_email_domains_json == '["example.com"]'
 
@@ -321,31 +358,47 @@ def test_admin_oidc_api_never_returns_secret_and_preserves_replaces_clears_it(cl
     preserve_payload = {**payload, "display_name": "Updated Provider", "client_secret": ""}
     response = client.put("/api/admin/settings/oidc/providers/ui", json=preserve_payload)
     assert response.status_code == 200, response.text
-    provider = db_session.query(OidcProvider).filter(OidcProvider.provider_id == "ui").one()
+    provider = db_session.scalars(
+        select(OidcProvider).where(OidcProvider.provider_id == "ui")
+    ).one()
     assert provider.display_name == "Updated Provider"
     assert provider.client_secret == "first-secret"
 
     replace_payload = {**preserve_payload, "client_secret": "second-secret"}
     response = client.put("/api/admin/settings/oidc/providers/ui", json=replace_payload)
     assert response.status_code == 200, response.text
-    assert db_session.query(OidcProvider).filter(OidcProvider.provider_id == "ui").one().client_secret == "second-secret"
+    assert db_session.scalars(
+        select(OidcProvider).where(OidcProvider.provider_id == "ui")
+    ).one().client_secret == "second-secret"
 
     clear_payload = {**preserve_payload, "client_secret": "", "clear_client_secret": True}
     response = client.put("/api/admin/settings/oidc/providers/ui", json=clear_payload)
     assert response.status_code == 200, response.text
-    assert db_session.query(OidcProvider).filter(OidcProvider.provider_id == "ui").one().client_secret is None
+    assert db_session.scalars(
+        select(OidcProvider).where(OidcProvider.provider_id == "ui")
+    ).one().client_secret is None
 
-    audit_payload = "\n".join(log.metadata_json or "" for log in db_session.query(AuditLog).all())
+    audit_payload = "\n".join(
+        log.metadata_json or "" for log in db_session.scalars(select(AuditLog)).all()
+    )
     assert "first-secret" not in audit_payload
     assert "second-secret" not in audit_payload
-    assert "oidc_provider.create" in {log.action for log in db_session.query(AuditLog).all()}
-    assert "oidc_provider.update" in {log.action for log in db_session.query(AuditLog).all()}
+    assert "oidc_provider.create" in {
+        log.action for log in db_session.scalars(select(AuditLog)).all()
+    }
+    assert "oidc_provider.update" in {
+        log.action for log in db_session.scalars(select(AuditLog)).all()
+    }
 
     response = client.delete("/api/admin/settings/oidc/providers/ui")
     assert response.status_code == 200, response.text
     assert response.json() == {"status": "deleted"}
-    assert db_session.query(OidcProvider).filter(OidcProvider.provider_id == "ui").one_or_none() is None
-    assert "oidc_provider.delete" in {log.action for log in db_session.query(AuditLog).all()}
+    assert db_session.scalars(
+        select(OidcProvider).where(OidcProvider.provider_id == "ui")
+    ).one_or_none() is None
+    assert "oidc_provider.delete" in {
+        log.action for log in db_session.scalars(select(AuditLog)).all()
+    }
 
 
 def test_admin_oidc_api_locks_environment_managed_provider(client, db_session, monkeypatch):
@@ -376,9 +429,13 @@ def test_admin_oidc_api_locks_environment_managed_provider(client, db_session, m
         "client_id": "client-id",
         "redirect_uri": "https://app.example.test/auth/callback",
         "scopes": ["openid"],
+        "prompt": None,
         "enabled": True,
+        "icon_url": None,
         "use_pkce": True,
         "use_nonce": True,
+        "linking_policy": "manual",
+        "trusted_email_domains": [],
     }
     assert client.post("/api/admin/settings/oidc/providers", json=mutation).status_code == 409
     assert client.put("/api/admin/settings/oidc/providers/google", json=mutation).status_code == 409

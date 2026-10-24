@@ -2,6 +2,8 @@
 # Licensed under the Apache License, Version 2.0
 from __future__ import annotations
 
+import sqlalchemy as sa
+
 from app.db import ManagerAccountRole, PortalAccountRole, S3Account, UiGroup, UiGroupS3Account, User, UserRole, UserS3Account
 from app.main import app
 from app.routers.admin import s3_accounts as s3_accounts_router
@@ -197,7 +199,7 @@ def test_admin_accounts_update_replaces_direct_group_links(client, db_session):
     )
     db_session.commit()
 
-    response = client.put(
+    response = client.patch(
         f"/api/admin/accounts/{account.id}",
         json={
             "group_links": [
@@ -219,7 +221,9 @@ def test_admin_accounts_update_replaces_direct_group_links(client, db_session):
     assert group_link["manager_role"] is None
     assert group_link["portal_role"] == PortalAccountRole.PORTAL_MANAGER.value
     assert group_link["group_avatar"]["initials"] == "NG"
-    rows = db_session.query(UiGroupS3Account).filter(UiGroupS3Account.account_id == account.id).all()
+    rows = db_session.scalars(
+        sa.select(UiGroupS3Account).where(UiGroupS3Account.account_id == account.id)
+    ).all()
     assert [(row.group_id, row.manager_role, row.portal_role) for row in rows] == [
         (new_group.id, None, PortalAccountRole.PORTAL_MANAGER.value)
     ]
@@ -229,7 +233,7 @@ def test_admin_accounts_update_rejects_legacy_principal_id_fields(client, db_ses
     account = _seed_account(db_session, name="strict-account", rgw_account_id="RGW-STRICT")
 
     for legacy_field in ("user_ids", "group_ids"):
-        response = client.put(
+        response = client.patch(
             f"/api/admin/accounts/{account.id}",
             json={legacy_field: []},
         )
@@ -241,7 +245,7 @@ def test_admin_accounts_update_rejects_null_principal_links(client, db_session):
     account = _seed_account(db_session, name="strict-links-account", rgw_account_id="RGW-STRICT-LINKS")
 
     for link_field in ("user_links", "group_links"):
-        response = client.put(
+        response = client.patch(
             f"/api/admin/accounts/{account.id}",
             json={link_field: None},
         )

@@ -15,7 +15,7 @@ from app.core.sensitive_data import sanitized_error_log_detail
 from app.db import S3Account, S3Connection, S3User, StorageProvider, User
 from app.models.feature_policy import resolve_feature_policy
 from app.services.app_settings_service import load_app_settings_for_db_readonly
-from app.services.effective_access_service import EffectiveAccessService
+from app.services.effective_access_service import EffectiveAccessService, ResolvedUserAccess
 from app.services.managed_resource_naming import managed_private_iam_username
 from app.services.managed_private_access_errors import (
     ManagedPrivateAccessError,
@@ -81,35 +81,7 @@ class ManagedPrivateAccessSourceResolver:
         effective = self.access.resolve_user(user)
         connection_id, s3_user_id, account_id = _source_ids(context)
         if isinstance(connection_id, int):
-            connection = self.db.execute(
-                select(S3Connection).where(S3Connection.id == connection_id)
-            ).scalar_one_or_none()
-            if (
-                connection is None
-                or not self.access.connection_is_allowed(
-                    user,
-                    connection,
-                    workspace="manager",
-                    resolved=effective,
-                )
-                or not s3_connection_can_manage_iam(connection.capabilities_json)
-            ):
-                raise ManagedPrivateAccessForbidden(
-                    "IAM provisioning is not allowed for this connection"
-                )
-            endpoint = connection.storage_endpoint
-            if endpoint is not None and not resolve_feature_flags(endpoint).iam_enabled:
-                raise ManagedPrivateAccessForbidden(
-                    "IAM is disabled for this endpoint"
-                )
-            username = self._iam_username(user.id, "connection", connection.id)
-            return ManagedPrivateAccessSource(
-                "connection",
-                connection.id,
-                "iam_user",
-                username,
-                username,
-            )
+            return self._resolve_connection_iam_source(user, effective, connection_id)
 
         if s3_user_id is not None:
             raise ManagedPrivateAccessForbidden(
@@ -119,6 +91,50 @@ class ManagedPrivateAccessSourceResolver:
             raise ManagedPrivateAccessForbidden(
                 "A persisted RGW Account context is required"
             )
+        return self._resolve_account_iam_source(user.id, effective, account_id)
+
+    def _resolve_connection_iam_source(
+        self,
+        user: User,
+        effective: ResolvedUserAccess,
+        connection_id: int,
+    ) -> ManagedPrivateAccessSource:
+        connection = self.db.execute(
+            select(S3Connection).where(S3Connection.id == connection_id)
+        ).scalar_one_or_none()
+        if (
+            connection is None
+            or not self.access.connection_is_allowed(
+                user,
+                connection,
+                workspace="manager",
+                resolved=effective,
+            )
+            or not s3_connection_can_manage_iam(connection.capabilities_json)
+        ):
+            raise ManagedPrivateAccessForbidden(
+                "IAM provisioning is not allowed for this connection"
+            )
+        endpoint = connection.storage_endpoint
+        if endpoint is not None and not resolve_feature_flags(endpoint).iam_enabled:
+            raise ManagedPrivateAccessForbidden(
+                "IAM is disabled for this endpoint"
+            )
+        username = self._iam_username(user.id, "connection", connection.id)
+        return ManagedPrivateAccessSource(
+            "connection",
+            connection.id,
+            "iam_user",
+            username,
+            username,
+        )
+
+    def _resolve_account_iam_source(
+        self,
+        user_id: int,
+        effective: ResolvedUserAccess,
+        account_id: int,
+    ) -> ManagedPrivateAccessSource:
         link = effective.account_link_for(account_id)
         if link is None or not self.access.manager_account_allowed(link):
             raise ManagedPrivateAccessForbidden(
@@ -135,7 +151,7 @@ class ManagedPrivateAccessSourceResolver:
             raise ManagedPrivateAccessForbidden(
                 "IAM is disabled for this endpoint"
             )
-        username = self._iam_username(user.id, "account", account_id)
+        username = self._iam_username(user_id, "account", account_id)
         return ManagedPrivateAccessSource(
             "account",
             account_id,
@@ -154,6 +170,18 @@ class ManagedPrivateAccessSourceResolver:
             raise ManagedPrivateAccessForbidden(
                 "An assigned RGW User context is required"
             )
+        s3_user = self._load_assigned_rgw_user(user, s3_user_id)
+        self._require_managed_ceph_source(s3_user)
+        principal = self._rgw_user_principal(s3_user)
+        return ManagedPrivateAccessSource(
+            "s3_user",
+            s3_user.id,
+            "rgw_user",
+            principal,
+            None,
+        )
+
+    def _load_assigned_rgw_user(self, user: User, s3_user_id: int) -> S3User:
         resolved = self.access.resolve_user(user)
         if not resolved.has_s3_user(s3_user_id):
             raise ManagedPrivateAccessForbidden(
@@ -164,6 +192,9 @@ class ManagedPrivateAccessSourceResolver:
         ).scalar_one_or_none()
         if s3_user is None:
             raise ManagedPrivateAccessError("RGW User not found")
+        return s3_user
+
+    def _require_managed_ceph_source(self, s3_user: S3User) -> None:
         endpoint = s3_user.storage_endpoint
         if (
             not resolve_feature_policy(
@@ -179,17 +210,13 @@ class ManagedPrivateAccessSourceResolver:
             raise ManagedPrivateAccessForbidden(
                 "Managed Ceph private access is not allowed for this context"
             )
+
+    @staticmethod
+    def _rgw_user_principal(s3_user: S3User) -> str:
         try:
-            principal = rgw_qualified_uid(s3_user.rgw_user_uid, resolve_target_tenant(s3_user))
+            return rgw_qualified_uid(s3_user.rgw_user_uid, resolve_target_tenant(s3_user))
         except (ValueError, RGWAdminError) as exc:
             raise ManagedPrivateAccessError("The RGW User tenant could not be verified") from exc
-        return ManagedPrivateAccessSource(
-            "s3_user",
-            s3_user.id,
-            "rgw_user",
-            principal,
-            None,
-        )
 
     def derive_destination(
         self,
@@ -199,25 +226,34 @@ class ManagedPrivateAccessSourceResolver:
             row = self.db.execute(
                 select(S3Account).where(S3Account.id == source.identifier)
             ).scalar_one_or_none()
-            endpoint_id = row.storage_endpoint_id if row is not None else None
-            if endpoint_id is None or row is None or row.storage_endpoint is None:
-                raise ManagedPrivateAccessError(
-                    "The source account has no usable storage endpoint"
-                )
-            return ManagedPrivateAccessDestination(endpoint_id, None)
+            return self._stored_source_destination(
+                row,
+                error_message="The source account has no usable storage endpoint",
+            )
         if source.kind == "s3_user":
             row = self.db.execute(
                 select(S3User).where(S3User.id == source.identifier)
             ).scalar_one_or_none()
-            endpoint_id = row.storage_endpoint_id if row is not None else None
-            if endpoint_id is None or row is None or row.storage_endpoint is None:
-                raise ManagedPrivateAccessError(
-                    "The source RGW User has no usable storage endpoint"
-                )
-            return ManagedPrivateAccessDestination(endpoint_id, None)
+            return self._stored_source_destination(
+                row,
+                error_message="The source RGW User has no usable storage endpoint",
+            )
+        return self._connection_destination(source.identifier)
 
+    @staticmethod
+    def _stored_source_destination(
+        row: S3Account | S3User | None,
+        *,
+        error_message: str,
+    ) -> ManagedPrivateAccessDestination:
+        endpoint_id = row.storage_endpoint_id if row is not None else None
+        if endpoint_id is None or row is None or row.storage_endpoint is None:
+            raise ManagedPrivateAccessError(error_message)
+        return ManagedPrivateAccessDestination(endpoint_id, None)
+
+    def _connection_destination(self, connection_id: int) -> ManagedPrivateAccessDestination:
         connection = self.db.execute(
-            select(S3Connection).where(S3Connection.id == source.identifier)
+            select(S3Connection).where(S3Connection.id == connection_id)
         ).scalar_one_or_none()
         if connection is None:
             raise ManagedPrivateAccessError("Source connection not found")

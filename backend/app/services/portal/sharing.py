@@ -18,7 +18,6 @@ from app.models.portal_storage_spaces import (
     PortalStorageSpaceGrantRole,
     PortalStorageSpaceInitialShare,
     PortalStorageSpaceShareScope,
-    PortalStorageSpaceSummary,
     PortalStorageSpaceVisibility,
 )
 from app.models.portal_sharing import (
@@ -91,13 +90,11 @@ class PortalSharingMixin:
 
     def _validate_initial_storage_space_shares(
         self,
-        user: User,
         access: "AccountAccess",
         *,
         visibility: PortalStorageSpaceVisibility,
         share_scope: PortalStorageSpaceShareScope,
         initial_shares: Optional[list[PortalStorageSpaceInitialShare]],
-        owner_user_id: Optional[int] = None,
     ) -> list[PortalStorageSpaceInitialShare]:
         shares = initial_shares or []
         if not shares:
@@ -288,8 +285,15 @@ class PortalSharingMixin:
         user: User,
         access: "AccountAccess",
         bucket_name: str,
+        *,
+        include_archived: bool = False,
     ) -> None:
-        if self._user_storage_space_role(user, access, bucket_name) not in {"Owner", "Manager"}:
+        if self._user_storage_space_role(
+            user,
+            access,
+            bucket_name,
+            include_archived=include_archived,
+        ) not in {"Owner", "Manager"}:
             raise PortalForbiddenError("Full content access required for this storage space.")
 
     def _require_storage_space_active(self, account: S3Account, bucket_name: str) -> PortalStorageSpaceMetadata | None:

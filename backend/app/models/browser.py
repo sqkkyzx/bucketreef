@@ -169,7 +169,13 @@ ObjectTagList = Annotated[list[ObjectTag], AfterValidator(_validate_object_tag_k
 
 class ObjectTags(ApiModel):
     key: str
-    tags: ObjectTagList = Field(default_factory=list)
+    tags: ObjectTagList
+    version_id: Optional[str]
+
+
+class ObjectTagsUpdate(ApiModel):
+    key: str
+    tags: ObjectTagList
     version_id: Optional[str] = None
 
 
@@ -189,19 +195,38 @@ class ObjectMetadataUpdate(ApiModel):
 class ObjectAcl(ApiModel):
     key: str
     acl: str
+    version_id: Optional[str]
+
+
+class ObjectAclUpdate(ApiModel):
+    key: str
+    acl: str
     version_id: Optional[str] = None
 
 
 class ObjectLegalHold(ApiModel):
     key: str
-    status: Optional[Literal["ON", "OFF"]] = None
+    status: Optional[Literal["ON", "OFF"]]
+    version_id: Optional[str]
+
+
+class ObjectLegalHoldUpdate(ApiModel):
+    key: str
+    status: Literal["ON", "OFF"]
     version_id: Optional[str] = None
 
 
 class ObjectRetention(ApiModel):
     key: str
-    mode: Optional[Literal["GOVERNANCE", "COMPLIANCE"]] = None
-    retain_until: Optional[datetime] = None
+    mode: Optional[Literal["GOVERNANCE", "COMPLIANCE"]]
+    retain_until: Optional[datetime]
+    version_id: Optional[str]
+
+
+class ObjectRetentionUpdate(ApiModel):
+    key: str
+    mode: Literal["GOVERNANCE", "COMPLIANCE"]
+    retain_until: datetime
     bypass_governance: Optional[bool] = None
     version_id: Optional[str] = None
 

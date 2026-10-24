@@ -7,7 +7,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from enum import Enum
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, Iterable, Optional
 
 from app.core.sensitive_data import sanitized_error_log_detail
 from app.services.s3_execution_context import S3ExecutionTarget
@@ -428,7 +428,7 @@ class TrafficService:
             raise ValueError(f"Unsupported window '{window}'.")
         reference = (now or datetime.now(timezone.utc)).astimezone(timezone.utc).replace(microsecond=0)
         start = window_start(reference, window)
-        payload = self._fetch_usage(start=start, end=reference, bucket=bucket)
+        payload = self._fetch_usage(start=start, end=reference)
         entries = flatten_usage_entries(payload)
         aggregation = aggregate_usage(
             entries,
@@ -453,7 +453,6 @@ class TrafficService:
         self,
         start: datetime,
         end: datetime,
-        bucket: Optional[str],
     ) -> Dict[str, Any]:
         account_uid = (
             self.execution_context.rgw_account_id

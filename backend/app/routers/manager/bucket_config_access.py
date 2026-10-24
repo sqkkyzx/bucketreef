@@ -12,9 +12,10 @@ from app.models.bucket import (
     BucketPolicyIn,
     BucketPolicyOut,
     BucketPublicAccessBlock,
+    BucketPublicAccessBlockUpdate,
 )
 from app.routers.dependencies import get_s3_execution_context, get_current_account_admin
-from app.routers.manager.bucket_config_core import get_manager_bucket_config_mutation_service
+from app.routers.manager.bucket_config_common import get_manager_bucket_config_mutation_service
 from app.services import bucket_config_actions
 from app.services.bucket_config_mutation_service import BucketConfigMutationService
 from app.services.bucket_configuration_service import (
@@ -88,7 +89,7 @@ def get_public_access_block(
 @router.put("/{bucket_name}/public-access-block", response_model=BucketPublicAccessBlock)
 def put_public_access_block(
     bucket_name: str,
-    payload: BucketPublicAccessBlock,
+    payload: BucketPublicAccessBlockUpdate,
     context: S3ExecutionContext = Depends(get_s3_execution_context),
     current_user: ManagerActor = Depends(get_current_account_admin),
     mutation: BucketConfigMutationService = Depends(get_manager_bucket_config_mutation_service),

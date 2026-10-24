@@ -12,6 +12,9 @@ from app.models.bucket_migration import (
     BucketMigrationDetail,
     BucketMigrationEventView,
     BucketMigrationItemView,
+    BucketMigrationListItem,
+    BucketMigrationPrecheckItemView,
+    BucketMigrationPrecheckReportView,
     BucketMigrationView,
 )
 
@@ -25,6 +28,41 @@ def load_migration_json(value: Optional[str]) -> Optional[dict]:
     return parsed
 
 
+def migration_precheck_report_to_view(
+    value: Optional[str],
+) -> Optional[BucketMigrationPrecheckReportView]:
+    report = load_migration_json(value)
+    if report is None:
+        return None
+    raw_items = report.get("items")
+    if not isinstance(raw_items, list):
+        raise ValueError("Persisted bucket migration precheck items must be a list")
+    items: list[BucketMigrationPrecheckItemView] = []
+    for raw_item in raw_items:
+        if not isinstance(raw_item, dict):
+            raise ValueError("Persisted bucket migration precheck item must be an object")
+        items.append(
+            BucketMigrationPrecheckItemView(
+                item_id=raw_item["item_id"],
+                source_bucket=raw_item["source_bucket"],
+                strategy=raw_item["strategy"],
+                state=raw_item["state"],
+                blocking=bool(raw_item["blocking"]),
+                warnings=int(raw_item["warnings"]),
+                settings_copied=raw_item["settings_copied"],
+                settings_omitted=raw_item["settings_omitted"],
+                source_object_count=raw_item.get("source_object_count"),
+                checks=raw_item["checks"],
+            )
+        )
+    return BucketMigrationPrecheckReportView(
+        errors=int(report.get("errors", 0)),
+        warnings=int(report.get("warnings", 0)),
+        checks=report.get("checks") or [],
+        items=items,
+    )
+
+
 def bucket_migration_item_to_view(item: BucketMigrationItem) -> BucketMigrationItemView:
     return BucketMigrationItemView(
         id=item.id,
@@ -32,39 +70,25 @@ def bucket_migration_item_to_view(item: BucketMigrationItem) -> BucketMigrationI
         target_bucket=item.target_bucket,
         status=item.status,
         step=item.step,
-        pre_sync_done=bool(item.pre_sync_done),
         read_only_applied=bool(item.read_only_applied),
         target_lock_applied=bool(item.target_lock_applied),
-        target_bucket_exists=bool(item.target_bucket_exists),
         target_created_by_migration=bool(item.target_created_by_migration),
         recovery_required=bool(item.preparation_effects_json),
         source_deleted=bool(item.source_deleted),
-        cleanup_status=item.cleanup_status or "idle",
         cleanup_error=item.cleanup_error,
         objects_copied=int(item.objects_copied or 0),
-        objects_deleted=int(item.objects_deleted or 0),
-        source_count=item.source_count,
-        target_count=item.target_count,
-        matched_count=item.matched_count,
         different_count=item.different_count,
         only_source_count=item.only_source_count,
         only_target_count=item.only_target_count,
         diff_sample=load_migration_json(item.diff_sample_json),
         error_message=item.error_message,
-        started_at=item.started_at,
-        finished_at=item.finished_at,
-        created_at=item.created_at,
-        updated_at=item.updated_at,
     )
 
 
 def bucket_migration_event_to_view(entry: BucketMigrationEvent) -> BucketMigrationEventView:
     return BucketMigrationEventView(
         id=entry.id,
-        item_id=entry.item_id,
-        level=entry.level,
         message=entry.message,
-        metadata=load_migration_json(entry.metadata_json),
         created_at=entry.created_at,
     )
 
@@ -72,25 +96,18 @@ def bucket_migration_event_to_view(entry: BucketMigrationEvent) -> BucketMigrati
 def bucket_migration_to_view(migration: BucketMigration) -> BucketMigrationView:
     return BucketMigrationView(
         id=migration.id,
-        created_by_user_id=migration.created_by_user_id,
         source_context_id=migration.source_context_id,
         target_context_id=migration.target_context_id,
         mode=migration.mode,
         copy_bucket_settings=bool(migration.copy_bucket_settings),
-        delete_source=bool(migration.delete_source),
-        strong_integrity_check=bool(migration.strong_integrity_check),
         lock_target_writes=bool(migration.lock_target_writes),
         use_same_endpoint_copy=bool(migration.use_same_endpoint_copy),
         auto_grant_source_read_for_copy=bool(migration.auto_grant_source_read_for_copy),
-        mapping_prefix=migration.mapping_prefix,
         status=migration.status,
-        pause_requested=bool(migration.pause_requested),
-        cancel_requested=bool(migration.cancel_requested),
         precheck_status=migration.precheck_status,
-        precheck_report=load_migration_json(migration.precheck_report_json),
+        precheck_report=migration_precheck_report_to_view(migration.precheck_report_json),
         precheck_checked_at=migration.precheck_checked_at,
         configuration_revision=migration.configuration_revision,
-        checked_revision=migration.checked_revision,
         preparation_status=preparation_state(migration),
         preparation_active_checks=bool(migration.preparation_active_checks),
         preparation_completed_items=migration.preparation_completed_items,
@@ -98,17 +115,31 @@ def bucket_migration_to_view(migration: BucketMigration) -> BucketMigrationView:
         maintenance_status=migration.maintenance_status,
         maintenance_error=migration.maintenance_error,
         available_actions=available_actions(migration),
-        parallelism_max=int(migration.parallelism_max),
         total_items=int(migration.total_items),
         completed_items=int(migration.completed_items),
         failed_items=int(migration.failed_items),
         skipped_items=int(migration.skipped_items),
         awaiting_items=int(migration.awaiting_items),
         error_message=migration.error_message,
-        started_at=migration.started_at,
-        finished_at=migration.finished_at,
-        last_heartbeat_at=migration.last_heartbeat_at,
-        created_at=migration.created_at,
+        updated_at=migration.updated_at,
+    )
+
+
+def bucket_migration_to_list_item(migration: BucketMigration) -> BucketMigrationListItem:
+    return BucketMigrationListItem(
+        id=migration.id,
+        source_context_id=migration.source_context_id,
+        target_context_id=migration.target_context_id,
+        status=migration.status,
+        precheck_checked_at=migration.precheck_checked_at,
+        preparation_status=preparation_state(migration),
+        preparation_completed_items=migration.preparation_completed_items,
+        maintenance_status=migration.maintenance_status,
+        total_items=int(migration.total_items),
+        completed_items=int(migration.completed_items),
+        failed_items=int(migration.failed_items),
+        skipped_items=int(migration.skipped_items),
+        awaiting_items=int(migration.awaiting_items),
         updated_at=migration.updated_at,
     )
 

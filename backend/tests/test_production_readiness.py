@@ -31,7 +31,6 @@ def _production_settings(**overrides) -> Settings:
         "allowed_hosts": ["admin.example.test", "app.example.test"],
         "trusted_proxy_cidrs": ["10.42.7.15/32"],
         "cors_origins": ["https://admin.example.test", "https://app.example.test"],
-        "jwt_keys": ["legacy-jwt-key-that-is-at-least-32-bytes"],
         "ui_jwt_keys": ["ui-jwt-key-that-is-distinct-and-at-least-32-bytes"],
         "api_jwt_keys": ["api-jwt-key-that-is-distinct-and-at-least-32-bytes"],
         "credential_keys": ["credential-key-that-is-at-least-32-bytes"],
@@ -208,6 +207,37 @@ def test_checker_exposes_production_target_risks_before_app_env_switch(overrides
     findings = _check(settings, profile="admin")
 
     assert _finding(findings, expected_code).level == expected_level
+
+
+@pytest.mark.parametrize(
+    ("overrides", "expected_message"),
+    [
+        (
+            {"public_origin": "https://admin.example.test/path"},
+            "PUBLIC_ORIGIN/PUBLIC_ORIGINS must contain HTTPS origins without paths for production.",
+        ),
+        (
+            {"webauthn_origin": "https://login.example.test"},
+            "Every WebAuthn origin must also be a trusted public origin.",
+        ),
+        (
+            {"webauthn_rp_id": "example.test:443"},
+            "WEBAUTHN_RP_ID must be a DNS domain for production.",
+        ),
+        (
+            {"webauthn_rp_id": "admin.example.test"},
+            "WEBAUTHN_RP_ID must cover every configured WebAuthn origin.",
+        ),
+    ],
+)
+def test_trusted_origin_finding_reports_specific_configuration_problem(
+    overrides,
+    expected_message,
+):
+    finding = _finding(_check(_production_settings(**overrides), profile="admin"), "trusted-origins")
+
+    assert finding.level == "critical"
+    assert finding.message == expected_message
 
 
 def test_blocker_only_blocks_startup_in_production_for_general_security_checks():

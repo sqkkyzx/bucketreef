@@ -3,7 +3,7 @@
 
 import pytest
 
-from app.utils.quota_stats import extract_positive_limit, parse_positive_limit
+from app.utils.quota_stats import extract_positive_limit, extract_quota_limits, parse_positive_limit
 
 
 @pytest.mark.parametrize(
@@ -38,3 +38,59 @@ def test_parse_positive_limit(value, expected):
 )
 def test_extract_positive_limit(payload, expected):
     assert extract_positive_limit(payload, "max_buckets") == expected
+
+
+def test_extract_quota_limits_prefers_bytes_and_ignores_disabled_or_unlimited_values():
+    assert extract_quota_limits(
+        {
+            "bucket_quota": {
+                "enabled": True,
+                "max_size": 4096,
+                "max_size_kb": 8,
+                "max_objects": 10,
+            }
+        },
+        keys=("bucket_quota",),
+    ) == (4096, 10)
+    assert extract_quota_limits(
+        {
+            "bucket_quota": {
+                "enabled": False,
+                "max_size": 4096,
+                "max_objects": 10,
+            }
+        },
+        keys=("bucket_quota",),
+    ) == (None, None)
+    assert extract_quota_limits(
+        {
+            "bucket_quota": {
+                "enabled": True,
+                "max_size": 0,
+                "max_size_kb": 0,
+                "max_objects": -1,
+            }
+        },
+        keys=("bucket_quota",),
+    ) == (None, None)
+
+
+def test_extract_quota_limits_uses_strict_rgw_integer_parsing():
+    assert extract_quota_limits(
+        {
+            "quota": {
+                "enabled": "enabled",
+                "max_size": "4096",
+                "max_objects": "10",
+            }
+        }
+    ) == (4096, 10)
+    assert extract_quota_limits(
+        {
+            "quota": {
+                "enabled": True,
+                "max_size": "4096.5",
+                "max_objects": "10.5",
+            }
+        }
+    ) == (None, None)

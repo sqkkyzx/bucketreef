@@ -11,13 +11,16 @@ from botocore.exceptions import BotoCoreError, ClientError
 from app.models.browser import (
     BrowserObjectLazyColumn,
     ObjectAcl,
+    ObjectAclUpdate,
     ObjectColumnValues,
     ObjectColumnsResponse,
     ObjectLegalHold,
+    ObjectLegalHoldUpdate,
     ObjectMetadata,
     ObjectMetadataUpdate,
     ObjectRestoreRequest,
     ObjectRetention,
+    ObjectRetentionUpdate,
     ObjectTag,
     ObjectTags,
     SseCustomerContext,
@@ -41,6 +44,9 @@ _METADATA_COPY_STRING_FIELDS = (
     ("content_language", "ContentLanguage"),
     ("storage_class", "StorageClass"),
 )
+
+_ALL_USERS_ACL_URI = "http://acs.amazonaws.com/groups/global/AllUsers"
+_AUTHENTICATED_USERS_ACL_URI = "http://acs.amazonaws.com/groups/global/AuthenticatedUsers"
 
 
 def _object_version_reference(
@@ -191,6 +197,68 @@ def _restore_copied_tags(
         raise RuntimeError(f"Unable to restore tags for '{key}': {exc}") from exc
 
 
+def _is_owner_full_control_grant(
+    grantee: dict[str, Any],
+    *,
+    owner_id: str,
+    permission: str,
+) -> bool:
+    return bool(
+        str(grantee.get("Type") or "") == "CanonicalUser"
+        and owner_id
+        and str(grantee.get("ID") or "") == owner_id
+        and permission == "FULL_CONTROL"
+    )
+
+
+def _object_acl_grant_state(
+    response: dict[str, Any],
+) -> tuple[set[str], set[str], bool]:
+    owner = response.get("Owner") or {}
+    owner_id = str(owner.get("ID") or "")
+    all_users_permissions: set[str] = set()
+    authenticated_users_permissions: set[str] = set()
+    group_permissions = {
+        _ALL_USERS_ACL_URI: all_users_permissions,
+        _AUTHENTICATED_USERS_ACL_URI: authenticated_users_permissions,
+    }
+    has_extra_grants = False
+
+    for grant in response.get("Grants") or []:
+        grantee = grant.get("Grantee") or {}
+        permission = str(grant.get("Permission") or "").upper()
+        uri = str(grantee.get("URI") or "")
+        grouped_permissions = group_permissions.get(uri)
+        if grouped_permissions is not None:
+            grouped_permissions.add(permission)
+            continue
+        if _is_owner_full_control_grant(
+            grantee,
+            owner_id=owner_id,
+            permission=permission,
+        ):
+            continue
+        if permission:
+            has_extra_grants = True
+
+    return all_users_permissions, authenticated_users_permissions, has_extra_grants
+
+
+def _infer_object_acl(response: dict[str, Any]) -> str:
+    all_users_permissions, authenticated_users_permissions, has_extra_grants = (
+        _object_acl_grant_state(response)
+    )
+    if all_users_permissions.issuperset({"READ", "WRITE"}):
+        return "public-read-write"
+    if "READ" in all_users_permissions:
+        return "public-read"
+    if "READ" in authenticated_users_permissions:
+        return "authenticated-read"
+    if has_extra_grants:
+        return "custom"
+    return "private"
+
+
 class BrowserObjectDetailsMixin:
     def head_object(
         self,
@@ -301,6 +369,50 @@ class BrowserObjectDetailsMixin:
         _OBJECT_LAZY_TAGS_CACHE.set(cache_key, result)
         return result
 
+    @staticmethod
+    def _lazy_column_status(
+        requested: bool,
+        value: _ObjectLazyHeadCacheValue | _ObjectLazyTagsCacheValue | None,
+    ) -> str:
+        return "ready" if not requested or (value is not None and value.available) else "error"
+
+    def _object_column_values(
+        self,
+        bucket_name: str,
+        context: S3ExecutionTarget,
+        key: str,
+        *,
+        wants_head: bool,
+        wants_tags: bool,
+        sse_customer: Optional[SseCustomerContext],
+    ) -> ObjectColumnValues:
+        head_value = (
+            self._get_object_lazy_head_columns(
+                bucket_name,
+                context,
+                key,
+                sse_customer=sse_customer,
+            )
+            if wants_head
+            else None
+        )
+        tags_value = (
+            self._get_object_lazy_tags_columns(bucket_name, context, key)
+            if wants_tags
+            else None
+        )
+        return ObjectColumnValues(
+            key=key,
+            content_type=head_value.content_type if head_value else None,
+            tags_count=tags_value.tags_count if tags_value else None,
+            metadata_count=head_value.metadata_count if head_value else None,
+            cache_control=head_value.cache_control if head_value else None,
+            expires=head_value.expires if head_value else None,
+            restore_status=head_value.restore_status if head_value else None,
+            metadata_status=self._lazy_column_status(wants_head, head_value),
+            tags_status=self._lazy_column_status(wants_tags, tags_value),
+        )
+
     def get_object_columns(
         self,
         bucket_name: str,
@@ -314,34 +426,19 @@ class BrowserObjectDetailsMixin:
         tags_columns = {"tags_count"}
         wants_head = bool(columns & head_columns)
         wants_tags = bool(columns & tags_columns)
-        items: list[ObjectColumnValues] = []
-
-        for key in dict.fromkeys(keys):
-            head_value: Optional[_ObjectLazyHeadCacheValue] = None
-            tags_value: Optional[_ObjectLazyTagsCacheValue] = None
-            if wants_head:
-                head_value = self._get_object_lazy_head_columns(
+        return ObjectColumnsResponse(
+            items=[
+                self._object_column_values(
                     bucket_name,
                     context,
                     key,
+                    wants_head=wants_head,
+                    wants_tags=wants_tags,
                     sse_customer=sse_customer,
                 )
-            if wants_tags:
-                tags_value = self._get_object_lazy_tags_columns(bucket_name, context, key)
-            items.append(
-                ObjectColumnValues(
-                    key=key,
-                    content_type=head_value.content_type if head_value else None,
-                    tags_count=tags_value.tags_count if tags_value else None,
-                    metadata_count=head_value.metadata_count if head_value else None,
-                    cache_control=head_value.cache_control if head_value else None,
-                    expires=head_value.expires if head_value else None,
-                    restore_status=head_value.restore_status if head_value else None,
-                    metadata_status="ready" if (not wants_head or (head_value and head_value.available)) else "error",
-                    tags_status="ready" if (not wants_tags or (tags_value and tags_value.available)) else "error",
-                )
-            )
-        return ObjectColumnsResponse(items=items)
+                for key in dict.fromkeys(keys)
+            ]
+        )
 
     def get_object_tags(
         self,
@@ -427,54 +524,13 @@ class BrowserObjectDetailsMixin:
             resp = client.get_object_acl(**kwargs)
         except (ClientError, BotoCoreError) as exc:
             raise RuntimeError(f"Unable to fetch ACL for '{key}': {exc}") from exc
-
-        all_users_uri = "http://acs.amazonaws.com/groups/global/AllUsers"
-        authenticated_users_uri = "http://acs.amazonaws.com/groups/global/AuthenticatedUsers"
-        owner = resp.get("Owner") or {}
-        owner_id = str(owner.get("ID") or "")
-        all_users_permissions: set[str] = set()
-        authenticated_users_permissions: set[str] = set()
-        has_extra_grants = False
-
-        for grant in resp.get("Grants") or []:
-            grantee = grant.get("Grantee") or {}
-            permission = str(grant.get("Permission") or "").upper()
-            grantee_type = str(grantee.get("Type") or "")
-            grantee_id = str(grantee.get("ID") or "")
-            uri = str(grantee.get("URI") or "")
-            if uri == all_users_uri:
-                all_users_permissions.add(permission)
-                continue
-            if uri == authenticated_users_uri:
-                authenticated_users_permissions.add(permission)
-                continue
-            if (
-                grantee_type == "CanonicalUser"
-                and owner_id
-                and grantee_id == owner_id
-                and permission == "FULL_CONTROL"
-            ):
-                continue
-            if permission:
-                has_extra_grants = True
-
-        inferred_acl = "private"
-        if all_users_permissions.issuperset({"READ", "WRITE"}):
-            inferred_acl = "public-read-write"
-        elif "READ" in all_users_permissions:
-            inferred_acl = "public-read"
-        elif "READ" in authenticated_users_permissions:
-            inferred_acl = "authenticated-read"
-        elif has_extra_grants:
-            inferred_acl = "custom"
-
-        return ObjectAcl(key=key, acl=inferred_acl, version_id=version_id)
+        return ObjectAcl(key=key, acl=_infer_object_acl(resp), version_id=version_id)
 
     def put_object_acl(
         self,
         bucket_name: str,
         context: S3ExecutionTarget,
-        payload: ObjectAcl,
+        payload: ObjectAclUpdate,
     ) -> ObjectAcl:
         client = self._client(context)
         kwargs: dict[str, object] = {"Bucket": bucket_name, "Key": payload.key, "ACL": payload.acl}
@@ -484,7 +540,7 @@ class BrowserObjectDetailsMixin:
             client.put_object_acl(**kwargs)
         except (ClientError, BotoCoreError) as exc:
             raise RuntimeError(f"Unable to update ACL for '{payload.key}': {exc}") from exc
-        return payload
+        return ObjectAcl(key=payload.key, acl=payload.acl, version_id=payload.version_id)
 
     def get_object_legal_hold(
         self,
@@ -512,11 +568,9 @@ class BrowserObjectDetailsMixin:
         self,
         bucket_name: str,
         context: S3ExecutionTarget,
-        payload: ObjectLegalHold,
+        payload: ObjectLegalHoldUpdate,
     ) -> ObjectLegalHold:
         client = self._client(context)
-        if payload.status not in {"ON", "OFF"}:
-            raise RuntimeError("Legal hold status must be ON or OFF.")
         status = payload.status.upper()
         kwargs: dict[str, object] = {
             "Bucket": bucket_name,
@@ -529,7 +583,7 @@ class BrowserObjectDetailsMixin:
             client.put_object_legal_hold(**kwargs)
         except (ClientError, BotoCoreError) as exc:
             raise RuntimeError(f"Unable to update legal hold for '{payload.key}': {exc}") from exc
-        return payload
+        return ObjectLegalHold(key=payload.key, status=payload.status, version_id=payload.version_id)
 
     def get_object_retention(
         self,
@@ -562,11 +616,9 @@ class BrowserObjectDetailsMixin:
         self,
         bucket_name: str,
         context: S3ExecutionTarget,
-        payload: ObjectRetention,
+        payload: ObjectRetentionUpdate,
     ) -> ObjectRetention:
         client = self._client(context)
-        if not payload.mode or not payload.retain_until:
-            raise RuntimeError("Retention mode and retain-until date are required.")
         mode = payload.mode.upper()
         kwargs: dict[str, object] = {
             "Bucket": bucket_name,
@@ -581,7 +633,12 @@ class BrowserObjectDetailsMixin:
             client.put_object_retention(**kwargs)
         except (ClientError, BotoCoreError) as exc:
             raise RuntimeError(f"Unable to update retention for '{payload.key}': {exc}") from exc
-        return payload
+        return ObjectRetention(
+            key=payload.key,
+            mode=payload.mode,
+            retain_until=payload.retain_until,
+            version_id=payload.version_id,
+        )
 
     def restore_object(
         self,

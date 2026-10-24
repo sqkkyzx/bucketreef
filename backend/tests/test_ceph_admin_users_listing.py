@@ -7,6 +7,7 @@ from types import SimpleNamespace
 import pytest
 from fastapi import HTTPException
 
+from app.models.ceph_admin import CephAdminRgwUserSummary
 from app.routers.ceph_admin import user_profiles as user_profiles_router
 from app.routers.ceph_admin import users as users_router
 from app.services import ceph_admin_user_listing_enrichment as user_listing_enrichment
@@ -352,8 +353,8 @@ def test_ceph_admin_users_enrichment_checks_cancel_during_loop():
     }
     ctx, rgw_admin = _build_ctx(endpoint_id=1405, users_payload=users_payload, user_details=user_details)
     users = [
-        users_router.CephAdminRgwUserSummary(uid="alpha"),
-        users_router.CephAdminRgwUserSummary(uid="beta"),
+        CephAdminRgwUserSummary(uid="alpha"),
+        CephAdminRgwUserSummary(uid="beta"),
     ]
     calls = 0
 
@@ -501,6 +502,21 @@ def test_build_user_detail_reads_default_placement_and_storage_class():
 
     assert detail.default_placement == "hot-placement"
     assert detail.default_storage_class == "STANDARD"
+
+
+def test_build_user_detail_canonicalizes_semicolon_delimited_caps():
+    payload = _build_user_payload("alice")
+    payload["user"]["caps"] = "users=read,write;accounts=read,write"
+
+    detail = user_profiles_router._build_user_detail(
+        payload,
+        uid_fallback="alice",
+        tenant_fallback=None,
+        account_name=None,
+        keys=[],
+    )
+
+    assert detail.caps == ["users=read,write", "accounts=read,write"]
 
 
 def test_build_user_detail_ignores_legacy_kebab_case_default_fields():

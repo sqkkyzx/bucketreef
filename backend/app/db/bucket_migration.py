@@ -36,16 +36,12 @@ class BucketMigration(Base):
 
     mode = Column(String, nullable=False, default="pre_sync", server_default="pre_sync")
     copy_bucket_settings = Column(Boolean, nullable=False, default=False, server_default="0")
-    delete_source = Column(Boolean, nullable=False, default=False, server_default="0")
     strong_integrity_check = Column(Boolean, nullable=False, default=False, server_default="0")
     lock_target_writes = Column(Boolean, nullable=False, default=True, server_default="1")
     use_same_endpoint_copy = Column(Boolean, nullable=False, default=False, server_default="0")
     auto_grant_source_read_for_copy = Column(Boolean, nullable=False, default=False, server_default="0")
-    mapping_prefix = Column(String, nullable=True)
 
     status = Column(String, nullable=False, default="draft", server_default="draft", index=True)
-    pause_requested = Column(Boolean, nullable=False, default=False, server_default="0")
-    cancel_requested = Column(Boolean, nullable=False, default=False, server_default="0")
     worker_lease_owner = Column(String, nullable=True, index=True)
     worker_lease_until = Column(UTCDateTime(), nullable=True, index=True)
     precheck_status = Column(String, nullable=False, default="pending", server_default="pending", index=True)
@@ -104,11 +100,9 @@ class BucketMigrationItem(Base):
     pre_sync_done = Column(Boolean, nullable=False, default=False, server_default="0")
     read_only_applied = Column(Boolean, nullable=False, default=False, server_default="0")
     target_lock_applied = Column(Boolean, nullable=False, default=False, server_default="0")
-    target_bucket_exists = Column(Boolean, nullable=False, default=False, server_default="0")
     target_created_by_migration = Column(Boolean, nullable=False, default=False, server_default="0")
     preparation_effects_json = Column(Text, nullable=True)
     source_deleted = Column(Boolean, nullable=False, default=False, server_default="0")
-    cleanup_status = Column(String, nullable=False, default="idle", server_default="idle")
     cleanup_error = Column(Text, nullable=True)
     cleanup_verification_json = Column(Text, nullable=True)
 

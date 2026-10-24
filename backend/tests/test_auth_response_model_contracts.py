@@ -33,7 +33,6 @@ def test_api_token_responses_require_complete_canonical_payloads() -> None:
     }
     assert set(ApiTokenCreateResponse.model_json_schema()["required"]) == {
         "access_token",
-        "token_type",
         "api_token",
     }
 
@@ -44,11 +43,9 @@ def test_refresh_response_requires_explicit_status() -> None:
 
 def test_authentication_responses_require_complete_canonical_payloads() -> None:
     assert set(SessionDescriptor.model_json_schema()["required"]) == {
-        "session_id",
         "actor_type",
         "account_id",
         "account_name",
-        "user_uid",
         "capabilities",
     }
     assert set(AuthenticationResponse.model_json_schema()["required"]) == {
@@ -56,7 +53,6 @@ def test_authentication_responses_require_complete_canonical_payloads() -> None:
         "user",
         "session",
         "redirect_path",
-        "link_request_id",
         "recovery_codes",
     }
     assert set(SessionInfo.model_json_schema()["required"]) == {

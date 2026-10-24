@@ -10,7 +10,8 @@ import logging
 import secrets
 import time
 import uuid
-from datetime import datetime, timedelta
+from dataclasses import dataclass
+from datetime import timedelta
 from typing import Any, Dict, Optional
 from urllib.parse import urlencode, urlparse
 
@@ -25,10 +26,17 @@ from app.db import OidcAuthorizationCode, OidcLoginState
 from app.models.oidc import OIDCProviderInfo
 from app.services.oidc_provider_settings_service import resolve_oidc_provider_map
 from app.services.users_service import UsersService, get_users_service
-from app.services.external_identity_user_service import ExternalIdentityLinkRequiredError
 
 LOGGER = logging.getLogger(__name__)
 REQUEST_TIMEOUT = 10
+
+
+@dataclass(frozen=True)
+class _ClaimedLoginState:
+    redirect_uri: str
+    code_verifier: str
+    expected_nonce: Optional[str]
+    redirect_path: Optional[str]
 
 
 class OIDCError(Exception):
@@ -134,6 +142,46 @@ class OidcService:
         request_origin: Optional[str] = None,
     ):
         provider_key, provider = self._get_provider(provider_id)
+        login_state = self._claim_login_state(
+            provider_key,
+            provider,
+            state,
+            request_origin=request_origin,
+        )
+        self._claim_authorization_code(provider_key, code)
+
+        metadata = self._get_metadata(provider_key, provider)
+        token_payload = self._exchange_authorization_code(
+            provider,
+            metadata,
+            code,
+            login_state,
+        )
+        identity = self._identity_from_token_payload(
+            provider,
+            metadata,
+            token_payload,
+            login_state.expected_nonce,
+        )
+
+        user, created = self.users_service.get_or_create_oidc_user(
+            provider=provider_key,
+            **identity,
+            linking_policy=provider.linking_policy,
+            trusted_email_domains=provider.trusted_email_domains,
+        )
+
+        user = self.users_service.mark_last_login(user)
+        return user, login_state.redirect_path, created
+
+    def _claim_login_state(
+        self,
+        provider_key: str,
+        provider: OIDCProviderSettings,
+        state: str,
+        *,
+        request_origin: Optional[str],
+    ) -> _ClaimedLoginState:
         login_state = self.db.scalar(
             select(OidcLoginState).where(OidcLoginState.state == state)
         )
@@ -149,9 +197,12 @@ class OidcService:
             self.db.delete(login_state)
             self.db.commit()
             raise OIDCStateError("OIDC state origin mismatch")
-        code_verifier = login_state.code_verifier
-        expected_nonce = login_state.nonce
-        redirect_path = login_state.redirect_path
+        claimed = _ClaimedLoginState(
+            redirect_uri=redirect_uri,
+            code_verifier=login_state.code_verifier,
+            expected_nonce=login_state.nonce,
+            redirect_path=login_state.redirect_path,
+        )
         # Claim the state before any network call. A concurrent callback can no
         # longer exchange the same authorization response.
         deleted = self.db.execute(
@@ -165,9 +216,15 @@ class OidcService:
         self.db.commit()
         if deleted != 1:
             raise OIDCStateError("OIDC state has already been consumed")
-        self._claim_authorization_code(provider_key, code)
+        return claimed
 
-        metadata = self._get_metadata(provider_key, provider)
+    def _exchange_authorization_code(
+        self,
+        provider: OIDCProviderSettings,
+        metadata: dict[str, Any],
+        code: str,
+        login_state: _ClaimedLoginState,
+    ) -> dict[str, Any]:
         token_endpoint = metadata.get("token_endpoint")
         if not token_endpoint:
             raise OIDCConfigurationError("Provider does not expose a token endpoint")
@@ -175,10 +232,10 @@ class OidcService:
         token_request = {
             "grant_type": "authorization_code",
             "code": code,
-            "redirect_uri": redirect_uri,
+            "redirect_uri": login_state.redirect_uri,
             "client_id": provider.client_id,
         }
-        token_request["code_verifier"] = code_verifier
+        token_request["code_verifier"] = login_state.code_verifier
         if provider.client_secret:
             token_request["client_secret"] = provider.client_secret
         try:
@@ -204,12 +261,19 @@ class OidcService:
         id_token = token_payload.get("id_token")
         if not id_token:
             raise OIDCAuthenticationError("Provider did not return an ID token")
+        return token_payload
 
+    def _identity_from_token_payload(
+        self,
+        provider: OIDCProviderSettings,
+        metadata: dict[str, Any],
+        token_payload: dict[str, Any],
+        expected_nonce: Optional[str],
+    ) -> dict[str, Any]:
         claims = self._decode_id_token(
-            provider_key,
             provider,
             metadata,
-            id_token,
+            token_payload["id_token"],
             expected_nonce,
             token_payload.get("access_token"),
         )
@@ -227,19 +291,13 @@ class OidcService:
             email = self._fetch_userinfo_email(metadata["userinfo_endpoint"], token_payload["access_token"])
             email_verified = bool(email)
 
-        user, created = self.users_service.get_or_create_oidc_user(
-            provider=provider_key,
-            subject=subject,
-            email=email,
-            full_name=full_name,
-            picture_url=picture_url,
-            email_verified=email_verified is True,
-            linking_policy=provider.linking_policy,
-            trusted_email_domains=provider.trusted_email_domains,
-        )
-
-        user = self.users_service.mark_last_login(user)
-        return user, redirect_path, created
+        return {
+            "subject": subject,
+            "email": email,
+            "full_name": full_name,
+            "picture_url": picture_url,
+            "email_verified": email_verified is True,
+        }
 
     def _redirect_uri_for_origin(
         self,
@@ -317,7 +375,6 @@ class OidcService:
 
     def _decode_id_token(
         self,
-        provider_key: str,
         provider: OIDCProviderSettings,
         metadata: dict[str, Any],
         id_token: str,
@@ -328,30 +385,7 @@ class OidcService:
             header = jwt.get_unverified_header(id_token)
         except JWTError as exc:
             raise OIDCAuthenticationError("Invalid ID token header") from exc
-        jwks_uri = metadata.get("jwks_uri")
-        if not jwks_uri:
-            raise OIDCConfigurationError("Provider does not expose a JWKS endpoint")
-        jwks = self._get_jwks(jwks_uri)
-        kid = header.get("kid")
-        algorithm = header.get("alg")
-        if not isinstance(kid, str) or not kid:
-            raise OIDCAuthenticationError("ID token is missing a signing key id")
-        if algorithm not in provider.allowed_algorithms:
-            raise OIDCAuthenticationError("ID token uses a disallowed signing algorithm")
-        expected_key_type = "EC" if str(algorithm).startswith("ES") else "RSA"
-        key = None
-        for candidate in jwks.get("keys", []):
-            key_ops = candidate.get("key_ops")
-            if (
-                candidate.get("kid") == kid
-                and candidate.get("use", "sig") == "sig"
-                and candidate.get("kty") == expected_key_type
-                and (not key_ops or "verify" in key_ops)
-            ):
-                key = candidate
-                break
-        if not key:
-            raise OIDCAuthenticationError("Unable to find a matching signing key")
+        key = self._id_token_signing_key(provider, metadata, header)
         try:
             claims = jwt.decode(
                 id_token,
@@ -366,6 +400,34 @@ class OidcService:
         if not expected_nonce or claims.get("nonce") != expected_nonce:
             raise OIDCStateError("Nonce mismatch detected")
         return claims
+
+    def _id_token_signing_key(
+        self,
+        provider: OIDCProviderSettings,
+        metadata: dict[str, Any],
+        header: dict[str, Any],
+    ) -> dict[str, Any]:
+        jwks_uri = metadata.get("jwks_uri")
+        if not jwks_uri:
+            raise OIDCConfigurationError("Provider does not expose a JWKS endpoint")
+        jwks = self._get_jwks(jwks_uri)
+        kid = header.get("kid")
+        algorithm = header.get("alg")
+        if not isinstance(kid, str) or not kid:
+            raise OIDCAuthenticationError("ID token is missing a signing key id")
+        if algorithm not in provider.allowed_algorithms:
+            raise OIDCAuthenticationError("ID token uses a disallowed signing algorithm")
+        expected_key_type = "EC" if str(algorithm).startswith("ES") else "RSA"
+        for candidate in jwks.get("keys", []):
+            key_ops = candidate.get("key_ops")
+            if (
+                candidate.get("kid") == kid
+                and candidate.get("use", "sig") == "sig"
+                and candidate.get("kty") == expected_key_type
+                and (not key_ops or "verify" in key_ops)
+            ):
+                return candidate
+        raise OIDCAuthenticationError("Unable to find a matching signing key")
 
     def _fetch_userinfo_email(self, userinfo_endpoint: str, access_token: str) -> Optional[str]:
         try:

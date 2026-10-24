@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import sqlalchemy as sa
 from fastapi.testclient import TestClient
 
 from app.db import ManagerAccountRole, PortalAccountRole, AuditLog, S3Account, User, UserRole, UserS3Account
@@ -54,7 +55,7 @@ def test_project_settings_are_read_only_without_delegation(client: TestClient, d
     _install_access(account, manager, PortalAccountRole.PORTAL_MANAGER.value)
 
     fetched = client.get(f"/api/portal/settings?account_id={account.id}")
-    updated = client.put(
+    updated = client.patch(
         f"/api/portal/settings?account_id={account.id}",
         json={"allow_private_storage_space_create": False},
     )
@@ -71,10 +72,10 @@ def test_delegated_manager_cannot_lift_platform_prohibition(client, db_session, 
     from app.models.feature_policy import FeaturePolicy
     settings = AppSettings()
     settings.portal.feature_policies.user_external_sharing = FeaturePolicy.DISABLED
-    monkeypatch.setattr("app.services.portal.settings.load_app_settings", lambda: settings)
+    monkeypatch.setattr("app.services.portal.settings.load_app_settings_for_db_readonly", lambda _db: settings)
     account, manager = _seed(db_session, delegated=True)
     _install_access(account, manager, PortalAccountRole.PORTAL_MANAGER.value)
-    response = client.put(f"/api/portal/settings?account_id={account.id}", json={"allow_portal_user_external_sharing": True})
+    response = client.patch(f"/api/portal/settings?account_id={account.id}", json={"allow_portal_user_external_sharing": True})
     assert response.status_code == 403, response.text
     assert "disabled by the platform" in response.json()["detail"]
     db_session.refresh(account)
@@ -98,7 +99,7 @@ def test_portal_user_cannot_update_delegated_project_settings(client: TestClient
     account, user = _seed(db_session, delegated=True)
     _install_access(account, user, PortalAccountRole.PORTAL_USER.value)
 
-    response = client.put(
+    response = client.patch(
         f"/api/portal/settings?account_id={account.id}",
         json={"allow_private_storage_space_create": False},
     )
@@ -120,7 +121,7 @@ def test_delegated_manager_updates_shared_override_and_audits(
         lambda *_args, **_kwargs: None,
     )
 
-    response = client.put(
+    response = client.patch(
         f"/api/portal/settings?account_id={account.id}",
         json={
             "allow_private_storage_space_create": False,
@@ -136,7 +137,9 @@ def test_delegated_manager_updates_shared_override_and_audits(
     assert body["project_override"]["allow_portal_user_external_sharing"] is True
     assert body["effective"]["allow_portal_user_external_sharing"] is True
     assert body["project_override"]["bucket_defaults"]["noncurrent_version_expiration_days"] == 45
-    audit = db_session.query(AuditLog).filter(AuditLog.action == "update_project_portal_settings").one()
+    audit = db_session.scalars(
+        sa.select(AuditLog).where(AuditLog.action == "update_project_portal_settings")
+    ).one()
     assert audit.scope == "portal"
     assert audit.context_kind == "portal_account"
     assert audit.context_id == str(account.id)
@@ -175,6 +178,8 @@ def test_storage_space_settings_routes_return_capability_and_audit_updates(
     assert fetched.status_code == 200, fetched.text
     assert fetched.json()["can_update"] is True
     assert updated.status_code == 200, updated.text
-    audit = db_session.query(AuditLog).filter(AuditLog.action == "update_storage_space_settings").one()
+    audit = db_session.scalars(
+        sa.select(AuditLog).where(AuditLog.action == "update_storage_space_settings")
+    ).one()
     assert audit.entity_id == "research-data"
     assert "version_history_retention_days" in (audit.metadata_json or "")

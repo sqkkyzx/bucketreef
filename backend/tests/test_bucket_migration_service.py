@@ -11,6 +11,7 @@ from unittest.mock import Mock, patch
 
 from botocore.exceptions import ClientError
 import pytest
+import sqlalchemy as sa
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -45,7 +46,6 @@ from app.services.bucket_migration._shared import (
 )
 from app.services.bucket_migration.worker import BucketMigrationWorker
 from app.services.bucket_migration_service import BucketMigrationService
-from app.services.managed_resource_naming import MIGRATION_LOCK_PROBE_OBJECT_PREFIX
 from app.services.webhook_catalog import MIGRATION_EVENT_TYPE
 from app.services.webhook_service import WebhookService
 
@@ -86,7 +86,7 @@ def _create_account(db_session, *, name: str, endpoint_url: str, account_id: str
     account.storage_endpoint = endpoint
     db_session.add(account)
     db_session.flush()
-    creator = db_session.query(User).filter(User.email == "admin@example.com").first()
+    creator = db_session.scalar(sa.select(User).where(User.email == "admin@example.com"))
     if creator is not None:
         db_session.add(
             UserS3Account(
@@ -111,7 +111,7 @@ def _create_s3_user(db_session, *, name: str, endpoint: StorageEndpoint, uid: st
     s3_user.storage_endpoint = endpoint
     db_session.add(s3_user)
     db_session.flush()
-    creator = db_session.query(User).filter(User.email == "admin@example.com").first()
+    creator = db_session.scalar(sa.select(User).where(User.email == "admin@example.com"))
     if creator is not None:
         db_session.add(UserS3User(user_id=creator.id, s3_user_id=s3_user.id))
     return s3_user
@@ -323,13 +323,11 @@ def test_create_migration_creates_items_and_defaults(db_session):
     payload = BucketMigrationCreateRequest(
         source_context_id=str(source.id),
         target_context_id=str(target.id),
-        mapping_prefix="mig-",
         mode="pre_sync",
         copy_bucket_settings=True,
-        delete_source=False,
         auto_grant_source_read_for_copy=False,
         buckets=[
-            BucketMigrationBucketMapping(source_bucket="bucket-a"),
+            BucketMigrationBucketMapping(source_bucket="bucket-a", target_bucket="mig-bucket-a"),
             BucketMigrationBucketMapping(source_bucket="bucket-b", target_bucket="custom-b"),
         ],
     )
@@ -373,11 +371,11 @@ def test_create_migration_uses_admin_default_parallelism(db_session):
     payload = BucketMigrationCreateRequest(
         source_context_id=str(source.id),
         target_context_id=str(target.id),
-        buckets=[BucketMigrationBucketMapping(source_bucket="bucket-a")],
+        buckets=[BucketMigrationBucketMapping(source_bucket="bucket-a", target_bucket="bucket-a-dst")],
     )
 
     with patch(
-        "app.services.bucket_migration.execution_context.load_app_settings",
+        "app.services.bucket_migration.execution_context.load_app_settings_for_db_readonly",
         return_value=_app_settings_stub(parallelism_default=7, parallelism_max=12),
     ):
         migration = service.create_migration(payload, user)
@@ -515,11 +513,11 @@ def test_create_migration_clamps_requested_parallelism_to_admin_max(db_session):
         source_context_id=str(source.id),
         target_context_id=str(target.id),
         parallelism_max=42,
-        buckets=[BucketMigrationBucketMapping(source_bucket="bucket-a")],
+        buckets=[BucketMigrationBucketMapping(source_bucket="bucket-a", target_bucket="bucket-a-dst")],
     )
 
     with patch(
-        "app.services.bucket_migration.execution_context.load_app_settings",
+        "app.services.bucket_migration.execution_context.load_app_settings_for_db_readonly",
         return_value=_app_settings_stub(parallelism_default=7, parallelism_max=10),
     ):
         migration = service.create_migration(payload, user)
@@ -541,15 +539,13 @@ def test_update_draft_migration_replaces_configuration_and_resets_precheck(db_se
         BucketMigrationCreateRequest(
             source_context_id=str(source.id),
             target_context_id=str(target.id),
-            mapping_prefix="legacy-",
             mode="pre_sync",
             copy_bucket_settings=True,
-            delete_source=False,
             lock_target_writes=True,
             auto_grant_source_read_for_copy=False,
             buckets=[
-                BucketMigrationBucketMapping(source_bucket="bucket-a"),
-                BucketMigrationBucketMapping(source_bucket="bucket-b"),
+                BucketMigrationBucketMapping(source_bucket="bucket-a", target_bucket="legacy-bucket-a"),
+                BucketMigrationBucketMapping(source_bucket="bucket-b", target_bucket="legacy-bucket-b"),
             ],
         ),
         user,
@@ -572,15 +568,13 @@ def test_update_draft_migration_replaces_configuration_and_resets_precheck(db_se
             configuration_revision=1,
             source_context_id=str(source.id),
             target_context_id=str(target_alt.id),
-            mapping_prefix="new-",
             mode="one_shot",
             copy_bucket_settings=False,
-            delete_source=False,
             lock_target_writes=False,
             use_same_endpoint_copy=False,
             auto_grant_source_read_for_copy=False,
             buckets=[
-                BucketMigrationBucketMapping(source_bucket="bucket-a"),
+                BucketMigrationBucketMapping(source_bucket="bucket-a", target_bucket="new-bucket-a"),
                 BucketMigrationBucketMapping(source_bucket="bucket-c", target_bucket="custom-c"),
             ],
         ),
@@ -590,12 +584,10 @@ def test_update_draft_migration_replaces_configuration_and_resets_precheck(db_se
     assert updated.target_context_id == str(target_alt.id)
     assert updated.mode == "one_shot"
     assert updated.copy_bucket_settings is False
-    assert updated.delete_source is False
     assert updated.strong_integrity_check is False
     assert updated.lock_target_writes is False
     assert updated.use_same_endpoint_copy is False
     assert updated.auto_grant_source_read_for_copy is False
-    assert updated.mapping_prefix == "new-"
     assert updated.status == "draft"
     assert updated.precheck_status == "pending"
     assert updated.precheck_report_json is None
@@ -632,7 +624,7 @@ def test_update_draft_migration_rejects_cross_account_when_admin_scope_missing_o
         BucketMigrationCreateRequest(
             source_context_id=str(source.id),
             target_context_id=str(target.id),
-            buckets=[BucketMigrationBucketMapping(source_bucket="bucket-a")],
+            buckets=[BucketMigrationBucketMapping(source_bucket="bucket-a", target_bucket="bucket-a-dst")],
         ),
         user,
     )
@@ -667,7 +659,7 @@ def test_update_draft_migration_rejects_non_draft_status(db_session):
         BucketMigrationCreateRequest(
             source_context_id=str(source.id),
             target_context_id=str(target.id),
-            buckets=[BucketMigrationBucketMapping(source_bucket="bucket-a")],
+            buckets=[BucketMigrationBucketMapping(source_bucket="bucket-a", target_bucket="bucket-a-dst")],
         ),
         user,
     )
@@ -767,7 +759,7 @@ def test_continue_after_presync_moves_items_to_cutover_step(db_session):
         source_context_id=str(source.id),
         target_context_id=str(target.id),
         mode="pre_sync",
-        buckets=[BucketMigrationBucketMapping(source_bucket="bucket-a")],
+        buckets=[BucketMigrationBucketMapping(source_bucket="bucket-a", target_bucket="bucket-a-dst")],
     )
     migration = service.create_migration(payload, user)
 
@@ -794,7 +786,7 @@ def test_claim_next_runnable_migration_assigns_exclusive_lease(db_session):
         source_context_id=str(source.id),
         target_context_id=str(target.id),
         mode="one_shot",
-        buckets=[BucketMigrationBucketMapping(source_bucket="bucket-a")],
+        buckets=[BucketMigrationBucketMapping(source_bucket="bucket-a", target_bucket="bucket-a-dst")],
     )
     migration = service.create_migration(payload, user)
     migration.status = "queued"
@@ -822,7 +814,7 @@ def test_claim_next_runnable_migration_reclaims_expired_lease(db_session):
         source_context_id=str(source.id),
         target_context_id=str(target.id),
         mode="one_shot",
-        buckets=[BucketMigrationBucketMapping(source_bucket="bucket-a")],
+        buckets=[BucketMigrationBucketMapping(source_bucket="bucket-a", target_bucket="bucket-a-dst")],
     )
     migration = service.create_migration(payload, user)
     migration.status = "queued"
@@ -863,7 +855,7 @@ def test_claim_next_runnable_migration_respects_max_active_per_endpoint(db_sessi
         BucketMigrationCreateRequest(
             source_context_id=str(source_a.id),
             target_context_id=str(target_a.id),
-            buckets=[BucketMigrationBucketMapping(source_bucket="bucket-a")],
+            buckets=[BucketMigrationBucketMapping(source_bucket="bucket-a", target_bucket="bucket-a-dst")],
         ),
         user,
     )
@@ -871,7 +863,7 @@ def test_claim_next_runnable_migration_respects_max_active_per_endpoint(db_sessi
         BucketMigrationCreateRequest(
             source_context_id=f"s3u-{source_b_user.id}",
             target_context_id=str(target_b.id),
-            buckets=[BucketMigrationBucketMapping(source_bucket="bucket-b")],
+            buckets=[BucketMigrationBucketMapping(source_bucket="bucket-b", target_bucket="bucket-b-dst")],
         ),
         user,
     )
@@ -879,7 +871,7 @@ def test_claim_next_runnable_migration_respects_max_active_per_endpoint(db_sessi
         BucketMigrationCreateRequest(
             source_context_id=str(source_c.id),
             target_context_id=str(target_c.id),
-            buckets=[BucketMigrationBucketMapping(source_bucket="bucket-c")],
+            buckets=[BucketMigrationBucketMapping(source_bucket="bucket-c", target_bucket="bucket-c-dst")],
         ),
         user,
     )
@@ -889,7 +881,7 @@ def test_claim_next_runnable_migration_respects_max_active_per_endpoint(db_sessi
     db_session.commit()
 
     with patch(
-        "app.services.bucket_migration.execution_context.load_app_settings",
+        "app.services.bucket_migration.execution_context.load_app_settings_for_db_readonly",
         return_value=_app_settings_stub(max_active_per_endpoint=1),
     ):
         first_claim = service.claim_next_runnable_migration_id(worker_id="worker-1", lease_seconds=120)
@@ -917,7 +909,7 @@ def test_claim_next_runnable_migration_rechecks_endpoint_limit_after_claim(db_se
         BucketMigrationCreateRequest(
             source_context_id=str(source_a.id),
             target_context_id=str(target_a.id),
-            buckets=[BucketMigrationBucketMapping(source_bucket="bucket-a")],
+            buckets=[BucketMigrationBucketMapping(source_bucket="bucket-a", target_bucket="bucket-a-dst")],
         ),
         user,
     )
@@ -925,7 +917,7 @@ def test_claim_next_runnable_migration_rechecks_endpoint_limit_after_claim(db_se
         BucketMigrationCreateRequest(
             source_context_id=f"s3u-{source_b_user.id}",
             target_context_id=str(target_b.id),
-            buckets=[BucketMigrationBucketMapping(source_bucket="bucket-b")],
+            buckets=[BucketMigrationBucketMapping(source_bucket="bucket-b", target_bucket="bucket-b-dst")],
         ),
         user,
     )
@@ -939,7 +931,7 @@ def test_claim_next_runnable_migration_rechecks_endpoint_limit_after_claim(db_se
         service_worker_1 = BucketMigrationService(db_worker_1)
         service_worker_2 = BucketMigrationService(db_worker_2)
         with patch(
-            "app.services.bucket_migration.execution_context.load_app_settings",
+            "app.services.bucket_migration.execution_context.load_app_settings_for_db_readonly",
             return_value=_app_settings_stub(max_active_per_endpoint=1),
         ):
             with patch.object(service_worker_1, "_active_endpoint_usage", return_value={}), patch.object(
@@ -955,13 +947,6 @@ def test_claim_next_runnable_migration_rechecks_endpoint_limit_after_claim(db_se
     assert second_claim is None
     assert migration_a.worker_lease_owner == "worker-1"
     assert migration_b.worker_lease_owner is None
-
-
-def test_bucket_already_exists_error_detection(db_session):
-    service = BucketMigrationService(db_session)
-    assert service._is_bucket_already_exists_error(RuntimeError("An error occurred (BucketAlreadyExists)"))
-    assert service._is_bucket_already_exists_error(RuntimeError("An error occurred (BucketAlreadyOwnedByYou)"))
-    assert not service._is_bucket_already_exists_error(RuntimeError("An error occurred (AccessDenied)"))
 
 
 def test_create_migration_rejects_same_bucket_name_on_same_endpoint(db_session):
@@ -1058,7 +1043,6 @@ def test_apply_target_write_lock_policy_uses_migration_user_agent_condition(db_s
     service._configuration = _BucketsStub()  # type: ignore[assignment]
 
     item = SimpleNamespace(target_policy_backup_json=None, target_lock_applied=False)
-    service._validate_target_lock_worker_access = lambda *_args, **_kwargs: None  # type: ignore[method-assign]
     service._apply_target_write_lock_policy(
         SimpleNamespace(execution_context=target),
         "bucket-a",
@@ -1075,29 +1059,6 @@ def test_apply_target_write_lock_policy_uses_migration_user_agent_condition(db_s
     assert "s3:DeleteObject" in actions
     assert isinstance(user_agent_cond, str)
     assert "bucketreef-migration-worker" in user_agent_cond
-
-
-def test_validate_target_lock_worker_access_uses_managed_object_namespace(db_session):
-    calls: list[tuple[str, str, str]] = []
-
-    class _Client:
-        def put_object(self, *, Bucket, Key, Body):
-            assert Body == b"lock-check"
-            calls.append(("put", Bucket, Key))
-
-        def delete_object(self, *, Bucket, Key):
-            calls.append(("delete", Bucket, Key))
-
-    service = BucketMigrationService(db_session)
-    service._context_client = lambda _ctx: _Client()  # type: ignore[method-assign]
-
-    service._validate_target_lock_worker_access(SimpleNamespace(), "target-bucket")
-
-    assert len(calls) == 2
-    assert calls[0][0:2] == ("put", "target-bucket")
-    assert calls[1][0:2] == ("delete", "target-bucket")
-    assert calls[0][2] == calls[1][2]
-    assert calls[0][2].startswith(f"{MIGRATION_LOCK_PROBE_OBJECT_PREFIX}/")
 
 
 def test_build_source_copy_grant_policy_uses_target_principal(db_session):
@@ -1426,9 +1387,8 @@ def test_failed_strong_transfer_verification_retains_source(db_session):
         source_context_id=str(source.id),
         target_context_id=str(target.id),
         mode="one_shot",
-        delete_source=False,
         strong_integrity_check=True,
-        buckets=[BucketMigrationBucketMapping(source_bucket="bucket-a")],
+        buckets=[BucketMigrationBucketMapping(source_bucket="bucket-a", target_bucket="bucket-a-dst")],
     )
     migration = service.create_migration(payload, user)
     item = migration.items[0]
@@ -1474,9 +1434,8 @@ def test_verified_copy_retains_source_even_when_strong_check_is_selected(db_sess
         source_context_id=str(source.id),
         target_context_id=str(target.id),
         mode="one_shot",
-        delete_source=False,
         strong_integrity_check=True,
-        buckets=[BucketMigrationBucketMapping(source_bucket="bucket-a")],
+        buckets=[BucketMigrationBucketMapping(source_bucket="bucket-a", target_bucket="bucket-a-dst")],
     )
     migration = service.create_migration(payload, user)
     item = migration.items[0]
@@ -1500,9 +1459,7 @@ def test_verified_copy_retains_source_even_when_strong_check_is_selected(db_sess
         [],
         {"head_checksum": 0, "stream_sha256": 1},
     )
-    deleted: list[str] = []
     service._set_managed_block_policy = lambda *_args, **_kwargs: None  # type: ignore[method-assign]
-    service._delete_source_bucket_with_retry = lambda bucket, *_args, **_kwargs: deleted.append(bucket)  # type: ignore[method-assign]
     source_ctx = SimpleNamespace(execution_context=source)
     target_ctx = SimpleNamespace(execution_context=target)
 
@@ -1511,9 +1468,6 @@ def test_verified_copy_retains_source_even_when_strong_check_is_selected(db_sess
     db_session.refresh(item)
     assert item.status == "completed"
     assert item.step == "completed"
-    assert deleted == []
-
-
 def test_verified_copy_retains_source_without_optional_strong_check(db_session):
     user = _create_user(db_session)
     source = _create_account(db_session, name="source", endpoint_url="https://source.example.test", account_id="RGW001")
@@ -1525,9 +1479,8 @@ def test_verified_copy_retains_source_without_optional_strong_check(db_session):
         source_context_id=str(source.id),
         target_context_id=str(target.id),
         mode="one_shot",
-        delete_source=False,
         strong_integrity_check=False,
-        buckets=[BucketMigrationBucketMapping(source_bucket="bucket-a")],
+        buckets=[BucketMigrationBucketMapping(source_bucket="bucket-a", target_bucket="bucket-a-dst")],
     )
     migration = service.create_migration(payload, user)
     item = migration.items[0]
@@ -1550,9 +1503,7 @@ def test_verified_copy_retains_source_without_optional_strong_check(db_session):
         raise AssertionError("Strong verification must be skipped when strong_integrity_check is disabled")
 
     service._strong_verify_size_only_candidates_streamed = _unexpected_strong_verify  # type: ignore[method-assign]
-    deleted: list[str] = []
     service._set_managed_block_policy = lambda *_args, **_kwargs: None  # type: ignore[method-assign]
-    service._delete_source_bucket_with_retry = lambda bucket, *_args, **_kwargs: deleted.append(bucket)  # type: ignore[method-assign]
     source_ctx = SimpleNamespace(execution_context=source)
     target_ctx = SimpleNamespace(execution_context=target)
 
@@ -1561,9 +1512,6 @@ def test_verified_copy_retains_source_without_optional_strong_check(db_session):
     db_session.refresh(item)
     assert item.status == "completed"
     assert item.step == "completed"
-    assert deleted == []
-
-
 def test_apply_read_only_policy_returns_clear_message_on_access_denied(db_session):
     source = _create_account(db_session, name="source", endpoint_url="https://source.example.test", account_id="RGW001")
     db_session.commit()
@@ -1601,7 +1549,7 @@ def test_start_migration_requires_precheck_passed(db_session):
         source_context_id=str(source.id),
         target_context_id=str(target.id),
         mode="one_shot",
-        buckets=[BucketMigrationBucketMapping(source_bucket="bucket-a")],
+        buckets=[BucketMigrationBucketMapping(source_bucket="bucket-a", target_bucket="bucket-a-dst")],
     )
     migration = service.create_migration(payload, user)
 
@@ -1634,7 +1582,7 @@ def test_run_precheck_interruption_persists_canonical_report(db_session):
             source_context_id=str(source.id),
             target_context_id=str(target.id),
             mode="one_shot",
-            buckets=[BucketMigrationBucketMapping(source_bucket="bucket-a")],
+            buckets=[BucketMigrationBucketMapping(source_bucket="bucket-a", target_bucket="bucket-a-dst")],
         ),
         user,
     )
@@ -1676,7 +1624,7 @@ def test_run_precheck_passed_then_start_allowed(db_session):
         source_context_id=str(source.id),
         target_context_id=str(target.id),
         mode="one_shot",
-        buckets=[BucketMigrationBucketMapping(source_bucket="bucket-a")],
+        buckets=[BucketMigrationBucketMapping(source_bucket="bucket-a", target_bucket="bucket-a-dst")],
     )
     migration = service.create_migration(payload, user)
 
@@ -1727,7 +1675,7 @@ def test_run_precheck_failed_blocks_start(db_session):
         source_context_id=str(source.id),
         target_context_id=str(target.id),
         mode="one_shot",
-        buckets=[BucketMigrationBucketMapping(source_bucket="bucket-a")],
+        buckets=[BucketMigrationBucketMapping(source_bucket="bucket-a", target_bucket="bucket-a-dst")],
     )
     migration = service.create_migration(payload, user)
 
@@ -3343,51 +3291,6 @@ def test_finalize_target_versioning_state_suspends_target_for_version_aware_copy
     assert replication_state.get("target_versioning_finalized") == "suspended"
 
 
-def test_restore_source_policy_replays_backup_policy_as_is(db_session):
-    source = _create_account(db_session, name="source", endpoint_url="https://source.example.test", account_id="RGW001")
-    db_session.commit()
-
-    captured: dict[str, object] = {"delete_called": False}
-
-    class _BucketsStub:
-        def put_policy(self, _bucket_name, _account, policy):
-            captured["policy"] = policy
-
-        def delete_policy(self, *_args, **_kwargs):
-            captured["delete_called"] = True
-
-    service = BucketMigrationService(db_session)
-    service._configuration = _BucketsStub()  # type: ignore[assignment]
-
-    backup_policy = {
-        "Version": "2012-10-17",
-        "Statement": [
-            {
-                "Sid": "BucketReefMigrationReadOnlyDeny",
-                "Effect": "Deny",
-                "Principal": "*",
-                "Action": ["s3:Put*", "s3:Delete*"],
-                "Resource": ["arn:aws:s3:::bucket-a", "arn:aws:s3:::bucket-a/*"],
-            },
-            {
-                "Sid": "KeepMe",
-                "Effect": "Allow",
-                "Principal": "*",
-                "Action": ["s3:GetObject"],
-                "Resource": ["arn:aws:s3:::bucket-a/*"],
-            },
-        ],
-    }
-    item = SimpleNamespace(source_policy_backup_json=json.dumps(backup_policy))
-
-    service._restore_source_policy("bucket-a", source, item)
-
-    restored = captured.get("policy")
-    assert isinstance(restored, dict)
-    assert restored == backup_policy
-    assert captured["delete_called"] is False
-
-
 def test_finalize_releases_target_lock_policy(db_session):
     user = _create_user(db_session)
     source = _create_account(db_session, name="source", endpoint_url="https://source.example.test", account_id="RGW001")
@@ -3452,9 +3355,6 @@ def test_stop_migration_restores_source_and_target_policies(db_session):
 
     restored_source: list[str] = []
     restored_target: list[str] = []
-
-    def _restore_source_policy(bucket_name: str, _source_account, _item):
-        restored_source.append(bucket_name)
 
     def _restore_target_write_lock_policy(_target_account, target_bucket: str, _item):
         restored_target.append(target_bucket)
@@ -3598,7 +3498,7 @@ def test_add_event_sanitizes_exception_text_before_persistence(db_session):
             source_context_id=str(source.id),
             target_context_id=str(target.id),
             mode="one_shot",
-            buckets=[BucketMigrationBucketMapping(source_bucket="bucket-a")],
+            buckets=[BucketMigrationBucketMapping(source_bucket="bucket-a", target_bucket="bucket-a-dst")],
         ),
         user,
     )
@@ -3614,7 +3514,7 @@ def test_add_event_sanitizes_exception_text_before_persistence(db_session):
     )
     db_session.flush()
 
-    event = db_session.query(BucketMigrationEvent).order_by(BucketMigrationEvent.id.desc()).first()
+    event = db_session.scalar(sa.select(BucketMigrationEvent).order_by(BucketMigrationEvent.id.desc()))
     assert event is not None
     persisted = f"{event.message} {event.metadata_json}"
     assert "migration-secret" not in persisted
@@ -3650,7 +3550,7 @@ def test_delete_migration_allows_final_statuses_and_draft(db_session):
 
         service.delete_migration(migration.id)
 
-        deleted = db_session.query(BucketMigration).filter(BucketMigration.id == migration.id).first()
+        deleted = db_session.scalar(sa.select(BucketMigration).where(BucketMigration.id == migration.id))
         assert deleted is None
 
 
@@ -4027,15 +3927,14 @@ def test_apply_target_lock_fails_when_lock_cannot_be_applied(db_session):
     assert item.step == "apply_target_lock"
     assert item.target_lock_applied is False
 
-    warning_event = (
-        db_session.query(BucketMigrationEvent)
-        .filter(
+    warning_event = db_session.scalar(
+        sa.select(BucketMigrationEvent)
+        .where(
             BucketMigrationEvent.migration_id == migration.id,
             BucketMigrationEvent.item_id == item.id,
             BucketMigrationEvent.level == "warning",
         )
         .order_by(BucketMigrationEvent.id.desc())
-        .first()
     )
     assert warning_event is None
 
@@ -4117,7 +4016,6 @@ def test_fail_migration_fatal_marks_failed_and_releases_lease(db_session, monkey
         target_context_id="20",
         mode="one_shot",
         copy_bucket_settings=False,
-        delete_source=False,
         lock_target_writes=True,
         use_same_endpoint_copy=False,
         auto_grant_source_read_for_copy=False,
@@ -4149,16 +4047,19 @@ def test_fail_migration_fatal_marks_failed_and_releases_lease(db_session, monkey
     assert migration.worker_lease_until is None
     assert migration.error_message and "Fatal migration worker error" in migration.error_message
     assert item.status == "failed"
-    event = (
-        db_session.query(BucketMigrationEvent)
-        .filter(BucketMigrationEvent.migration_id == migration.id, BucketMigrationEvent.level == "error")
+    event = db_session.scalar(
+        sa.select(BucketMigrationEvent)
+        .where(BucketMigrationEvent.migration_id == migration.id, BucketMigrationEvent.level == "error")
         .order_by(BucketMigrationEvent.id.desc())
-        .first()
     )
     assert event is not None
-    delivery = db_session.query(WebhookDelivery).filter(WebhookDelivery.endpoint_id == webhook.id).one()
+    delivery = db_session.scalars(
+        sa.select(WebhookDelivery).where(WebhookDelivery.endpoint_id == webhook.id)
+    ).one()
     assert delivery.event_type == MIGRATION_EVENT_TYPE
-    assert json.loads(delivery.payload_json)["data"]["migration"]["id"] == migration.id
+    webhook_migration = json.loads(delivery.payload_json)["data"]["migration"]
+    assert webhook_migration["id"] == migration.id
+    assert "delete_source" not in webhook_migration
 
 
 
@@ -4168,7 +4069,6 @@ def test_fail_migration_fatal_is_idempotent_for_final_status(db_session):
         target_context_id="20",
         mode="one_shot",
         copy_bucket_settings=False,
-        delete_source=False,
         lock_target_writes=True,
         use_same_endpoint_copy=False,
         auto_grant_source_read_for_copy=False,
@@ -4206,7 +4106,6 @@ def test_worker_marks_migration_failed_on_fatal_exception(tmp_path, monkeypatch)
                 target_context_id="20",
                 mode="one_shot",
                 copy_bucket_settings=False,
-                delete_source=False,
                 lock_target_writes=True,
                 use_same_endpoint_copy=False,
                 auto_grant_source_read_for_copy=False,
@@ -4240,7 +4139,7 @@ def test_worker_marks_migration_failed_on_fatal_exception(tmp_path, monkeypatch)
         last_status = None
         while time.time() < deadline:
             with test_session_factory() as db:
-                row = db.query(BucketMigration).filter(BucketMigration.id == migration_id).first()
+                row = db.scalar(sa.select(BucketMigration).where(BucketMigration.id == migration_id))
                 assert row is not None
                 last_status = row.status
                 if row.status == "failed":
@@ -4249,7 +4148,7 @@ def test_worker_marks_migration_failed_on_fatal_exception(tmp_path, monkeypatch)
         worker.stop(timeout=1.0)
 
         with test_session_factory() as db:
-            row = db.query(BucketMigration).filter(BucketMigration.id == migration_id).first()
+            row = db.scalar(sa.select(BucketMigration).where(BucketMigration.id == migration_id))
             assert row is not None
             assert row.status == "failed", f"unexpected status={last_status}"
             assert row.error_message and "Fatal migration worker error" in row.error_message

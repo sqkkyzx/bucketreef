@@ -37,24 +37,24 @@ def _settings(*, enabled: bool):
 
 
 def test_bucket_migration_allowed_for_admin_with_user_tool_access(db_session, monkeypatch):
-    monkeypatch.setattr("app.services.app_settings_service.load_app_settings", lambda: _settings(enabled=True))
+    monkeypatch.setattr("app.services.app_settings_service.load_app_settings_for_db_readonly", lambda _db: _settings(enabled=True))
     ensure_manager_tool_allowed(_user(db_session, UserRole.UI_ADMIN.value, bucket_migration=True), "bucket_migration", db_session)
 
 
 def test_bucket_migration_allowed_for_ui_user_with_user_tool_access(db_session, monkeypatch):
-    monkeypatch.setattr("app.services.app_settings_service.load_app_settings", lambda: _settings(enabled=True))
+    monkeypatch.setattr("app.services.app_settings_service.load_app_settings_for_db_readonly", lambda _db: _settings(enabled=True))
     ensure_manager_tool_allowed(_user(db_session, UserRole.UI_USER.value, bucket_migration=True), "bucket_migration", db_session)
 
 
 def test_bucket_migration_forbidden_without_user_tool_access(db_session, monkeypatch):
-    monkeypatch.setattr("app.services.app_settings_service.load_app_settings", lambda: _settings(enabled=True))
+    monkeypatch.setattr("app.services.app_settings_service.load_app_settings_for_db_readonly", lambda _db: _settings(enabled=True))
     with pytest.raises(HTTPException) as exc:
         ensure_manager_tool_allowed(_user(db_session, UserRole.UI_USER.value), "bucket_migration", db_session)
     assert exc.value.status_code == 403
 
 
 def test_bucket_migration_forbidden_when_feature_disabled(db_session, monkeypatch):
-    monkeypatch.setattr("app.services.app_settings_service.load_app_settings", lambda: _settings(enabled=False))
+    monkeypatch.setattr("app.services.app_settings_service.load_app_settings_for_db_readonly", lambda _db: _settings(enabled=False))
     with pytest.raises(HTTPException) as exc:
         ensure_manager_tool_allowed(_user(db_session, UserRole.UI_ADMIN.value, bucket_migration=True), "bucket_migration", db_session)
     assert exc.value.status_code == 403
@@ -62,7 +62,7 @@ def test_bucket_migration_forbidden_when_feature_disabled(db_session, monkeypatc
 
 
 def test_bucket_migration_forbidden_for_unassigned_user(db_session, monkeypatch):
-    monkeypatch.setattr("app.services.app_settings_service.load_app_settings", lambda: _settings(enabled=True))
+    monkeypatch.setattr("app.services.app_settings_service.load_app_settings_for_db_readonly", lambda _db: _settings(enabled=True))
     with pytest.raises(HTTPException) as exc:
         ensure_manager_tool_allowed(_user(db_session, UserRole.UI_NONE.value, bucket_migration=True), "bucket_migration", db_session)
     assert exc.value.status_code == 403
@@ -75,7 +75,6 @@ def _seed_migration(db_session, *, source_context_id: str, target_context_id: st
         target_context_id=target_context_id,
         mode="one_shot",
         copy_bucket_settings=False,
-        delete_source=False,
         lock_target_writes=True,
         use_same_endpoint_copy=False,
         auto_grant_source_read_for_copy=False,
@@ -133,6 +132,22 @@ def test_manager_migration_list_is_scoped_to_authorized_contexts(client, db_sess
         assert response.status_code == 200
         payload = response.json()
         assert [entry["id"] for entry in payload["items"]] == [migration_in_scope]
+        assert set(payload["items"][0]) == {
+            "id",
+            "source_context_id",
+            "target_context_id",
+            "status",
+            "precheck_checked_at",
+            "preparation_status",
+            "preparation_completed_items",
+            "maintenance_status",
+            "total_items",
+            "completed_items",
+            "failed_items",
+            "skipped_items",
+            "awaiting_items",
+            "updated_at",
+        }
 
         filtered = client.get("/api/manager/migrations", params={"context_id": "30"})
         assert filtered.status_code == 200
@@ -162,7 +177,7 @@ def test_manager_migration_create_rejects_context_out_of_scope(client):
             json={
                 "source_context_id": "99",
                 "target_context_id": "20",
-                "buckets": [{"source_bucket": "bucket-a"}],
+                "buckets": [{"source_bucket": "bucket-a", "target_bucket": "bucket-a-dst"}],
             },
         )
         assert response.status_code == 403
@@ -179,7 +194,7 @@ def test_manager_migration_create_rejects_update_revision_field(client):
                 "source_context_id": "10",
                 "target_context_id": "20",
                 "configuration_revision": 1,
-                "buckets": [{"source_bucket": "bucket-a"}],
+                "buckets": [{"source_bucket": "bucket-a", "target_bucket": "bucket-a-dst"}],
             },
         )
         assert response.status_code == 422
@@ -197,7 +212,7 @@ def test_manager_migration_update_rejects_context_out_of_scope(client, db_sessio
                 "source_context_id": "10",
                 "target_context_id": "999",
                 "configuration_revision": 1,
-                "buckets": [{"source_bucket": "bucket-a"}],
+                "buckets": [{"source_bucket": "bucket-a", "target_bucket": "bucket-a-dst"}],
             },
         )
         assert response.status_code == 403
@@ -219,7 +234,7 @@ def test_manager_migration_update_requires_configuration_revision(client, db_ses
             json={
                 "source_context_id": "10",
                 "target_context_id": "20",
-                "buckets": [{"source_bucket": "bucket-a"}],
+                "buckets": [{"source_bucket": "bucket-a", "target_bucket": "bucket-a-dst"}],
             },
         )
         assert response.status_code == 422
@@ -235,7 +250,7 @@ def test_manager_migration_create_rejects_cross_account_when_one_account_not_adm
             json={
                 "source_context_id": "10",
                 "target_context_id": "20",
-                "buckets": [{"source_bucket": "bucket-a"}],
+                "buckets": [{"source_bucket": "bucket-a", "target_bucket": "bucket-a-dst"}],
             },
         )
         assert response.status_code == 403
@@ -276,7 +291,7 @@ def test_bucket_migration_scope_does_not_grant_superadmin_implicit_contexts(db_s
 
 
 def test_bucket_migration_scope_resolves_access_once_per_request(db_session, monkeypatch):
-    monkeypatch.setattr("app.services.app_settings_service.load_app_settings", lambda: _settings(enabled=True))
+    monkeypatch.setattr("app.services.app_settings_service.load_app_settings_for_db_readonly", lambda _db: _settings(enabled=True))
     user = _user(db_session, UserRole.UI_USER.value, bucket_migration=True)
     resolve_user = EffectiveAccessService.resolve_user
 

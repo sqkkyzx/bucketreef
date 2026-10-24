@@ -31,6 +31,7 @@ if TYPE_CHECKING:
 
 SERVICE_TYPES = {"endpoint_runtime": "runtime", "endpoint_supervision": "supervision"}
 IDENTITY_TYPES = {**SERVICE_TYPES, "ceph_admin": "ceph_admin"}
+ROTATION_TYPES = (*SERVICE_TYPES, "ceph_admin", "endpoint_admin", "account", "s3_user")
 RotationTarget = EndpointServiceIdentity | S3Account | S3User | StorageEndpoint
 
 
@@ -240,6 +241,80 @@ class DurableKeyRotationService:
         elif key_type == "endpoint_admin":
             self._validate_endpoint_admin_replacement(endpoint, access, secret)
 
+    def _resolve_rotation_principal(
+        self,
+        admin: RGWAdminClient,
+        key_type: str,
+        target: RotationTarget,
+        old_access: str,
+    ) -> tuple[str, str | None]:
+        from app.services.key_rotation_rgw import RgwAccessKeyRotator
+
+        uid, preferred_tenant = self._principal_hint(target)
+        if uid is None:
+            return RgwAccessKeyRotator().resolve_identity_from_access_key(
+                admin,
+                old_access,
+            )
+        if isinstance(target, (S3Account, S3User)):
+            return uid, preferred_tenant or None
+        if key_type in SERVICE_TYPES:
+            return uid, None
+
+        tenant = RgwAccessKeyRotator().detect_user_tenant(
+            admin,
+            uid=uid,
+            preferred_tenant=preferred_tenant,
+        )
+        return uid, tenant
+
+    @staticmethod
+    def _load_rotation_principal(
+        admin: RGWAdminClient,
+        target: RotationTarget,
+        uid: str,
+        tenant: str | None,
+    ) -> object:
+        kwargs = {"tenant": tenant} if tenant else {}
+        payload = admin.get_user(uid, allow_not_found=True, **kwargs)
+        if isinstance(target, (S3Account, S3User)):
+            require_rgw_user_identity(payload, uid, tenant or "")
+        return payload
+
+    def _validate_service_rotation_ownership(
+        self,
+        endpoint: StorageEndpoint,
+        key_type: str,
+        target: RotationTarget,
+        payload: object,
+    ) -> None:
+        if key_type not in SERVICE_TYPES:
+            return
+        provenance = (
+            f"{self.identities._installation_id()}:{endpoint.identity_namespace}"
+        )
+        if target.provenance != provenance or not self.identities._owns(
+            target,
+            payload,
+        ):
+            raise ReplacementValidationError(
+                "Cannot rotate an identity without ownership proof."
+            )
+        self.identities._validate_managed_keys(target, payload)
+
+    @staticmethod
+    def _require_current_access_key(
+        admin: RGWAdminClient,
+        payload: object,
+        old_access: str,
+    ) -> None:
+        if any(
+            item.get("access_key") == old_access
+            for item in admin.extract_keys(payload)
+        ):
+            return
+        raise ValueError("Current key does not belong to the expected principal.")
+
     def _prepare_intent(
         self,
         endpoint: StorageEndpoint,
@@ -253,48 +328,20 @@ class DurableKeyRotationService:
         if not old_access or not old_secret:
             raise ValueError("Rotation credentials are not configured.")
 
-        uid, preferred_tenant = self._principal_hint(target)
-        tenant = None
-        if uid is None:
-            from app.services.key_rotation_rgw import RgwAccessKeyRotator
-
-            uid, tenant = RgwAccessKeyRotator().resolve_identity_from_access_key(
-                admin, old_access
-            )
-        elif isinstance(target, (S3Account, S3User)):
-            tenant = preferred_tenant or None
-        elif key_type not in SERVICE_TYPES:
-            from app.services.key_rotation_rgw import RgwAccessKeyRotator
-
-            tenant = RgwAccessKeyRotator().detect_user_tenant(
-                admin,
-                uid=uid,
-                preferred_tenant=preferred_tenant,
-            )
-
-        payload = (
-            admin.get_user(uid, tenant=tenant, allow_not_found=True)
-            if tenant
-            else admin.get_user(uid, allow_not_found=True)
+        uid, tenant = self._resolve_rotation_principal(
+            admin,
+            key_type,
+            target,
+            old_access,
         )
-        if isinstance(target, (S3Account, S3User)):
-            require_rgw_user_identity(payload, uid, tenant or "")
-        if key_type in SERVICE_TYPES:
-            provenance = (
-                f"{self.identities._installation_id()}:{endpoint.identity_namespace}"
-            )
-            if target.provenance != provenance or not self.identities._owns(
-                target, payload
-            ):
-                raise ReplacementValidationError(
-                    "Cannot rotate an identity without ownership proof."
-                )
-            self.identities._validate_managed_keys(target, payload)
-        if not any(
-            item.get("access_key") == old_access
-            for item in admin.extract_keys(payload)
-        ):
-            raise ValueError("Current key does not belong to the expected principal.")
+        payload = self._load_rotation_principal(admin, target, uid, tenant)
+        self._validate_service_rotation_ownership(
+            endpoint,
+            key_type,
+            target,
+            payload,
+        )
+        self._require_current_access_key(admin, payload, old_access)
 
         intent = KeyRotationIntent(
             endpoint_id=endpoint.id,
@@ -325,6 +372,27 @@ class DurableKeyRotationService:
         *,
         deactivate_only: bool,
     ) -> tuple[dict[str, str], object]:
+        self._validate_pending_rotation_target(
+            endpoint,
+            key_type,
+            target,
+            intent,
+            deactivate_only=deactivate_only,
+        )
+        kwargs, payload = self._load_pending_rotation_principal(admin, target, intent)
+        if key_type in SERVICE_TYPES:
+            self._validate_pending_service_identity(target, payload)
+        return kwargs, payload
+
+    def _validate_pending_rotation_target(
+        self,
+        endpoint: StorageEndpoint,
+        key_type: str,
+        target: RotationTarget,
+        intent: KeyRotationIntent,
+        *,
+        deactivate_only: bool,
+    ) -> None:
         if (
             intent.rgw_endpoint != resolve_rgw_admin_api_endpoint(endpoint)
             or intent.deactivate_only != deactivate_only
@@ -363,17 +431,28 @@ class DurableKeyRotationService:
                     "Cannot rotate an identity without ownership proof."
                 )
 
+    @staticmethod
+    def _load_pending_rotation_principal(
+        admin: RGWAdminClient,
+        target: RotationTarget,
+        intent: KeyRotationIntent,
+    ) -> tuple[dict[str, str], object]:
         kwargs = {"tenant": intent.tenant} if intent.tenant else {}
         payload = admin.get_user(intent.rgw_uid, **kwargs)
         if isinstance(target, (S3Account, S3User)):
             require_rgw_user_identity(payload, intent.rgw_uid, intent.tenant or "")
-        if key_type in SERVICE_TYPES:
-            if not self.identities._owns(target, payload):
-                raise ReplacementValidationError(
-                    "Cannot rotate an identity without ownership proof."
-                )
-            self.identities._validate_managed_keys(target, payload)
         return kwargs, payload
+
+    def _validate_pending_service_identity(
+        self,
+        target: RotationTarget,
+        payload: object,
+    ) -> None:
+        if not self.identities._owns(target, payload):
+            raise ReplacementValidationError(
+                "Cannot rotate an identity without ownership proof."
+            )
+        self.identities._validate_managed_keys(target, payload)
 
     def _activate_replacement(
         self,
@@ -520,6 +599,62 @@ class DurableKeyRotationService:
             target.status = "error"
             self.db.commit()
 
+    @staticmethod
+    def _validate_rotation_request(key_type: str, *, deactivate_only: bool) -> None:
+        if deactivate_only and key_type in SERVICE_TYPES:
+            raise ValueError(
+                "Managed service identities require deleting previous keys; select delete mode."
+            )
+        if key_type not in ROTATION_TYPES:
+            raise ValueError("Unsupported rotation category.")
+
+    def _load_rotation_context(
+        self,
+        endpoint_id: int,
+        key_type: str,
+        target_id: int,
+    ) -> tuple[StorageEndpoint, RotationTarget, KeyRotationIntent | None, RGWAdminClient]:
+        endpoint = self.db.scalar(
+            select(StorageEndpoint)
+            .where(StorageEndpoint.id == endpoint_id)
+            .execution_options(populate_existing=True)
+        )
+        if endpoint is None or endpoint.provider != "ceph":
+            raise ValueError(
+                "Key rotation is only supported for an available Ceph endpoint."
+            )
+
+        target = self._target(endpoint, key_type, target_id)
+        intent = pending_rotation(self.db, endpoint.id, key_type, target.id)
+        if (
+            key_type not in IDENTITY_TYPES
+            and intent is None
+            and not resolve_feature_flags(endpoint).admin_enabled
+        ):
+            raise ValueError("Admin feature is disabled for this category.")
+        if key_type in IDENTITY_TYPES and target.status != "ready" and intent is None:
+            raise ValueError("Only ready service identities can be rotated.")
+
+        admin, permissions = self.identities.admin_permissions(endpoint)
+        if not permissions.users_write:
+            raise ValueError("Key rotation requires Admin Ops users=write.")
+        return endpoint, target, intent, admin
+
+    def _complete_rotation(
+        self,
+        endpoint: StorageEndpoint,
+        key_type: str,
+        target: RotationTarget,
+        intent: KeyRotationIntent,
+    ) -> None:
+        self._audit(endpoint, intent, "completed")
+        self.db.delete(intent)
+        if key_type in IDENTITY_TYPES:
+            target.last_error = None
+            target.status = "ready"
+            target.last_reconciled_at = utcnow()
+        self.db.commit()
+
     def rotate(
         self,
         endpoint: StorageEndpoint,
@@ -528,30 +663,14 @@ class DurableKeyRotationService:
         *,
         deactivate_only: bool = False,
     ) -> tuple[str, str, str]:
-        if deactivate_only and key_type in SERVICE_TYPES:
-            raise ValueError("Managed service identities require deleting previous keys; select delete mode.")
-        if key_type not in (*SERVICE_TYPES, "ceph_admin", "endpoint_admin", "account", "s3_user"):
-            raise ValueError("Unsupported rotation category.")
+        self._validate_rotation_request(key_type, deactivate_only=deactivate_only)
         lease, handle = self.identities._lease(endpoint)
-        intent = None
         try:
-            endpoint_id = endpoint.id
-            endpoint = self.db.scalar(
-                select(StorageEndpoint)
-                .where(StorageEndpoint.id == endpoint_id)
-                .execution_options(populate_existing=True)
+            endpoint, target, intent, admin = self._load_rotation_context(
+                endpoint.id,
+                key_type,
+                target_id,
             )
-            if endpoint is None or endpoint.provider != "ceph":
-                raise ValueError("Key rotation is only supported for an available Ceph endpoint.")
-            target = self._target(endpoint, key_type, target_id)
-            intent = pending_rotation(self.db, endpoint.id, key_type, target.id)
-            if key_type not in IDENTITY_TYPES and intent is None and not resolve_feature_flags(endpoint).admin_enabled:
-                raise ValueError("Admin feature is disabled for this category.")
-            if key_type in IDENTITY_TYPES and target.status != "ready" and intent is None:
-                raise ValueError("Only ready service identities can be rotated.")
-            admin, permissions = self.identities.admin_permissions(endpoint)
-            if not permissions.users_write:
-                raise ValueError("Key rotation requires Admin Ops users=write.")
             if intent is None:
                 intent = self._prepare_intent(
                     endpoint,
@@ -585,13 +704,7 @@ class DurableKeyRotationService:
                 admin,
                 kwargs,
             )
-            self._audit(endpoint, intent, "completed")
-            self.db.delete(intent)
-            if key_type in IDENTITY_TYPES:
-                target.last_error = None
-                target.status = "ready"
-                target.last_reconciled_at = utcnow()
-            self.db.commit()
+            self._complete_rotation(endpoint, key_type, target, intent)
             return result
         except (ValueError, RGWAdminError, SQLAlchemyError) as exc:
             self._record_rotation_failure(endpoint, key_type, target_id, exc)

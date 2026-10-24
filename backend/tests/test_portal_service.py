@@ -826,12 +826,12 @@ def test_portal_user_creation_leaves_unowned_remote_collision_untouched(db_sessi
     with pytest.raises(RuntimeError, match="EntityAlreadyExists"):
         service._ensure_portal_user(user, account, iam_service)
 
-    assert (
-        db_session.query(AccountIAMUser)
-        .filter_by(user_id=user.id, account_id=account.id)
-        .first()
-        is None
-    )
+    assert db_session.scalar(
+        sa.select(AccountIAMUser).where(
+            AccountIAMUser.user_id == user.id,
+            AccountIAMUser.account_id == account.id,
+        )
+    ) is None
 
 
 def test_manager_group_access_is_protected_before_policy_update(monkeypatch, db_session):
@@ -1746,10 +1746,22 @@ def test_delete_storage_space_removes_empty_imported_bucket_and_access_state(mon
         ("delete_user", "external-delete-user"),
     ]
     assert projection_calls == [(account.id, {owner.id, delegated_owner.id, viewer.id})]
-    assert db_session.query(PortalStorageSpaceMetadata).filter_by(bucket_name="imported-data").first() is None
-    assert db_session.query(PortalStorageSpaceGrant).filter_by(storage_space_metadata_id=metadata.id).count() == 0
-    assert db_session.query(PortalExternalAccessCredential).filter_by(bucket_name="imported-data").count() == 0
-    link = db_session.query(PortalPublicLink).filter_by(token="delete-space-token").one()
+    assert db_session.scalar(
+        sa.select(PortalStorageSpaceMetadata).where(PortalStorageSpaceMetadata.bucket_name == "imported-data")
+    ) is None
+    assert db_session.scalar(
+        sa.select(sa.func.count()).select_from(PortalStorageSpaceGrant).where(
+            PortalStorageSpaceGrant.storage_space_metadata_id == metadata.id
+        )
+    ) == 0
+    assert db_session.scalar(
+        sa.select(sa.func.count()).select_from(PortalExternalAccessCredential).where(
+            PortalExternalAccessCredential.bucket_name == "imported-data"
+        )
+    ) == 0
+    link = db_session.scalars(
+        sa.select(PortalPublicLink).where(PortalPublicLink.token == "delete-space-token")
+    ).one()
     assert link.revoked_at is not None
 
 
@@ -1853,7 +1865,9 @@ def test_delete_storage_space_requires_zero_known_stats(monkeypatch, db_session,
     with pytest.raises(expected_exception, match=expected_message):
         service.delete_storage_space(owner, _portal_access(account, owner), "delete-stats-data")
 
-    assert db_session.query(PortalStorageSpaceMetadata).filter_by(bucket_name="delete-stats-data").one()
+    assert db_session.scalars(
+        sa.select(PortalStorageSpaceMetadata).where(PortalStorageSpaceMetadata.bucket_name == "delete-stats-data")
+    ).one()
 
 
 @pytest.mark.parametrize(
@@ -1954,7 +1968,9 @@ def test_delete_storage_space_marks_bucket_absent_when_delete_races(monkeypatch,
     result = service.delete_storage_space(owner, _portal_access(account, owner), "delete-missing-race-data")
 
     assert result["bucket_already_absent"] is True
-    assert db_session.query(PortalStorageSpaceMetadata).filter_by(bucket_name="delete-missing-race-data").first() is None
+    assert db_session.scalar(
+        sa.select(PortalStorageSpaceMetadata).where(PortalStorageSpaceMetadata.bucket_name == "delete-missing-race-data")
+    ) is None
 
 
 def test_delete_storage_space_preserves_metadata_when_provider_delete_fails(monkeypatch, db_session):
@@ -1982,7 +1998,9 @@ def test_delete_storage_space_preserves_metadata_when_provider_delete_fails(monk
     with pytest.raises(RuntimeError, match="AccessDenied"):
         service.delete_storage_space(owner, _portal_access(account, owner), "delete-access-denied-data")
 
-    assert db_session.query(PortalStorageSpaceMetadata).filter_by(bucket_name="delete-access-denied-data").one()
+    assert db_session.scalars(
+        sa.select(PortalStorageSpaceMetadata).where(PortalStorageSpaceMetadata.bucket_name == "delete-access-denied-data")
+    ).one()
 
 
 def test_delete_storage_space_finalizes_archived_metadata_when_bucket_is_already_absent(monkeypatch, db_session):
@@ -2013,7 +2031,9 @@ def test_delete_storage_space_finalizes_archived_metadata_when_bucket_is_already
     result = service.delete_storage_space(owner, _portal_access(account, owner), "delete-archived-data")
 
     assert result["bucket_already_absent"] is True
-    assert db_session.query(PortalStorageSpaceMetadata).filter_by(bucket_name="delete-archived-data").first() is None
+    assert db_session.scalar(
+        sa.select(PortalStorageSpaceMetadata).where(PortalStorageSpaceMetadata.bucket_name == "delete-archived-data")
+    ) is None
 
 
 def test_delete_storage_space_retry_finishes_after_partial_external_iam_cleanup(monkeypatch, db_session):
@@ -2069,8 +2089,14 @@ def test_delete_storage_space_retry_finishes_after_partial_external_iam_cleanup(
         ("policy", "already-cleaned-user", service._external_access_policy_name),
         ("user", "already-cleaned-user"),
     ]
-    assert db_session.query(PortalExternalAccessCredential).filter_by(bucket_name=metadata.bucket_name).count() == 0
-    assert db_session.query(PortalStorageSpaceMetadata).filter_by(bucket_name=metadata.bucket_name).first() is None
+    assert db_session.scalar(
+        sa.select(sa.func.count()).select_from(PortalExternalAccessCredential).where(
+            PortalExternalAccessCredential.bucket_name == metadata.bucket_name
+        )
+    ) == 0
+    assert db_session.scalar(
+        sa.select(PortalStorageSpaceMetadata).where(PortalStorageSpaceMetadata.bucket_name == metadata.bucket_name)
+    ) is None
 
 
 def test_delete_storage_space_route_returns_no_content_and_audits_without_secrets(db_session):
@@ -2307,7 +2333,7 @@ def test_portal_browser_allowed_buckets_use_content_access(monkeypatch, db_sessi
     app_settings = AppSettings()
     app_settings.general.portal_enabled = True
     app_settings.general.browser_portal_enabled = True
-    monkeypatch.setattr(app_settings_service, "load_app_settings", lambda: app_settings)
+    monkeypatch.setattr(app_settings_service, "load_app_settings_for_db_readonly", lambda _db: app_settings)
     monkeypatch.setattr(portal_access_deps, "_validate_portal_account_surface", lambda _account: None)
     monkeypatch.setattr(PortalService, "get_portal_credentials", lambda *_args, **_kwargs: ("AK", "SK"))
     monkeypatch.setattr(
@@ -2657,7 +2683,9 @@ def test_get_storage_space_keeps_bucket_scope_and_returns_none_when_hidden(monke
         )
     )
     db_session.flush()
-    metadata = db_session.query(PortalStorageSpaceMetadata).filter_by(bucket_name="allowed-bucket").one()
+    metadata = db_session.scalars(
+        sa.select(PortalStorageSpaceMetadata).where(PortalStorageSpaceMetadata.bucket_name == "allowed-bucket")
+    ).one()
     db_session.add(PortalStorageSpaceGrant(storage_space_metadata_id=metadata.id, user_id=user.id, role="Viewer"))
     db_session.commit()
 
@@ -2721,11 +2749,12 @@ def test_create_storage_space_generic_uses_managed_uuid_bucket_and_editable_name
     assert bucket_name.startswith("bkr-space-")
     uuid_part = bucket_name.removeprefix("bkr-space-")
     assert str(uuid.UUID(uuid_part)) == uuid_part
-    metadata = (
-        db_session.query(PortalStorageSpaceMetadata)
-        .filter_by(account_id=account.id, bucket_name=bucket_name)
-        .one()
-    )
+    metadata = db_session.scalars(
+        sa.select(PortalStorageSpaceMetadata).where(
+            PortalStorageSpaceMetadata.account_id == account.id,
+            PortalStorageSpaceMetadata.bucket_name == bucket_name,
+        )
+    ).one()
     assert metadata.display_name == "Research Data"
     assert metadata.description == "Lab files"
     assert metadata.owner_user_id == user.id
@@ -2946,11 +2975,12 @@ def test_portal_user_can_create_storage_space_when_setting_is_enabled(monkeypatc
     uuid_part = bucket_name.removeprefix("bkr-space-")
     assert str(uuid.UUID(uuid_part)) == uuid_part
     assert applied_settings is portal_settings
-    metadata = (
-        db_session.query(PortalStorageSpaceMetadata)
-        .filter_by(account_id=account.id, bucket_name=bucket_name)
-        .one()
-    )
+    metadata = db_session.scalars(
+        sa.select(PortalStorageSpaceMetadata).where(
+            PortalStorageSpaceMetadata.account_id == account.id,
+            PortalStorageSpaceMetadata.bucket_name == bucket_name,
+        )
+    ).one()
     assert metadata.visibility == "private"
 
 
@@ -3070,8 +3100,14 @@ def test_create_restricted_storage_space_persists_initial_shares_atomically(monk
         ],
     )
 
-    metadata = db_session.query(PortalStorageSpaceMetadata).filter_by(bucket_name="restricted-bucket").one()
-    grants = db_session.query(PortalStorageSpaceGrant).filter_by(storage_space_metadata_id=metadata.id).order_by(PortalStorageSpaceGrant.user_id).all()
+    metadata = db_session.scalars(
+        sa.select(PortalStorageSpaceMetadata).where(PortalStorageSpaceMetadata.bucket_name == "restricted-bucket")
+    ).one()
+    grants = db_session.scalars(
+        sa.select(PortalStorageSpaceGrant)
+        .where(PortalStorageSpaceGrant.storage_space_metadata_id == metadata.id)
+        .order_by(PortalStorageSpaceGrant.user_id)
+    ).all()
     assert [(grant.user_id, grant.role) for grant in grants] == [(viewer.id, "Viewer"), (editor.id, "Editor")]
 
 
@@ -3116,8 +3152,10 @@ def test_create_restricted_storage_space_rejects_invalid_initial_shares_before_b
             initial_shares=shares(owner, viewer, outsider),
         )
 
-    assert db_session.query(PortalStorageSpaceMetadata).filter_by(account_id=account.id).all() == []
-    assert db_session.query(PortalStorageSpaceGrant).all() == []
+    assert db_session.scalars(
+        sa.select(PortalStorageSpaceMetadata).where(PortalStorageSpaceMetadata.account_id == account.id)
+    ).all() == []
+    assert db_session.scalars(sa.select(PortalStorageSpaceGrant)).all() == []
 
 
 def test_create_restricted_storage_space_rolls_back_bucket_and_grants_when_sync_fails(monkeypatch, db_session):
@@ -3157,8 +3195,10 @@ def test_create_restricted_storage_space_rolls_back_bucket_and_grants_when_sync_
 
     assert created_buckets == ["rollback-bucket"]
     assert deleted_buckets == ["rollback-bucket"]
-    assert db_session.query(PortalStorageSpaceMetadata).filter_by(bucket_name="rollback-bucket").first() is None
-    assert db_session.query(PortalStorageSpaceGrant).all() == []
+    assert db_session.scalar(
+        sa.select(PortalStorageSpaceMetadata).where(PortalStorageSpaceMetadata.bucket_name == "rollback-bucket")
+    ) is None
+    assert db_session.scalars(sa.select(PortalStorageSpaceGrant)).all() == []
 
 
 def test_create_storage_space_named_bucket_preserves_exact_name_and_locks_name(monkeypatch, db_session):
@@ -3209,11 +3249,12 @@ def test_create_storage_space_named_bucket_preserves_exact_name_and_locks_name(m
     storage_space = service.create_storage_space(user, access, name="research-data.v1", naming_mode="named_bucket")
 
     assert created_buckets == ["research-data.v1"]
-    metadata = (
-        db_session.query(PortalStorageSpaceMetadata)
-        .filter_by(account_id=account.id, bucket_name="research-data.v1")
-        .one()
-    )
+    metadata = db_session.scalars(
+        sa.select(PortalStorageSpaceMetadata).where(
+            PortalStorageSpaceMetadata.account_id == account.id,
+            PortalStorageSpaceMetadata.bucket_name == "research-data.v1",
+        )
+    ).one()
     assert metadata.display_name == "research-data.v1"
     assert metadata.owner_user_id == user.id
     assert metadata.visibility == "private"
@@ -3239,7 +3280,7 @@ def test_create_named_space_rejects_invalid_or_duplicate_name_without_mutation(n
     monkeypatch.setattr(service, "create_bucket", lambda *_args, **_kwargs: pytest.fail("Invalid named bucket must not be created"))
     with pytest.raises(RuntimeError, match="Invalid bucket name|already exists"):
         service.create_storage_space(user, access, name=name, naming_mode="named_bucket")
-    assert db_session.query(PortalStorageSpaceMetadata).all() == []
+    assert db_session.scalars(sa.select(PortalStorageSpaceMetadata)).all() == []
 
 
 def test_create_storage_space_named_bucket_requires_effective_setting(monkeypatch, db_session):
@@ -3300,11 +3341,12 @@ def test_import_storage_space_uses_existing_bucket_name_and_locks_name(monkeypat
 
     assert storage_space.id == "existing-bucket"
     assert projection_calls == ["existing-bucket"]
-    metadata = (
-        db_session.query(PortalStorageSpaceMetadata)
-        .filter_by(account_id=account.id, bucket_name="existing-bucket")
-        .one()
-    )
+    metadata = db_session.scalars(
+        sa.select(PortalStorageSpaceMetadata).where(
+            PortalStorageSpaceMetadata.account_id == account.id,
+            PortalStorageSpaceMetadata.bucket_name == "existing-bucket",
+        )
+    ).one()
     assert metadata.display_name == "existing-bucket"
     assert metadata.description == "Imported bucket"
     assert metadata.owner_user_id == user.id
@@ -3356,8 +3398,15 @@ def test_import_restricted_storage_space_persists_initial_shares(monkeypatch, db
         initial_shares=[PortalStorageSpaceInitialShare(user_id=viewer.id, role="Editor")],
     )
 
-    metadata = db_session.query(PortalStorageSpaceMetadata).filter_by(bucket_name="existing-restricted").one()
-    grant = db_session.query(PortalStorageSpaceGrant).filter_by(storage_space_metadata_id=metadata.id, user_id=viewer.id).one()
+    metadata = db_session.scalars(
+        sa.select(PortalStorageSpaceMetadata).where(PortalStorageSpaceMetadata.bucket_name == "existing-restricted")
+    ).one()
+    grant = db_session.scalars(
+        sa.select(PortalStorageSpaceGrant).where(
+            PortalStorageSpaceGrant.storage_space_metadata_id == metadata.id,
+            PortalStorageSpaceGrant.user_id == viewer.id,
+        )
+    ).one()
     assert metadata.visibility == "shared"
     assert metadata.share_scope == "restricted"
     assert grant.role == "Editor"
@@ -3446,6 +3495,71 @@ def test_update_storage_space_allows_rename_when_name_is_editable(monkeypatch, d
     assert metadata.display_name == "Renamed Space"
 
 
+def test_update_storage_space_updates_sharing_but_keeps_visibility_immutable(monkeypatch, db_session):
+    account = make_s3_account(
+        db_session,
+        name="portal-storage-update-sharing",
+        rgw_access_key="ROOT-AK",
+        rgw_secret_key="ROOT-SK",
+    )
+    user = User(
+        email="portal-storage-update-sharing@example.com",
+        hashed_password="x",
+        role="ui_user",
+    )
+    db_session.add_all([account, user])
+    db_session.commit()
+    metadata = PortalStorageSpaceMetadata(
+        account_id=account.id,
+        bucket_name="shared-data",
+        display_name="Shared Data",
+        visibility="shared",
+        share_scope="restricted",
+    )
+    db_session.add(metadata)
+    db_session.commit()
+
+    access = _portal_access(
+        account,
+        user,
+        portal_role=PortalAccountRole.PORTAL_MANAGER.value,
+        can_manage_buckets=True,
+    )
+    service = PortalService(db_session)
+    monkeypatch.setattr(service, "_require_storage_space_manager", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(service, "_sync_storage_space_access_projection", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(service, "_resolve_storage_space_bucket_name", lambda *_args, **_kwargs: "shared-data")
+    monkeypatch.setattr(
+        service,
+        "get_storage_space",
+        lambda _user, _access, bucket_name: portal_storage_space_summary(
+            id=bucket_name,
+            name=metadata.display_name or bucket_name,
+            role="Manager",
+            visibility=metadata.visibility,
+            share_scope=metadata.share_scope,
+            account_member_role=metadata.account_member_role,
+            internal_bucket_name=bucket_name,
+        ),
+    )
+
+    updated = service.update_storage_space(
+        user,
+        access,
+        "shared-data",
+        share_scope="account",
+        account_member_role="Viewer",
+    )
+
+    assert updated.share_scope == "account"
+    assert updated.account_member_role == "Viewer"
+    assert metadata.share_scope == "account"
+    assert metadata.account_member_role == "Viewer"
+
+    with pytest.raises(RuntimeError, match="visibility cannot be changed"):
+        service.update_storage_space(user, access, "shared-data", visibility="private")
+
+
 def test_update_storage_space_restores_archived_space_without_deleting_links(monkeypatch, db_session):
     account = make_s3_account(db_session, name="portal-storage-restore", rgw_access_key="ROOT-AK", rgw_secret_key="ROOT-SK")
     owner = User(email="portal-storage-restore@example.com", hashed_password="x", role="ui_user")
@@ -3498,7 +3612,9 @@ def test_update_storage_space_restores_archived_space_without_deleting_links(mon
     assert restored.archived_at is None
     assert metadata.archived_at is None
     assert sync_archived_values == [None]
-    assert db_session.query(PortalPublicLink).filter_by(token="restore-link-token").one().revoked_at is None
+    assert db_session.scalars(
+        sa.select(PortalPublicLink).where(PortalPublicLink.token == "restore-link-token")
+    ).one().revoked_at is None
 
 
 def test_portal_account_override_uses_canonical_payload(monkeypatch, db_session):
@@ -4277,11 +4393,12 @@ def test_storage_space_role_matrix_for_files_shares_and_portal_settings(monkeypa
     manager_access = _portal_access(account, actor, portal_role=PortalAccountRole.PORTAL_MANAGER.value, can_manage_buckets=True)
     share = service.set_storage_space_share(actor, manager_access, target, "research-data", "Viewer")
     assert share.email == target.email
-    target_grant = (
-        db_session.query(PortalStorageSpaceGrant)
-        .filter_by(storage_space_metadata_id=metadata.id, user_id=target.id)
-        .one()
-    )
+    target_grant = db_session.scalars(
+        sa.select(PortalStorageSpaceGrant).where(
+            PortalStorageSpaceGrant.storage_space_metadata_id == metadata.id,
+            PortalStorageSpaceGrant.user_id == target.id,
+        )
+    ).one()
     assert target_grant.role == "Viewer"
     target_policy = iam_service.policies[(f"iam-{target.id}", service._bucket_access_policy_name)]
     assert any(
@@ -5403,8 +5520,15 @@ def test_set_storage_space_share_requires_existing_portal_member(monkeypatch, db
     with pytest.raises(RuntimeError, match="Only Portal users"):
         service.set_storage_space_share(owner, owner_access, target, "research-data", "Viewer")
 
-    assert db_session.query(PortalStorageSpaceGrant).filter_by(storage_space_metadata_id=metadata.id).all() == []
-    assert db_session.query(UserS3Account).filter_by(user_id=target.id, account_id=account.id).first() is None
+    assert db_session.scalars(
+        sa.select(PortalStorageSpaceGrant).where(PortalStorageSpaceGrant.storage_space_metadata_id == metadata.id)
+    ).all() == []
+    assert db_session.scalar(
+        sa.select(UserS3Account).where(
+            UserS3Account.user_id == target.id,
+            UserS3Account.account_id == account.id,
+        )
+    ) is None
 
 
 def test_set_storage_space_share_rolls_back_db_grant_when_projection_fails(monkeypatch, db_session):
@@ -5459,7 +5583,9 @@ def test_set_storage_space_share_rolls_back_db_grant_when_projection_fails(monke
     with pytest.raises(RuntimeError, match="projection failed"):
         service.set_storage_space_share(owner, owner_access, target, "research-data", "Viewer")
 
-    assert db_session.query(PortalStorageSpaceGrant).filter_by(storage_space_metadata_id=metadata.id).all() == []
+    assert db_session.scalars(
+        sa.select(PortalStorageSpaceGrant).where(PortalStorageSpaceGrant.storage_space_metadata_id == metadata.id)
+    ).all() == []
 
 
 def test_storage_space_share_mutations_resync_bucket_policy(monkeypatch, db_session):
@@ -5571,7 +5697,9 @@ def test_public_links_are_scoped_expirable_and_revocable(monkeypatch, db_session
     )
     links = service.list_storage_space_public_links(owner, access, "research-data")
     revoked = service.revoke_storage_space_public_link(owner, access, "research-data", link.id)
-    persisted_link = db_session.query(PortalPublicLink).filter_by(id=link.id).one()
+    persisted_link = db_session.scalars(
+        sa.select(PortalPublicLink).where(PortalPublicLink.id == link.id)
+    ).one()
     expected_url = (
         f"https://portal.example.test/api/portal/public-links/{persisted_link.token}/download"
     )
@@ -5647,7 +5775,7 @@ def test_public_link_creation_rejects_missing_objects(monkeypatch, db_session):
             expires_at=utcnow() + timedelta(days=1),
         )
 
-    assert db_session.query(PortalPublicLink).count() == 0
+    assert db_session.scalar(sa.select(sa.func.count()).select_from(PortalPublicLink)) == 0
 
 
 def test_private_storage_space_blocks_new_shares_and_public_links(monkeypatch, db_session):
@@ -6090,7 +6218,11 @@ def test_portal_user_usage_omits_other_when_all_usage_is_visible(monkeypatch, db
 
 
 def test_portal_usage_trends_exposes_scoped_account_baselines(monkeypatch, db_session):
-    monkeypatch.setattr(portal_usage_router, "load_app_settings", lambda: _usage_history_settings(True))
+    monkeypatch.setattr(
+        portal_usage_router,
+        "load_app_settings_for_db_readonly",
+        lambda _db: _usage_history_settings(True),
+    )
     monkeypatch.setattr(
         portal_usage_router,
         "utcnow",
@@ -6162,7 +6294,11 @@ def test_portal_usage_trends_exposes_scoped_account_baselines(monkeypatch, db_se
 
 
 def test_portal_usage_trends_return_empty_when_history_disabled(monkeypatch, db_session):
-    monkeypatch.setattr(portal_usage_router, "load_app_settings", lambda: _usage_history_settings(False))
+    monkeypatch.setattr(
+        portal_usage_router,
+        "load_app_settings_for_db_readonly",
+        lambda _db: _usage_history_settings(False),
+    )
     endpoint = StorageEndpoint(
         name="portal-trends-disabled-endpoint",
         endpoint_url="https://portal-trends-disabled.example.test",
@@ -6190,7 +6326,11 @@ def test_portal_usage_trends_return_empty_when_history_disabled(monkeypatch, db_
 
 
 def test_portal_usage_trends_return_empty_without_baseline(monkeypatch, db_session):
-    monkeypatch.setattr(portal_usage_router, "load_app_settings", lambda: _usage_history_settings(True))
+    monkeypatch.setattr(
+        portal_usage_router,
+        "load_app_settings_for_db_readonly",
+        lambda _db: _usage_history_settings(True),
+    )
     endpoint = StorageEndpoint(
         name="portal-trends-empty-endpoint",
         endpoint_url="https://portal-trends-empty.example.test",
@@ -6218,7 +6358,11 @@ def test_portal_usage_trends_return_empty_without_baseline(monkeypatch, db_sessi
 
 
 def test_portal_usage_stats_latest_filters_to_visible_storage_spaces(monkeypatch, db_session):
-    monkeypatch.setattr(portal_usage_router, "load_app_settings", lambda: _bucket_usage_settings(True))
+    monkeypatch.setattr(
+        portal_usage_router,
+        "load_app_settings_for_db_readonly",
+        lambda _db: _bucket_usage_settings(True),
+    )
     account = make_s3_account(db_session, name="portal-usage-stats", rgw_account_id="portal-usage-stats")
     user = User(email="usage-stats@example.com", hashed_password="x", role="ui_user")
     db_session.add_all([account, user])
@@ -6270,7 +6414,11 @@ def test_portal_usage_stats_latest_filters_to_visible_storage_spaces(monkeypatch
 
 
 def test_portal_usage_stats_latest_respects_feature_flag(monkeypatch, db_session):
-    monkeypatch.setattr(portal_usage_router, "load_app_settings", lambda: _bucket_usage_settings(False))
+    monkeypatch.setattr(
+        portal_usage_router,
+        "load_app_settings_for_db_readonly",
+        lambda _db: _bucket_usage_settings(False),
+    )
     account = make_s3_account(db_session, name="portal-usage-stats-disabled", rgw_account_id="portal-usage-stats-disabled")
     user = User(email="usage-stats-disabled@example.com", hashed_password="x", role="ui_user")
     db_session.add_all([account, user])
@@ -6288,7 +6436,11 @@ def test_portal_usage_stats_latest_respects_feature_flag(monkeypatch, db_session
 
 
 def test_portal_storage_space_usage_stats_returns_sanitized_snapshot(monkeypatch, db_session):
-    monkeypatch.setattr(portal_usage_router, "load_app_settings", lambda: _bucket_usage_settings(True))
+    monkeypatch.setattr(
+        portal_usage_router,
+        "load_app_settings_for_db_readonly",
+        lambda _db: _bucket_usage_settings(True),
+    )
     account = make_s3_account(db_session, name="portal-space-stats", rgw_account_id="portal-space-stats")
     user = User(email="space-stats@example.com", hashed_password="x", role="ui_user")
     db_session.add_all([account, user])
@@ -6342,7 +6494,11 @@ def test_portal_storage_space_usage_stats_returns_sanitized_snapshot(monkeypatch
 
 
 def test_portal_storage_space_usage_stats_returns_empty_without_snapshot(monkeypatch, db_session):
-    monkeypatch.setattr(portal_usage_router, "load_app_settings", lambda: _bucket_usage_settings(True))
+    monkeypatch.setattr(
+        portal_usage_router,
+        "load_app_settings_for_db_readonly",
+        lambda _db: _bucket_usage_settings(True),
+    )
     account = make_s3_account(db_session, name="portal-space-stats-empty", rgw_account_id="portal-space-stats-empty")
     user = User(email="space-stats-empty@example.com", hashed_password="x", role="ui_user")
     db_session.add_all([account, user])
@@ -6387,7 +6543,11 @@ def test_portal_storage_space_usage_stats_rejects_inaccessible_space(
     archived,
     expected_status,
 ):
-    monkeypatch.setattr(portal_usage_router, "load_app_settings", lambda: _bucket_usage_settings(True))
+    monkeypatch.setattr(
+        portal_usage_router,
+        "load_app_settings_for_db_readonly",
+        lambda _db: _bucket_usage_settings(True),
+    )
     account = make_s3_account(db_session, name="portal-space-stats-denied", rgw_account_id="portal-space-stats-denied")
     user = User(email="space-stats-denied@example.com", hashed_password="x", role="ui_user")
     db_session.add_all([account, user])
@@ -6421,7 +6581,11 @@ def test_portal_storage_space_usage_stats_rejects_inaccessible_space(
 
 
 def test_portal_storage_space_usage_stats_respects_feature_flag(monkeypatch, db_session):
-    monkeypatch.setattr(portal_usage_router, "load_app_settings", lambda: _bucket_usage_settings(False))
+    monkeypatch.setattr(
+        portal_usage_router,
+        "load_app_settings_for_db_readonly",
+        lambda _db: _bucket_usage_settings(False),
+    )
     account = make_s3_account(db_session, name="portal-space-stats-disabled", rgw_account_id="portal-space-stats-disabled")
     user = User(email="space-stats-disabled@example.com", hashed_password="x", role="ui_user")
     db_session.add_all([account, user])
@@ -6440,7 +6604,11 @@ def test_portal_storage_space_usage_stats_respects_feature_flag(monkeypatch, db_
 
 
 def test_portal_usage_history_trends_exposes_account_history(monkeypatch, db_session):
-    monkeypatch.setattr(portal_usage_router, "load_app_settings", lambda: _usage_history_settings(True))
+    monkeypatch.setattr(
+        portal_usage_router,
+        "load_app_settings_for_db_readonly",
+        lambda _db: _usage_history_settings(True),
+    )
     endpoint = StorageEndpoint(
         name="portal-history-endpoint",
         endpoint_url="https://portal-history.example.test",
@@ -6509,7 +6677,11 @@ def test_portal_usage_history_trends_exposes_account_history(monkeypatch, db_ses
 
 
 def test_portal_usage_history_trends_return_unavailable_when_disabled(monkeypatch, db_session):
-    monkeypatch.setattr(portal_usage_router, "load_app_settings", lambda: _usage_history_settings(False))
+    monkeypatch.setattr(
+        portal_usage_router,
+        "load_app_settings_for_db_readonly",
+        lambda _db: _usage_history_settings(False),
+    )
     account = make_s3_account(db_session, name="portal-history-disabled", rgw_account_id="portal-history-disabled")
     user = User(email="usage-history-disabled@example.com", hashed_password="x", role="ui_user")
     db_session.add_all([account, user])
@@ -6645,7 +6817,11 @@ def test_portal_endpoint_alerts_report_degraded_endpoint(monkeypatch, db_session
             assert endpoint_id == endpoint.id
             return {"down_count": 0, "degraded_count": 1}
 
-    monkeypatch.setattr(portal_monitoring_router, "load_app_settings", lambda: FakeSettings())
+    monkeypatch.setattr(
+        portal_monitoring_router,
+        "load_app_settings_for_db_readonly",
+        lambda _db: FakeSettings(),
+    )
     monkeypatch.setattr(portal_monitoring_router, "HealthCheckQueryService", FakeHealthQueryService)
 
     access = _portal_access(account, user, portal_role=PortalAccountRole.PORTAL_MANAGER.value, can_manage_buckets=True)
@@ -6691,7 +6867,11 @@ def test_portal_endpoint_health_uses_canonical_account_endpoint(monkeypatch, db_
                 "incidents": [],
             }
 
-    monkeypatch.setattr(portal_monitoring_router, "load_app_settings", lambda: FakeSettings())
+    monkeypatch.setattr(
+        portal_monitoring_router,
+        "load_app_settings_for_db_readonly",
+        lambda _db: FakeSettings(),
+    )
     monkeypatch.setattr(portal_monitoring_router, "HealthCheckQueryService", FakeHealthQueryService)
 
     access = _portal_access(account, user, portal_role=PortalAccountRole.PORTAL_MANAGER.value, can_manage_buckets=True)
@@ -7262,7 +7442,11 @@ def test_create_external_access_key_scopes_policy_to_storage_space(
         ),
     )
 
-    row = db_session.query(PortalExternalAccessCredential).filter_by(access_key_id=f"AK-{permission}").one()
+    row = db_session.scalars(
+        sa.select(PortalExternalAccessCredential).where(
+            PortalExternalAccessCredential.access_key_id == f"AK-{permission}"
+        )
+    ).one()
     assert created.target_type == "external"
     assert created.secret_access_key == f"SK-{permission}"
     assert created.external_email == "partner@example.org"

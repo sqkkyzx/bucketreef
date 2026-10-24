@@ -9,6 +9,7 @@ from urllib.parse import parse_qs, urlparse
 import pytest
 import requests
 from jose import JWTError
+from sqlalchemy import func, select
 
 from app.core.config import OIDCProviderSettings, Settings
 from app.db import OidcAuthorizationCode, OidcLoginState
@@ -132,10 +133,14 @@ def test_start_login_generates_authorization_url_and_persists_state(db_session, 
     assert "code_challenge" in query
     assert "nonce" in query
 
-    stored = db_session.query(OidcLoginState).filter(OidcLoginState.state == result["state"]).first()
+    stored = db_session.scalar(
+        select(OidcLoginState).where(OidcLoginState.state == result["state"])
+    )
     assert stored is not None
     assert stored.redirect_path == "/manager"
-    assert db_session.query(OidcLoginState).filter(OidcLoginState.state == "expired-state").first() is None
+    assert db_session.scalar(
+        select(OidcLoginState).where(OidcLoginState.state == "expired-state")
+    ) is None
 
 
 def test_start_login_selects_redirect_uri_for_trusted_public_origin(db_session, monkeypatch):
@@ -159,7 +164,9 @@ def test_start_login_selects_redirect_uri_for_trusted_public_origin(db_session, 
     query = parse_qs(urlparse(result["authorization_url"]).query)
     expected_redirect = "https://admin.example.test/oidc/google/callback"
     assert query["redirect_uri"] == [expected_redirect]
-    stored = db_session.query(OidcLoginState).filter(OidcLoginState.state == result["state"]).one()
+    stored = db_session.scalars(
+        select(OidcLoginState).where(OidcLoginState.state == result["state"])
+    ).one()
     assert stored.redirect_uri == expected_redirect
 
 
@@ -188,7 +195,9 @@ def test_complete_login_rejects_callback_on_different_public_origin(db_session, 
             started["state"],
             request_origin="https://app.example.test",
         )
-    assert db_session.query(OidcLoginState).filter(OidcLoginState.state == started["state"]).first() is None
+    assert db_session.scalar(
+        select(OidcLoginState).where(OidcLoginState.state == started["state"])
+    ) is None
 
 
 def test_start_login_provider_not_found_when_disabled(db_session):
@@ -224,7 +233,9 @@ def test_complete_login_invalid_and_expired_state(db_session):
 
     with pytest.raises(OIDCStateError, match="expired"):
         service.complete_login("google", "code", "expired")
-    assert db_session.query(OidcLoginState).filter(OidcLoginState.state == "expired").first() is None
+    assert db_session.scalar(
+        select(OidcLoginState).where(OidcLoginState.state == "expired")
+    ) is None
 
 
 def test_complete_login_token_endpoint_errors(db_session, monkeypatch):
@@ -396,7 +407,9 @@ def test_complete_login_success_uses_userinfo_fallback_and_cleans_state(db_sessi
     assert created is True
     assert users.last_marked == users.user
     assert users.calls and users.calls[0]["email"] == "oidc@example.test"
-    assert db_session.query(OidcLoginState).filter(OidcLoginState.state == started["state"]).first() is None
+    assert db_session.scalar(
+        select(OidcLoginState).where(OidcLoginState.state == started["state"])
+    ) is None
 
 
 def test_complete_login_rejects_replayed_authorization_code(db_session, monkeypatch):
@@ -429,8 +442,10 @@ def test_complete_login_rejects_replayed_authorization_code(db_session, monkeypa
 
     with pytest.raises(OIDCStateError, match="authorization code has already been consumed"):
         service.complete_login("google", "single-use-code", second["state"])
-    assert db_session.query(OidcAuthorizationCode).count() == 1
-    assert db_session.query(OidcLoginState).filter(OidcLoginState.state == second["state"]).first() is None
+    assert db_session.scalar(select(func.count()).select_from(OidcAuthorizationCode)) == 1
+    assert db_session.scalar(
+        select(OidcLoginState).where(OidcLoginState.state == second["state"])
+    ) is None
 
 
 def test_metadata_and_jwks_caching(db_session, monkeypatch):
@@ -489,7 +504,7 @@ def test_decode_id_token_key_lookup_invalid_token_and_nonce_mismatch(db_session,
         lambda uri: {"keys": [{"kid": "other-key", "kty": "RSA", "use": "sig"}]},
     )
     with pytest.raises(OIDCAuthenticationError, match="matching signing key"):
-        service._decode_id_token("google", provider, metadata, "token", expected_nonce="n", access_token="a")
+        service._decode_id_token(provider, metadata, "token", expected_nonce="n", access_token="a")
 
     monkeypatch.setattr(
         service,
@@ -498,11 +513,49 @@ def test_decode_id_token_key_lookup_invalid_token_and_nonce_mismatch(db_session,
     )
     monkeypatch.setattr("app.services.oidc_service.jwt.decode", lambda *args, **kwargs: (_ for _ in ()).throw(JWTError("invalid")))
     with pytest.raises(OIDCAuthenticationError, match="Invalid ID token"):
-        service._decode_id_token("google", provider, metadata, "token", expected_nonce="n", access_token="a")
+        service._decode_id_token(provider, metadata, "token", expected_nonce="n", access_token="a")
 
     monkeypatch.setattr("app.services.oidc_service.jwt.decode", lambda *args, **kwargs: {"sub": "s1", "nonce": "wrong"})
     with pytest.raises(OIDCStateError, match="Nonce mismatch"):
-        service._decode_id_token("google", provider, metadata, "token", expected_nonce="expected", access_token="a")
+        service._decode_id_token(provider, metadata, "token", expected_nonce="expected", access_token="a")
+
+
+@pytest.mark.parametrize(
+    "header,error",
+    [
+        ({"alg": "RS256"}, "missing a signing key id"),
+        ({"kid": "kid-1", "alg": "HS256"}, "disallowed signing algorithm"),
+    ],
+)
+def test_decode_id_token_rejects_invalid_signing_header(db_session, monkeypatch, header, error):
+    service, _ = _service(db_session)
+    metadata = {"issuer": "https://issuer.example.test", "jwks_uri": "https://issuer.example.test/jwks"}
+    monkeypatch.setattr("app.services.oidc_service.jwt.get_unverified_header", lambda _token: header)
+    monkeypatch.setattr(service, "_get_jwks", lambda _uri: {"keys": []})
+
+    with pytest.raises(OIDCAuthenticationError, match=error):
+        service._decode_id_token(_provider(), metadata, "token", expected_nonce="n", access_token="a")
+
+
+@pytest.mark.parametrize(
+    "key",
+    [
+        {"kid": "kid-1", "kty": "EC", "use": "sig"},
+        {"kid": "kid-1", "kty": "RSA", "use": "enc"},
+        {"kid": "kid-1", "kty": "RSA", "use": "sig", "key_ops": ["sign"]},
+    ],
+)
+def test_decode_id_token_requires_verification_signing_key(db_session, monkeypatch, key):
+    service, _ = _service(db_session)
+    metadata = {"issuer": "https://issuer.example.test", "jwks_uri": "https://issuer.example.test/jwks"}
+    monkeypatch.setattr(
+        "app.services.oidc_service.jwt.get_unverified_header",
+        lambda _token: {"kid": "kid-1", "alg": "RS256"},
+    )
+    monkeypatch.setattr(service, "_get_jwks", lambda _uri: {"keys": [key]})
+
+    with pytest.raises(OIDCAuthenticationError, match="matching signing key"):
+        service._decode_id_token(_provider(), metadata, "token", expected_nonce="n", access_token="a")
 
 
 def test_fetch_userinfo_email_and_code_challenge_helpers(db_session, monkeypatch):

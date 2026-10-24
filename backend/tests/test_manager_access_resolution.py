@@ -5,6 +5,7 @@ import json
 from unittest.mock import patch
 
 import pytest
+import sqlalchemy as sa
 from fastapi import HTTPException
 
 from app.db import (
@@ -51,7 +52,7 @@ def principal(db_session, monkeypatch):
     for tool, _ in _TOOL_GATES:
         if tool != "feature_rules":
             setattr(settings.manager.feature_policies, tool, "targeted")
-    monkeypatch.setattr(feature_gates.app_settings_service, "load_app_settings", lambda: settings)
+    monkeypatch.setattr(feature_gates.app_settings_service, "load_app_settings_for_db_readonly", lambda _db: settings)
     user = User(email="scope@example.test", hashed_password="x", is_active=True, role=UserRole.UI_USER.value)
     group = UiGroup(name="Migration operators", can_access_manager_bucket_migration=True)
     membership = UserUiGroup(user=user, group=group)
@@ -110,7 +111,8 @@ def test_tool_gates_reject_unassigned_role_before_resolving_access(db_session, p
 @pytest.mark.parametrize("tool,gate", [entry for entry in _TOOL_GATES if entry[0] != "feature_rules"])
 def test_tool_gates_reject_disabled_feature_before_resolving_access(db_session, principal, tool, gate):
     user, _, _ = principal
-    setattr(feature_gates.app_settings_service.load_app_settings().manager.feature_policies, tool, "disabled")
+    settings = feature_gates.app_settings_service.load_app_settings_for_db_readonly(db_session)
+    setattr(settings.manager.feature_policies, tool, "disabled")
 
     with patch.object(EffectiveAccessService, "resolve_user") as resolve:
         with pytest.raises(HTTPException) as exc:
@@ -232,7 +234,9 @@ def test_migration_worker_revalidates_and_records_revocation(db_session, princip
     db_session.refresh(migration)
     assert migration.status == "failed"
     assert migration.finished_at is not None
-    event = db_session.query(BucketMigrationEvent).filter_by(migration_id=migration.id).one()
+    event = db_session.scalars(
+        sa.select(BucketMigrationEvent).where(BucketMigrationEvent.migration_id == migration.id)
+    ).one()
     assert event.level == "error"
     assert json.loads(event.metadata_json) == {"revoked_context_ids": [f"conn-{connection.id}"]}
 

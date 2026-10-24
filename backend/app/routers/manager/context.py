@@ -19,7 +19,9 @@ from app.core.database import get_db
 from app.core.domain_errors import S3AccountNotFoundError, S3ConnectionNotFoundError, S3UserNotFoundError
 from app.db import User
 from app.models.access_context import ManagerActor
+from app.models.app_settings import AppSettings
 from app.models.execution_context import ManagerAccessMode, ManagerContext
+from app.models.feature_policy import FeatureState
 from app.models.session import ManagerSessionPrincipal
 from app.routers.dependencies import (
     get_s3_execution_context,
@@ -28,7 +30,6 @@ from app.routers.dependencies import (
     is_manager_rgw_access_key_management_available,
 )
 from app.services.resource_name_validation import naming_validation_profile
-from app.services.app_settings_service import load_app_settings
 from app.services.access_key_metadata_service import AccessKeyMetadataService
 from app.services.connection_identity_service import ConnectionIdentityService
 from app.services.s3_accounts_service import get_s3_accounts_service
@@ -70,21 +71,36 @@ def _manager_stats_state(
         manager_usage_metrics_resource(db, context),
     ).enabled
     if context.context_kind == "connection":
-        if not context.manager_capabilities.can_manage_buckets:
-            return False, "Metrics are not available for this connection.", None
-        if context.source_connection is None:
-            return False, "Metrics are unavailable: connection context is incomplete.", None
-        resolution = ConnectionIdentityService().resolve_metrics_identity(context.source_connection)
-        if not resolution.eligible:
-            return False, (resolution.reason or "Metrics are unavailable for this connection."), None
-        if not rgw_usage_metrics_enabled:
-            return False, "RGW traffic and usage metrics are disabled.", resolution.iam_identity
-        if not has_supervision_credentials(context):
-            return False, "Supervision credentials are not configured for this endpoint.", resolution.iam_identity
-        if isinstance(actor, ManagerSessionPrincipal) and not actor.capabilities.can_view_traffic:
-            return False, "Metrics are not available for this profile.", resolution.iam_identity
-        return True, None, resolution.iam_identity
+        return _manager_connection_stats_state(context, actor, rgw_usage_metrics_enabled)
+    return _manager_rgw_stats_state(context, actor, rgw_usage_metrics_enabled)
 
+
+def _manager_connection_stats_state(
+    context: S3ExecutionContext,
+    actor: ManagerActor,
+    rgw_usage_metrics_enabled: bool,
+) -> tuple[bool, Optional[str], Optional[str]]:
+    if not context.manager_capabilities.can_manage_buckets:
+        return False, "Metrics are not available for this connection.", None
+    if context.source_connection is None:
+        return False, "Metrics are unavailable: connection context is incomplete.", None
+    resolution = ConnectionIdentityService().resolve_metrics_identity(context.source_connection)
+    if not resolution.eligible:
+        return False, (resolution.reason or "Metrics are unavailable for this connection."), None
+    if not rgw_usage_metrics_enabled:
+        return False, "RGW traffic and usage metrics are disabled.", resolution.iam_identity
+    if not has_supervision_credentials(context):
+        return False, "Supervision credentials are not configured for this endpoint.", resolution.iam_identity
+    if isinstance(actor, ManagerSessionPrincipal) and not actor.capabilities.can_view_traffic:
+        return False, "Metrics are not available for this profile.", resolution.iam_identity
+    return True, None, resolution.iam_identity
+
+
+def _manager_rgw_stats_state(
+    context: S3ExecutionContext,
+    actor: ManagerActor,
+    rgw_usage_metrics_enabled: bool,
+) -> tuple[bool, Optional[str], Optional[str]]:
     if not rgw_usage_metrics_enabled:
         return False, "RGW traffic and usage metrics are disabled.", None
     if not has_supervision_credentials(context):
@@ -108,6 +124,44 @@ def _manager_access_mode(context: S3ExecutionContext) -> ManagerAccessMode:
     raise RuntimeError("Unsupported Manager execution context")
 
 
+def _manager_browser_feature_state(settings: AppSettings) -> _ManagerBrowserState | None:
+    if not settings.general.browser_enabled:
+        return _ManagerBrowserState(False, "Browser is disabled.")
+    if not settings.general.manager_enabled:
+        return _ManagerBrowserState(False, "Manager is disabled.")
+    if not settings.general.browser_manager_enabled:
+        return _ManagerBrowserState(False, "Manager Browser is disabled.")
+    return None
+
+
+def _manager_connection_browser_state(
+    context: S3ExecutionContext,
+    actor: User,
+    db: Session,
+    access_service: EffectiveAccessService,
+) -> _ManagerBrowserState:
+    connection = context.source_connection
+    if connection is None and context.s3_connection_id is not None:
+        try:
+            connection = S3ConnectionsService(db).get_record(context.s3_connection_id)
+        except S3ConnectionNotFoundError:
+            connection = None
+    enabled = bool(
+        connection
+        and access_service.manager_browser_connection_is_allowed(
+            actor,
+            connection,
+        )
+    )
+    message = None
+    if not enabled:
+        message = (
+            "Manager Browser requires an owned private connection with both Manager and "
+            "Browser access. Shared connections are not supported."
+        )
+    return _ManagerBrowserState(enabled, message)
+
+
 def _manager_browser_state(
     context: S3ExecutionContext,
     actor: ManagerActor,
@@ -115,13 +169,10 @@ def _manager_browser_state(
     access_service: Optional[EffectiveAccessService],
     resolved_access: Optional[ResolvedUserAccess],
 ) -> _ManagerBrowserState:
-    settings = load_app_settings()
-    if not settings.general.browser_enabled:
-        return _ManagerBrowserState(False, "Browser is disabled.")
-    if not settings.general.manager_enabled:
-        return _ManagerBrowserState(False, "Manager is disabled.")
-    if not settings.general.browser_manager_enabled:
-        return _ManagerBrowserState(False, "Manager Browser is disabled.")
+    settings = load_app_settings_for_db_readonly(db)
+    feature_state = _manager_browser_feature_state(settings)
+    if feature_state is not None:
+        return feature_state
     if isinstance(actor, ManagerSessionPrincipal):
         enabled = bool(actor.capabilities.access_browser)
         message = None if enabled else "Browser access is not allowed for this session."
@@ -130,26 +181,7 @@ def _manager_browser_state(
     if resolved_access is None or access_service is None:
         raise RuntimeError("UI user effective access was not resolved")
     if context.context_kind == "connection":
-        connection = context.source_connection
-        if connection is None and context.s3_connection_id is not None:
-            try:
-                connection = S3ConnectionsService(db).get_record(context.s3_connection_id)
-            except S3ConnectionNotFoundError:
-                connection = None
-        enabled = bool(
-            connection
-            and access_service.manager_browser_connection_is_allowed(
-                actor,
-                connection,
-            )
-        )
-        message = None
-        if not enabled:
-            message = (
-                "Manager Browser requires an owned private connection with both Manager and "
-                "Browser access. Shared connections are not supported."
-            )
-        return _ManagerBrowserState(enabled, message)
+        return _manager_connection_browser_state(context, actor, db, access_service)
 
     if context.context_kind == "s3_user":
         enabled = context.s3_user_id is not None and resolved_access.can_browse_s3_user(context.s3_user_id)
@@ -263,6 +295,55 @@ def _manager_limits(
     )
 
 
+def _manager_feature_states(
+    context: S3ExecutionContext,
+    db: Session,
+    resolved_access: Optional[ResolvedUserAccess],
+    *,
+    manager_bucket_quota_enabled: bool,
+    manager_ceph_keys_enabled: bool,
+    manager_access_key_metadata_enabled: bool,
+    manager_access_key_expiration_enabled: bool,
+    manager_private_access_enabled: bool,
+) -> dict[str, FeatureState]:
+    project_resource = project_usage_resource(db, context)
+    resource = None
+    if context.context_kind == "account":
+        resource = context.source_account or project_resource
+    elif context.context_kind == "s3_user":
+        resource = project_resource
+
+    provisioning_sources = (
+        resolved_access.feature_sources.get("managed_private_connection_provision", ())
+        if resolved_access
+        else ()
+    )
+    app_settings = load_app_settings_for_db_readonly(db)
+    states = manager_resource_states(
+        app_settings.manager.feature_policies,
+        resource,
+        {
+            "bucket_quota_management": manager_bucket_quota_enabled,
+            "ceph_s3_user_keys": manager_ceph_keys_enabled,
+            "access_key_metadata": manager_access_key_metadata_enabled,
+            "access_key_expiration": manager_access_key_expiration_enabled,
+            "cost_estimation": app_settings.general.cost_enabled,
+            "managed_private_connection_provisioning": manager_private_access_enabled,
+        },
+        provisioning_source=provisioning_sources[0].kind if provisioning_sources else None,
+        activity_resource=manager_activity_resource(db, context),
+    )
+    states["rgw_usage_metrics"] = manager_rgw_usage_metrics_state(
+        app_settings.manager.feature_policies,
+        manager_usage_metrics_resource(db, context),
+    )
+    states["bucket_usage_stats"] = bucket_usage_stats_state(
+        app_settings.general.project_feature_policies,
+        project_resource,
+    )
+    return states
+
+
 @router.get("/context", response_model=ManagerContext)
 def get_manager_context(
     context: S3ExecutionContext = Depends(get_s3_execution_context),
@@ -293,8 +374,9 @@ def get_manager_context(
         if isinstance(actor, User)
         else False
     )
-    manager_access_key_metadata_enabled = AccessKeyMetadataService(db).metadata_enabled_for_context(context)
-    manager_access_key_expiration_enabled = AccessKeyMetadataService(db).expiration_enabled_for_context(context)
+    access_key_metadata = AccessKeyMetadataService(db)
+    manager_access_key_metadata_enabled = access_key_metadata.metadata_enabled_for_context(context)
+    manager_access_key_expiration_enabled = access_key_metadata.expiration_enabled_for_context(context)
     manager_private_access_enabled = _manager_private_access_enabled(
         context,
         actor,
@@ -311,41 +393,15 @@ def get_manager_context(
         db,
         include_limits=include_limits,
     )
-
-    resource = None
-    if context.context_kind == "account" and isinstance(context.id, int):
-        resource = context.source_account
-        if resource is None:
-            try:
-                resource = get_s3_accounts_service(db).get_account_record(context.id)
-            except S3AccountNotFoundError:
-                resource = None
-    elif context.context_kind == "s3_user" and context.s3_user_id is not None:
-        resource = context.source_s3_user
-        if resource is None:
-            try:
-                resource = get_s3_users_service(db).get_user_record(context.s3_user_id)
-            except S3UserNotFoundError:
-                resource = None
-    provisioning_sources = resolved_access.feature_sources.get("managed_private_connection_provision", ()) if resolved_access else ()
-    app_settings = load_app_settings_for_db_readonly(db)
-    feature_states = manager_resource_states(
-        app_settings.manager.feature_policies, resource,
-        {"bucket_quota_management": manager_bucket_quota_enabled, "ceph_s3_user_keys": manager_ceph_keys_enabled,
-         "access_key_metadata": manager_access_key_metadata_enabled, "access_key_expiration": manager_access_key_expiration_enabled,
-         "cost_estimation": app_settings.general.cost_enabled,
-         "managed_private_connection_provisioning": manager_private_access_enabled},
-        provisioning_source=provisioning_sources[0].kind if provisioning_sources else None,
-        activity_resource=manager_activity_resource(db, context),
-    )
-    project_resource = project_usage_resource(db, context)
-    feature_states["rgw_usage_metrics"] = manager_rgw_usage_metrics_state(
-        app_settings.manager.feature_policies,
-        manager_usage_metrics_resource(db, context),
-    )
-    feature_states["bucket_usage_stats"] = bucket_usage_stats_state(
-        app_settings.general.project_feature_policies,
-        project_resource,
+    feature_states = _manager_feature_states(
+        context,
+        db,
+        resolved_access,
+        manager_bucket_quota_enabled=manager_bucket_quota_enabled,
+        manager_ceph_keys_enabled=manager_ceph_keys_enabled,
+        manager_access_key_metadata_enabled=manager_access_key_metadata_enabled,
+        manager_access_key_expiration_enabled=manager_access_key_expiration_enabled,
+        manager_private_access_enabled=manager_private_access_enabled,
     )
     return ManagerContext(
         feature_states=feature_states,

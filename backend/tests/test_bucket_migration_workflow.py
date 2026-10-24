@@ -7,6 +7,7 @@ import io
 import json
 
 import pytest
+import sqlalchemy as sa
 from botocore.exceptions import ClientError
 from app.db import BucketMigration, BucketMigrationItem
 from app.models.bucket_migration import (
@@ -17,11 +18,15 @@ from app.models.bucket_migration import (
     BucketMigrationDetail,
     BucketMigrationEventView,
     BucketMigrationItemView,
+    BucketMigrationListItem,
     BucketMigrationListResponse,
+    BucketMigrationPrecheckItemView,
+    BucketMigrationPrecheckReportView,
     BucketMigrationUpdateRequest,
     BucketMigrationView,
 )
 from app.services.bucket_migration import maintenance as bucket_migration_maintenance
+from app.services.bucket_migration._shared import _BucketVersionEntry
 from app.services.bucket_migration_service import BucketMigrationService
 from app.services.bucket_migration.workflow import available_actions, preparation_state
 from app.services.managed_resource_naming import MIGRATION_PROBE_OBJECT_KEY
@@ -93,9 +98,12 @@ def prepared(db_session):
     "model",
     [
         BucketMigrationActionAvailability,
+        BucketMigrationPrecheckItemView,
+        BucketMigrationPrecheckReportView,
         BucketMigrationItemView,
         BucketMigrationEventView,
         BucketMigrationView,
+        BucketMigrationListItem,
         BucketMigrationDetail,
         BucketMigrationListResponse,
     ],
@@ -228,12 +236,16 @@ def test_same_endpoint_copy_aggregates_success(prepared):
     service._is_same_endpoint = Mock(return_value=True)
     service._precheck_same_endpoint_copy_source_access = Mock(return_value="validated")
     service.run_precheck(migration.id, active_checks=True)
-    assert json.loads(migration.precheck_report_json)["same_endpoint_copy_safe"] is True
+    report = json.loads(migration.precheck_report_json)
+    assert any(
+        check["code"] == "same_endpoint_copy_validated"
+        for check in report["items"][0]["checks"]
+    )
 
 
-def test_source_deletion_cannot_be_requested_in_configuration(prepared):
+def test_source_deletion_configuration_field_is_rejected(prepared):
     _, _, payload = prepared
-    with pytest.raises(ValueError, match="separate operation"):
+    with pytest.raises(ValueError, match="delete_source"):
         BucketMigrationCreateRequest(**{**payload.model_dump(), "delete_source": True})
 
 
@@ -245,6 +257,7 @@ def test_source_deletion_cannot_be_requested_in_configuration(prepared):
         "has space",
         "bad..dots",
         "1.2.3.4",
+        "999.999.999.999",
         "bad-",
         "xn--reserved",
         "x" * 64,
@@ -307,10 +320,8 @@ def test_policy_intent_precedes_mutation_and_survives_interruption(
     configuration.get_policy.return_value = policy
 
     def interrupted(*args):
-        durable = (
-            db_session.query(BucketMigrationItem.preparation_effects_json)
-            .filter_by(id=item.id)
-            .scalar()
+        durable = db_session.scalar(
+            sa.select(BucketMigrationItem.preparation_effects_json).where(BucketMigrationItem.id == item.id)
         )
         assert json.loads(durable)["source_policy"]["policy"] == policy
         raise KeyboardInterrupt("process interrupted")
@@ -429,9 +440,12 @@ def test_pause_tolerates_worker_transition_from_queued_to_running(prepared):
     original_transition = service._transition_command
 
     def transition_after_worker_claim(migration_arg, **values):
-        service.db.query(BucketMigration).filter(
-            BucketMigration.id == migration_arg.id
-        ).update({"status": "running"}, synchronize_session=False)
+        service.db.execute(
+            sa.update(BucketMigration)
+            .where(BucketMigration.id == migration_arg.id)
+            .values(status="running")
+            .execution_options(synchronize_session=False)
+        )
         return original_transition(migration_arg, **values)
 
     service._transition_command = transition_after_worker_claim
@@ -439,7 +453,6 @@ def test_pause_tolerates_worker_transition_from_queued_to_running(prepared):
     paused = service.request_pause(migration.id)
 
     assert paused.status == "pause_requested"
-    assert paused.pause_requested is True
 
 
 def test_maintenance_bucket_delete_invalidates_bucket_list_caches(prepared, monkeypatch):
@@ -494,7 +507,7 @@ def test_cleanup_failure_preserves_verified_transfer(prepared):
     service.run_maintenance(migration.id)
     assert migration.status == "completed"
     assert item.status == "completed"
-    assert item.cleanup_status == "failed"
+    assert item.cleanup_error == "cleanup denied"
     assert migration.maintenance_status == "failed"
     assert not item.source_deleted
 
@@ -506,7 +519,6 @@ def test_access_recovery_resolves_restoration_failure_after_source_deletion(prep
     item.status = "completed"
     item.source_deleted = True
     item.target_lock_applied = True
-    item.cleanup_status = "failed"
     item.cleanup_error = "Could not restore destination policy"
     service._configuration.get_policy = Mock(return_value=None)
     service._configuration.delete_policy = Mock()
@@ -517,7 +529,7 @@ def test_access_recovery_resolves_restoration_failure_after_source_deletion(prep
     service.run_maintenance(migration.id)
     assert migration.status == item.status == "completed"
     assert migration.maintenance_status == "completed"
-    assert item.cleanup_status == "completed" and item.cleanup_error is None
+    assert item.cleanup_error is None
     assert item.source_deleted and not item.target_lock_applied
 
 
@@ -581,6 +593,59 @@ def test_fingerprint_detects_tag_changes_and_preserves_exact_identity(prepared):
     assert first != second
 
 
+def test_version_aware_fingerprint_uses_exact_version_identity(prepared):
+    service, _, _ = prepared
+    entries = [
+        _BucketVersionEntry(
+            key=" key ",
+            version_id="version-1",
+            is_delete_marker=False,
+            is_latest=False,
+            last_modified=None,
+            size=7,
+            etag="etag",
+            storage_class=None,
+            order_index=0,
+        ),
+        _BucketVersionEntry(
+            key=" key ",
+            version_id="delete-marker-1",
+            is_delete_marker=True,
+            is_latest=True,
+            last_modified=None,
+            size=0,
+            etag=None,
+            storage_class=None,
+            order_index=1,
+        ),
+    ]
+    service._iter_bucket_version_timelines = Mock(
+        return_value=iter([(" key ", entries)])
+    )
+    client = Mock()
+    client.get_object_tagging.return_value = {
+        "TagSet": [{"Key": " tag ", "Value": " value "}]
+    }
+    service._context_client = Mock(return_value=client)
+    service._stream_object_sha256 = Mock(return_value="content-sha256")
+    check = Mock(return_value="run")
+
+    service._cleanup_fingerprint(
+        object(), "bucket", strategy="version_aware", check=check
+    )
+
+    client.get_object_tagging.assert_called_once_with(
+        Bucket="bucket", Key=" key ", VersionId="version-1"
+    )
+    service._stream_object_sha256.assert_called_once_with(
+        client,
+        "bucket",
+        " key ",
+        version_id="version-1",
+        control_check=check,
+    )
+
+
 def test_cleanup_target_keeps_success_and_source_protection(prepared):
     service, migration, _ = prepared
     migration.status = "completed_with_errors"
@@ -630,7 +695,7 @@ def test_partial_retry_does_not_reset_successful_items(prepared):
     assert migration.items[0].status == "pending"
 
 
-def test_cutover_is_explicit_and_never_sets_auto_deletion(prepared):
+def test_cutover_is_explicit_and_keeps_source(prepared):
     service, migration, _ = prepared
     service.run_precheck(migration.id, active_checks=True)
     migration.status = "awaiting_cutover"
@@ -640,7 +705,7 @@ def test_cutover_is_explicit_and_never_sets_auto_deletion(prepared):
         service.continue_after_presync(migration.id)
     service.continue_after_presync(migration.id, confirmed=True)
     assert migration.items[0].step == "apply_read_only"
-    assert not migration.delete_source
+    assert migration.items[0].source_deleted is False
 
 
 def test_maintenance_result_and_actions_are_exposed_without_policy_backups(prepared):
@@ -753,6 +818,45 @@ def test_active_destination_probe_exercises_multipart_tags_and_cleanup(prepared)
     service._buckets.delete_bucket.assert_called_once()
 
 
+def test_same_endpoint_probe_uses_in_memory_source_profile(prepared):
+    service, migration, _ = prepared
+    item = migration.items[0]
+    source = service._resolve_context(migration.source_context_id)
+    target = service._resolve_context(migration.target_context_id)
+    source_client = Mock()
+    source_client.list_objects_v2.return_value = {"Contents": []}
+    target_client = Mock()
+    item.source_snapshot_json = None
+
+    service._context_client = Mock(return_value=source_client)
+    service._probe_same_endpoint_copy(
+        migration,
+        item,
+        source,
+        target,
+        target_client,
+        "probe-bucket",
+        source_profile={
+            "version_scan": {
+                "sample_version": {
+                    "key": "versioned-object",
+                    "version_id": "version-1",
+                }
+            }
+        },
+    )
+
+    target_client.copy_object.assert_called_once_with(
+        Bucket="probe-bucket",
+        Key="copy-check",
+        CopySource={
+            "Bucket": item.source_bucket,
+            "Key": "versioned-object",
+            "VersionId": "version-1",
+        },
+    )
+
+
 def test_probe_interruption_leaves_durable_cleanup_intent(prepared):
     service, migration, _ = prepared
     item = migration.items[0]
@@ -828,13 +932,11 @@ def test_finalize_honors_pause_requested_after_item_stops(prepared):
     service, migration, _ = prepared
     item = migration.items[0]
     migration.status = "pause_requested"
-    migration.pause_requested = True
     item.status = "paused"
 
     service._finalize_or_wait_cutover(migration)
 
     assert migration.status == "paused"
-    assert migration.pause_requested is False
     assert item.status == "paused"
 
 
@@ -987,10 +1089,33 @@ def test_precheck_api_returns_202_and_result_survives_reopen(
             == "checking"
         )
         service.run_precheck(migration.id)
+        persisted_report = json.loads(
+            service.get_migration(migration.id).precheck_report_json or "{}"
+        )
         reopened = client.get(f"/api/manager/migrations/{migration.id}").json()
         assert reopened["status"] == "draft"
         assert reopened["preparation_status"] == "unverified"
-        assert reopened["precheck_report"]["configuration_revision"] == 1
+        assert persisted_report["configuration_revision"] == 1
+        assert "source_profile" in persisted_report["items"][0]
+        assert set(reopened["precheck_report"]) == {
+            "errors",
+            "warnings",
+            "checks",
+            "items",
+        }
+        assert set(reopened["precheck_report"]["items"][0]) == {
+            "item_id",
+            "source_bucket",
+            "strategy",
+            "state",
+            "blocking",
+            "warnings",
+            "settings_copied",
+            "settings_omitted",
+            "source_object_count",
+            "checks",
+        }
+        assert "source_profile" not in reopened["precheck_report"]["items"][0]
         assert not reopened["available_actions"]["start"]["enabled"]
     finally:
         app.dependency_overrides.pop(

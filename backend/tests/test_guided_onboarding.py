@@ -5,6 +5,7 @@ from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
+import sqlalchemy as sa
 from sqlalchemy.orm import sessionmaker
 
 from app.db import (
@@ -102,8 +103,11 @@ def detection(
         users_read=True,
         users_write=True,
         buckets_read=True,
+        buckets_write=False,
         accounts_read=True,
         accounts_write=True,
+        usage_read=False,
+        usage_write=False,
     )
     return StorageEndpointFeatureDetectionResult(
         admin=admin,
@@ -210,10 +214,10 @@ def test_preview_is_secret_free_and_does_not_mutate_storage(guided, db_session):
     assert "create_private_connection" in preview.changes
     assert preview.blockers == []
     assert len(preview.review_token) == 64
-    assert db_session.query(OnboardingJourney).count() == 0
-    assert db_session.query(StorageEndpoint).count() == 0
-    assert db_session.query(S3Connection).count() == 0
-    assert db_session.query(AuditLog).count() == 0
+    assert db_session.scalar(sa.select(sa.func.count()).select_from(OnboardingJourney)) == 0
+    assert db_session.scalar(sa.select(sa.func.count()).select_from(StorageEndpoint)) == 0
+    assert db_session.scalar(sa.select(sa.func.count()).select_from(S3Connection)) == 0
+    assert db_session.scalar(sa.select(sa.func.count()).select_from(AuditLog)) == 0
     assert "secret" not in preview.model_dump_json().lower()
 
 
@@ -301,7 +305,7 @@ def test_environment_lock_blocks_before_setup_runs(guided, db_session, monkeypat
             private_access_key="private-ak",
             private_secret_key="private-sk",
         )
-    assert db_session.query(StorageEndpoint).count() == 0
+    assert db_session.scalar(sa.select(sa.func.count()).select_from(StorageEndpoint)) == 0
 
 
 def test_private_only_new_endpoint_does_not_configure_admin_credentials(
@@ -352,9 +356,7 @@ def test_private_only_new_endpoint_does_not_configure_admin_credentials(
             result.model_dump_json(),
             progress.draft_json,
             progress.resources_json,
-            progress.evidence_json,
-            progress.readiness_json,
-            *[row.metadata_json or "" for row in db_session.query(AuditLog).all()],
+            *[row.metadata_json or "" for row in db_session.scalars(sa.select(AuditLog)).all()],
         ]
     )
     for secret in ("private-ak", "private-sk"):
@@ -366,8 +368,10 @@ def test_manager_and_portal_share_one_sample_account_with_independent_roles(
 ):
     settings = AppSettings()
     settings.general.rgw_account_id_prefix = "7"
-    db_session.query(AppSetting).filter(AppSetting.key == "default").update(
-        {AppSetting.payload_json: settings.model_dump_json()}
+    db_session.execute(
+        sa.update(AppSetting)
+        .where(AppSetting.key == "default")
+        .values(payload_json=settings.model_dump_json())
     )
     db_session.commit()
     monkeypatch.setattr("app.utils.rgw_identifiers.secrets.randbelow", lambda _limit: 42)
@@ -419,15 +423,16 @@ def test_manager_and_portal_share_one_sample_account_with_independent_roles(
     assert ep.admin_access_key == "admin-ak"
     assert ep.admin_secret_key == "admin-sk"
     assert ep.service_identity("ceph_admin") is None
-    assert db_session.query(S3Account).count() == 1
+    assert db_session.scalar(sa.select(sa.func.count()).select_from(S3Account)) == 1
     account = db_session.get(S3Account, result.resources["account_id"])
     assert account.rgw_account_id == "RGW70000000000000042"
     assert account.name == onboarding_sample_account_name(account.rgw_account_id)
-    link = (
-        db_session.query(UserS3Account)
-        .filter_by(user_id=user.id, account_id=account.id)
-        .one()
-    )
+    link = db_session.scalars(
+        sa.select(UserS3Account).where(
+            UserS3Account.user_id == user.id,
+            UserS3Account.account_id == account.id,
+        )
+    ).one()
     assert link.manager_role == "account_administrator"
     assert link.portal_role == "portal_manager"
     assert link.allow_manager_browser_data_access is True
@@ -456,6 +461,8 @@ def test_onboarding_rejects_admin_ops_without_required_provisioning_caps(
                 accounts_write=False,
                 buckets_read=True,
                 buckets_write=True,
+                usage_read=False,
+                usage_write=False,
             )
         ),
     )
@@ -523,11 +530,12 @@ def test_manager_and_portal_role_axes_remain_independent(
         user,
         save(guided, user, endpoint_id=ep.id, manager=manager, portal=portal),
     )
-    link = (
-        db_session.query(UserS3Account)
-        .filter_by(user_id=user.id, account_id=result.resources["account_id"])
-        .one()
-    )
+    link = db_session.scalars(
+        sa.select(UserS3Account).where(
+            UserS3Account.user_id == user.id,
+            UserS3Account.account_id == result.resources["account_id"],
+        )
+    ).one()
     assert link.manager_role == expected_manager
     assert link.portal_role == expected_portal
     assert link.allow_manager_browser_data_access is manager
@@ -673,7 +681,19 @@ def test_ceph_admin_requires_valid_dedicated_identity_and_grants_access(
     monkeypatch.setattr(
         guided.endpoints,
         "detect_features",
-        lambda *_args, **_kwargs: detection(ceph_admin="denied", admin_ops_permissions=StorageEndpointAdminOpsPermissions(users_read=True, accounts_read=True)),
+        lambda *_args, **_kwargs: detection(
+            ceph_admin="denied",
+            admin_ops_permissions=StorageEndpointAdminOpsPermissions(
+                users_read=True,
+                users_write=False,
+                buckets_read=False,
+                buckets_write=False,
+                accounts_read=True,
+                accounts_write=False,
+                usage_read=False,
+                usage_write=False,
+            ),
+        ),
     )
     with pytest.raises(OnboardingError, match="ceph_identity_denied"):
         apply(guided, denied_user, denied, ceph_admin_access_key="ceph-ak", ceph_admin_secret_key="ceph-sk")
@@ -694,8 +714,22 @@ def test_ceph_admin_onboarding_reuses_keys_with_read_only_admin_ops(guided, db_s
     rgw = get_endpoint_bootstrap_rgw_client(ep)
     rgw.users["operator"]["caps"] = "users=read;accounts=read"
     before = deepcopy(rgw.users)
-    monkeypatch.setattr(guided.endpoints, "detect_features", lambda *_args, **_kwargs: detection(
-        admin_ops_permissions=StorageEndpointAdminOpsPermissions(users_read=True, accounts_read=True)))
+    monkeypatch.setattr(
+        guided.endpoints,
+        "detect_features",
+        lambda *_args, **_kwargs: detection(
+            admin_ops_permissions=StorageEndpointAdminOpsPermissions(
+                users_read=True,
+                users_write=False,
+                buckets_read=False,
+                buckets_write=False,
+                accounts_read=True,
+                accounts_write=False,
+                usage_read=False,
+                usage_write=False,
+            )
+        ),
+    )
 
     result = apply(guided, user, save(guided, user, endpoint_id=ep.id, ceph_admin=True), service_identity_mode="external")
     assert result.configured and user.can_access_ceph_admin
@@ -769,7 +803,7 @@ def test_configured_apply_is_idempotent_and_does_not_duplicate_private_connectio
         ),
     )
     assert second.resources == first.resources
-    assert db_session.query(S3Connection).count() == 1
+    assert db_session.scalar(sa.select(sa.func.count()).select_from(S3Connection)) == 1
 
 
 def test_cross_admin_journeys_are_isolated(guided, db_session):

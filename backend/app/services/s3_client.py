@@ -3,16 +3,26 @@
 import boto3
 from botocore.handlers import validate_bucket_name
 from botocore.exceptions import BotoCoreError, ClientError
-from typing import Any, Optional
+from typing import Any, Optional, TypedDict
 import logging
 from time import perf_counter
 
 from app.core.config import get_settings
 from app.services.aws_client_config import StorageRequestProfile, build_aws_config
-from app.utils.aws_errors import aws_error_code
 
 settings = get_settings()
 logger = logging.getLogger(__name__)
+
+
+class S3BucketClientKwargs(TypedDict, total=False):
+    access_key: Optional[str]
+    secret_key: Optional[str]
+    session_token: Optional[str]
+    endpoint: Optional[str]
+    region: Optional[str]
+    force_path_style: bool
+    verify_tls: bool
+    allow_rgw_qualified_bucket_names: bool
 
 
 def get_s3_client(

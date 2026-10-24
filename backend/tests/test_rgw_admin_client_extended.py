@@ -215,6 +215,33 @@ def test_admin_ops_transport_preserves_empty_status_and_parses_json_xml_text(mon
     assert text_error.result == "plain failure"
 
 
+@pytest.mark.parametrize(
+    ("payload", "expected"),
+    [
+        (
+            {"Code": "TopLevel", "Message": "top-level message"},
+            ("TopLevel", "top-level message"),
+        ),
+        (
+            {"Error": {"Code": "Wrapped", "Message": "wrapped message"}},
+            ("Wrapped", "wrapped message"),
+        ),
+        (
+            {"error": {"code": "Lower", "message": "lower message"}},
+            ("Lower", "lower message"),
+        ),
+        (
+            {"error_code": "LegacyCode", "error_message": "legacy message"},
+            ("LegacyCode", "legacy message"),
+        ),
+        ("plain failure", (None, "plain failure")),
+        (None, (None, None)),
+    ],
+)
+def test_admin_ops_error_details_accept_supported_payload_shapes(payload, expected):
+    assert _client()._operation_error_details(payload) == expected
+
+
 def test_admin_ops_methods_send_exact_methods_and_omit_false_booleans(monkeypatch):
     client = _client()
     calls: list[dict] = []
@@ -317,21 +344,17 @@ def testextract_keys_prioritizes_secret_and_deduplicates():
     assert len([item for item in keys if item.get("access_key") == "AK-1"]) == 1
 
 
-def test_list_topics_and_get_info_paths(monkeypatch):
+def test_list_topics_paths(monkeypatch):
     client = _client()
 
     monkeypatch.setattr(client, "_request", lambda *args, **kwargs: {"not_implemented": True})
     assert client.list_topics("RGW1") is None
-    assert client.get_info() == {}
 
     monkeypatch.setattr(client, "_request", lambda *args, **kwargs: {"topics": [{"name": "t1"}]})
     assert client.list_topics("RGW1") == [{"name": "t1"}]
 
     monkeypatch.setattr(client, "_request", lambda *args, **kwargs: [{"name": "t2"}])
     assert client.list_topics("RGW1") == [{"name": "t2"}]
-
-    monkeypatch.setattr(client, "_request", lambda *args, **kwargs: {"version": "1"})
-    assert client.get_info() == {"version": "1"}
 
 
 def test_quota_helpers_and_usage_timestamp_format(monkeypatch):
@@ -648,13 +671,10 @@ def test_misc_admin_helpers_and_quota_paths(monkeypatch):
 
     monkeypatch.setattr(client, "_request", lambda *args, **kwargs: {"not_found": True})
     assert client.list_topics("RGW1") == []
-    assert client.get_info() == {}
     monkeypatch.setattr(client, "_request", lambda *args, **kwargs: {"topics": "bad-type"})
     assert client.list_topics("RGW1") == []
     monkeypatch.setattr(client, "_request", lambda *args, **kwargs: {"other": True})
     assert client.list_topics("RGW1") == []
-    monkeypatch.setattr(client, "_request", lambda *args, **kwargs: ["bad"])
-    assert client.get_info() == {}
 
     captured: list[dict[str, object]] = []
 
@@ -696,11 +716,9 @@ def test_misc_admin_helpers_and_quota_paths(monkeypatch):
     assert isinstance(factory_client, RGWAdminClient)
 
 
-def test_create_user_with_account_id_uses_account_lookup_after_conflict(monkeypatch):
+def test_create_user_with_account_id_returns_conflict_payload(monkeypatch):
     conflict_client = _client()
     monkeypatch.setattr(conflict_client, "_request", lambda *args, **kwargs: {"conflict": True})
-    monkeypatch.setattr(conflict_client, "get_user", lambda *args, **kwargs: {"not_found": True})
-    monkeypatch.setattr(conflict_client, "get_account_user", lambda *args, **kwargs: {"uid": "account-user"})
     payload = conflict_client.create_user_with_account_id(
         "alice",
         "RGW1",
@@ -710,17 +728,6 @@ def test_create_user_with_account_id_uses_account_lookup_after_conflict(monkeypa
         extra_params={"foo": "bar", "empty": None},
     )
     assert payload == {"conflict": True}
-
-def test_get_account_user_filters_account_id(monkeypatch):
-    client = _client()
-    monkeypatch.setattr(client, "get_user", lambda *args, **kwargs: {"uid": "alice", "account_id": "RGW2"})
-    assert client.get_account_user("RGW1", "alice", allow_not_found=True) is None
-    monkeypatch.setattr(client, "get_user", lambda *args, **kwargs: {"uid": "alice", "account_id": "RGW1"})
-    assert client.get_account_user("RGW1", "alice", allow_not_found=True) == {"uid": "alice", "account_id": "RGW1"}
-    monkeypatch.setattr(client, "get_user", lambda *args, **kwargs: {
-        "account_id": "RGW1", "user": {"account_id": "RGW2", "uid": "alice"},
-    })
-    assert client.get_account_user("RGW1", "alice", allow_not_found=True) is None
 
 
 def test_create_and_delete_access_key_parameter_paths(monkeypatch):
@@ -911,14 +918,6 @@ def test_get_account_strict_still_raises_when_account_api_is_unavailable(monkeyp
         client.get_account("RGW1", allow_not_found=True)
 
 
-def test_create_user_with_account_id_conflict_without_existing(monkeypatch):
-    client = _client()
-    monkeypatch.setattr(client, "_request", lambda *args, **kwargs: {"conflict": True})
-    monkeypatch.setattr(client, "get_user", lambda *args, **kwargs: {"not_found": True})
-    monkeypatch.setattr(client, "get_account_user", lambda *args, **kwargs: {"not_found": True})
-    assert client.create_user_with_account_id("alice", "RGW1") == {"conflict": True}
-
-
 def test_bucket_info_usage_and_user_key_success_paths(monkeypatch):
     client = _client()
     captured: list[dict[str, object]] = []
@@ -961,9 +960,6 @@ def test_delete_user_passes_tenant(monkeypatch):
 def test_rgw_admin_remaining_small_branches(monkeypatch):
     client = _client()
     assert client.extract_keys({"keys": []}) == []
-
-    monkeypatch.setattr(client, "get_user", lambda *args, **kwargs: None)
-    assert client.get_account_user("RGW1", "missing", allow_not_found=True) is None
 
     monkeypatch.setattr(client, "_request", lambda *args, **kwargs: {"unexpected": True})
     assert client.list_accounts(include_details=True) == []

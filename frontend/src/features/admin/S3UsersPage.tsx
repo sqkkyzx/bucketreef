@@ -53,6 +53,7 @@ import { formatBytes, formatCompactNumber } from "../../utils/format";
 import { stableSignature } from "../../utils/stableSignature";
 import { nextSortState } from "../../utils/sortValues";
 import { matchesExactTextCandidate, type TextMatchMode } from "../../utils/textMatch";
+import { collectPaginatedItems, pageCount, slicePage } from "../../utils/pagination";
 import { extractUiTagLabels, normalizeUiTags, type UiTagDefinition } from "../../utils/uiTags";
 import { isAdminLikeRole, readStoredUser } from "../../utils/workspaces";
 import { AdminAssociationCheckboxOptions, AdminAssociationPickerPanel, AdminAssociationSectionHeader, adminAssociationPanelClass, adminAssociationTableContainerClass as associationTableContainerClass } from "./AdminAssociationPicker";
@@ -62,6 +63,7 @@ import { buildAdminQuotaSizeEditorValue } from "./adminQuotaForm";
 import { useAdminS3UserStats } from "./useAdminS3UserStats";
 import { useAdminI18n } from "./adminI18n";
 import AdminS3UsersList, { type AdminS3UsersSortField } from "./AdminS3UsersList";
+import useAdminAssociationPickerState from "./useAdminAssociationPickerState";
 
 type EditTab = "general" | "users" | "groups" | "manager";
 
@@ -159,12 +161,26 @@ export default function S3UsersPage() {
   const [editError, setEditError] = useState<string | null>(null);
   const [editBusy, setEditBusy] = useState(false);
   const [editTab, setEditTab] = useState<EditTab>("general");
-  const [portalUserSearch, setPortalUserSearch] = useState("");
-  const [groupSearch, setGroupSearch] = useState("");
-  const [showEditPortalUserPanel, setShowEditPortalUserPanel] = useState(false);
-  const [showEditGroupPanel, setShowEditGroupPanel] = useState(false);
-  const [editPortalUserSelections, setEditPortalUserSelections] = useState<number[]>([]);
-  const [editGroupSelections, setEditGroupSelections] = useState<number[]>([]);
+  const {
+    search: portalUserSearch,
+    setSearch: setPortalUserSearch,
+    open: showEditPortalUserPanel,
+    setOpen: setShowEditPortalUserPanel,
+    selections: editPortalUserSelections,
+    setSelections: setEditPortalUserSelections,
+    reset: resetEditPortalUserPicker,
+    toggleSelection: toggleEditPortalUserSelection,
+  } = useAdminAssociationPickerState();
+  const {
+    search: groupSearch,
+    setSearch: setGroupSearch,
+    open: showEditGroupPanel,
+    setOpen: setShowEditGroupPanel,
+    selections: editGroupSelections,
+    setSelections: setEditGroupSelections,
+    reset: resetEditGroupPicker,
+    toggleSelection: toggleEditGroupSelection,
+  } = useAdminAssociationPickerState();
   const toggleSort = (field: AdminS3UsersSortField) => {
     setSort((current) => nextSortState(current, field, "desc"));
     setPage(1);
@@ -215,33 +231,27 @@ export default function S3UsersPage() {
     try {
       const quick = filter.trim();
       if (quick && quickFilterMode === "exact") {
-        const allMatches: S3User[] = [];
-        let nextPage = 1;
-        while (true) {
-          const response = await listS3Users({
+        const allMatches = await collectPaginatedItems((nextPage) =>
+          listS3Users({
             page: nextPage,
             page_size: 200,
             search: quick,
             sort_by: sort.field,
             sort_dir: sort.direction,
             include_quota: false,
-          });
-          allMatches.push(...response.items);
-          if (!response.has_next) break;
-          nextPage += 1;
-        }
+          }),
+        );
 
         const exactMatches = allMatches.filter((user) => {
           return matchesExactTextCandidate(getS3UserSearchCandidates(user), quick);
         });
         const totalExact = exactMatches.length;
-        const totalPages = Math.max(1, Math.ceil(totalExact / pageSize));
+        const totalPages = pageCount(totalExact, pageSize);
         if (totalExact > 0 && page > totalPages) {
           setPage(totalPages);
           return;
         }
-        const start = (page - 1) * pageSize;
-        setUsers(exactMatches.slice(start, start + pageSize));
+        setUsers(slicePage(exactMatches, page, pageSize));
         setTotalUsers(totalExact);
       } else {
         const response = await listS3Users({
@@ -252,7 +262,7 @@ export default function S3UsersPage() {
           sort_dir: sort.direction,
           include_quota: false,
         });
-        const totalPages = Math.max(1, Math.ceil((response.total || 0) / pageSize));
+        const totalPages = pageCount(response.total || 0, pageSize);
         if (response.total > 0 && page > totalPages) {
           setPage(totalPages);
           return;
@@ -327,8 +337,8 @@ export default function S3UsersPage() {
       setEndpointPermissionLoading((prev) => ({ ...prev, [endpointId]: true }));
       try {
         const endpoint = await getStorageEndpoint(endpointId, { include_admin_ops_permissions: true });
-        setEndpointUsersWrite((prev) => ({ ...prev, [endpointId]: Boolean(endpoint.admin_ops_permissions?.users_write) }));
-        setEndpointBucketsWrite((prev) => ({ ...prev, [endpointId]: Boolean(endpoint.admin_ops_permissions?.buckets_write) }));
+        setEndpointUsersWrite((prev) => ({ ...prev, [endpointId]: endpoint.admin_ops_permissions.users_write }));
+        setEndpointBucketsWrite((prev) => ({ ...prev, [endpointId]: endpoint.admin_ops_permissions.buckets_write }));
         setEndpointPermissionErrors((prev) => ({ ...prev, [endpointId]: null }));
       } catch (err) {
         setEndpointUsersWrite((prev) => ({ ...prev, [endpointId]: false }));
@@ -374,7 +384,7 @@ export default function S3UsersPage() {
   );
   const cephEndpoints = useMemo(() => storageEndpoints.filter((ep) => ep.provider === "ceph"), [storageEndpoints]);
   const adminCephEndpoints = useMemo(
-    () => cephEndpoints.filter((ep) => Boolean(ep.capabilities?.admin)),
+    () => cephEndpoints.filter((ep) => Boolean(ep.capabilities.admin)),
     [cephEndpoints]
   );
   const editingEndpointId = editingUser?.storage_endpoint_id ?? null;
@@ -421,17 +431,6 @@ export default function S3UsersPage() {
     if (Object.prototype.hasOwnProperty.call(endpointUsersWrite, editingEndpointId)) return;
     void fetchEndpointUsersWritePermission(editingEndpointId);
   }, [editingEndpointId, endpointUsersWrite, fetchEndpointUsersWritePermission]);
-
-  const toggleEditPortalUserSelection = (userId: number) => {
-    setEditPortalUserSelections((prev) =>
-      prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId]
-    );
-  };
-  const toggleEditGroupSelection = (groupId: number) => {
-    setEditGroupSelections((prev) =>
-      prev.includes(groupId) ? prev.filter((id) => id !== groupId) : [...prev, groupId]
-    );
-  };
 
   const loadEditQuota = async (userId: number) => {
     try {
@@ -490,12 +489,8 @@ export default function S3UsersPage() {
     setEditInitialSignature(stableSignature({ editForm: { ...nextEditForm, tags: normalizeUiTags(nextEditForm.tags) } }));
     setEditError(null);
     setEditTab("general");
-    setPortalUserSearch("");
-    setGroupSearch("");
-    setShowEditPortalUserPanel(false);
-    setShowEditGroupPanel(false);
-    setEditPortalUserSelections([]);
-    setEditGroupSelections([]);
+    resetEditPortalUserPicker();
+    resetEditGroupPicker();
     if (user.quota_max_size_gb == null && user.quota_max_objects == null) {
       void loadEditQuota(user.id);
     }
@@ -1090,11 +1085,7 @@ export default function S3UsersPage() {
                     maxVisibleOptions={MAX_LINK_OPTIONS}
                     selectedCount={editPortalUserSelections.length}
                     loadingLabel="Loading UI users..."
-                    onCancel={() => {
-                      setShowEditPortalUserPanel(false);
-                      setEditPortalUserSelections([]);
-                      setPortalUserSearch("");
-                    }}
+                    onCancel={resetEditPortalUserPicker}
                     onAdd={() => {
                       if (editPortalUserSelections.length === 0) return;
                       setEditForm((prev) => ({
@@ -1113,9 +1104,7 @@ export default function S3UsersPage() {
                           }),
                         ],
                       }));
-                      setEditPortalUserSelections([]);
-                      setPortalUserSearch("");
-                      setShowEditPortalUserPanel(false);
+                      resetEditPortalUserPicker();
                     }}
                     addDisabled={editPortalUserSelections.length === 0}
                   >
@@ -1211,11 +1200,7 @@ export default function S3UsersPage() {
                     maxVisibleOptions={MAX_LINK_OPTIONS}
                     selectedCount={editGroupSelections.length}
                     loadingLabel="Loading UI groups..."
-                    onCancel={() => {
-                      setShowEditGroupPanel(false);
-                      setEditGroupSelections([]);
-                      setGroupSearch("");
-                    }}
+                    onCancel={resetEditGroupPicker}
                     onAdd={() => {
                       if (editGroupSelections.length === 0) return;
                       setEditForm((prev) => ({
@@ -1233,9 +1218,7 @@ export default function S3UsersPage() {
                           }),
                         ],
                       }));
-                      setEditGroupSelections([]);
-                      setGroupSearch("");
-                      setShowEditGroupPanel(false);
+                      resetEditGroupPicker();
                     }}
                     addDisabled={editGroupSelections.length === 0}
                   >

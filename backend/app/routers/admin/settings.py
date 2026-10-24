@@ -1,6 +1,6 @@
 # Copyright (c) 2025 Laurent Barbe
 # Licensed under the Apache License, Version 2.0
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Request, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -25,10 +25,10 @@ from app.services.audit_service import AuditService
 from app.services.cost_settings_service import CostSettingsService
 from app.services.app_settings_service import (
     get_general_feature_locks,
-    load_app_settings,
     load_app_settings_for_db,
+    load_app_settings_for_db_readonly,
     load_default_app_settings,
-    save_app_settings,
+    save_app_settings_for_db,
 )
 from app.services.identity_security_policy import require_admin_sensitive_action
 from app.services.healthcheck_background_service import run_initial_healthchecks
@@ -80,8 +80,11 @@ def _portal_server_access_logging_changed(current: AppSettings, requested: AppSe
 
 
 @router.get("", response_model=AppSettings)
-def get_settings(_: User = Depends(get_current_ui_superadmin)) -> AppSettings:
-    return load_app_settings()
+def get_settings(
+    _: User = Depends(get_current_ui_superadmin),
+    db: Session = Depends(get_db),
+) -> AppSettings:
+    return load_app_settings_for_db_readonly(db)
 
 
 @router.get("/defaults", response_model=AppSettings)
@@ -146,7 +149,7 @@ def update_settings(
             server_access_logging_summary = get_portal_service(db).reconcile_all_portal_server_access_logging(payload.portal)
         except RuntimeError as exc:
             raise_bad_gateway_from_runtime(exc)
-    saved = save_app_settings(payload)
+    saved = save_app_settings_for_db(db, payload)
     audit.record_action(
         user=current_user,
         scope="admin",

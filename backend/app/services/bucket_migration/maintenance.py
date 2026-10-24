@@ -86,7 +86,6 @@ class BucketMigrationMaintenanceMixin:
             elif not item.target_lock_applied:
                 # Deletion succeeded; only restoration had failed. A successful
                 # recovery resolves that separate outcome.
-                item.cleanup_status = "completed"
                 item.cleanup_error = None
         if migration.status == "draft":
             migration.preparation_status = "stale"
@@ -109,7 +108,6 @@ class BucketMigrationMaintenanceMixin:
             )
         if not item.target_lock_applied:
             self._apply_target_write_lock_policy(target, item.target_bucket, item)
-        item.cleanup_status = "deleting"
         item.cleanup_error = None
         self._commit()
         self._delete_maintenance_bucket(target, item.target_bucket, check)
@@ -131,16 +129,14 @@ class BucketMigrationMaintenanceMixin:
             try:
                 check()
                 if migration.maintenance_operation == "cleanup_source":
-                    self._cleanup_verified_source(migration, item, source, target, check)
+                    self._cleanup_verified_source(item, source, target, check)
                 else:
                     self._cleanup_failed_target(item, source, target, check)
-                item.cleanup_status = "completed"
                 item.cleanup_error = None
             except _WorkerLeaseLostError:
                 raise
             except Exception as exc:
                 self.db.rollback()
-                item.cleanup_status = "failed"
                 item.cleanup_error = sanitized_error_log_detail(exc)
                 errors.append(f"{item.source_bucket}: {item.cleanup_error}")
             self._assert_workflow_lease()
@@ -218,47 +214,79 @@ class BucketMigrationMaintenanceMixin:
             errors.append(sanitized_error_log_detail(exc))
         self._finish_maintenance_run(migration, errors)
 
+    def _iter_cleanup_fingerprint_entries(
+        self,
+        context,
+        bucket: str,
+        *,
+        strategy: str,
+        client,
+    ):
+        if strategy == "version_aware":
+            for _key, timeline in self._iter_bucket_version_timelines(
+                context,
+                bucket,
+                client=client,
+            ):
+                yield from timeline
+            return
+        yield from self._iter_bucket_objects(context, bucket, client=client)
+
+    def _cleanup_fingerprint_entry_value(
+        self,
+        client,
+        bucket: str,
+        entry,
+        *,
+        check,
+    ) -> dict[str, object]:
+        marker = isinstance(entry, _BucketVersionEntry) and entry.is_delete_marker
+        value: dict[str, object] = {"key": entry.key, "delete_marker": marker}
+        if marker:
+            return value
+
+        version_id = entry.version_id if isinstance(entry, _BucketVersionEntry) else None
+        identity = {"Bucket": bucket, "Key": entry.key}
+        if version_id:
+            identity["VersionId"] = version_id
+        tags = client.get_object_tagging(**identity).get("TagSet")
+        if not isinstance(tags, list) or any(
+            not isinstance(tag, dict)
+            or not isinstance(tag.get("Key"), str)
+            or not isinstance(tag.get("Value"), str)
+            for tag in tags
+        ):
+            raise RuntimeError("Object tags could not be verified")
+        value["tags"] = sorted((tag["Key"], tag["Value"]) for tag in tags)
+        value["sha256"] = self._stream_object_sha256(
+            client,
+            bucket,
+            entry.key,
+            version_id=version_id,
+            control_check=check,
+        )
+        return value
+
     def _cleanup_fingerprint(
         self, context, bucket: str, *, strategy: str, check
     ) -> str:
         """Hash exact keys, ordered history, markers, tags and streamed SHA-256 content."""
         digest = hashlib.sha256()
         client = self._context_client(context)
-        if strategy == "version_aware":
-            entries = (
-                entry
-                for _key, timeline in self._iter_bucket_version_timelines(
-                    context, bucket, client=client
-                )
-                for entry in timeline
-            )
-        else:
-            entries = self._iter_bucket_objects(context, bucket, client=client)
+        entries = self._iter_cleanup_fingerprint_entries(
+            context,
+            bucket,
+            strategy=strategy,
+            client=client,
+        )
         for entry in entries:
             check()
-            marker = isinstance(entry, _BucketVersionEntry) and entry.is_delete_marker
-            value = {"key": entry.key, "delete_marker": marker}
-            if not marker:
-                version_id = entry.version_id if isinstance(entry, _BucketVersionEntry) else None
-                identity = {"Bucket": bucket, "Key": entry.key}
-                if version_id:
-                    identity["VersionId"] = version_id
-                tags = client.get_object_tagging(**identity).get("TagSet")
-                if not isinstance(tags, list) or any(
-                    not isinstance(tag, dict)
-                    or not isinstance(tag.get("Key"), str)
-                    or not isinstance(tag.get("Value"), str)
-                    for tag in tags
-                ):
-                    raise RuntimeError("Object tags could not be verified")
-                value["tags"] = sorted((tag["Key"], tag["Value"]) for tag in tags)
-                value["sha256"] = self._stream_object_sha256(
-                    client,
-                    bucket,
-                    entry.key,
-                    version_id=version_id,
-                    control_check=check,
-                )
+            value = self._cleanup_fingerprint_entry_value(
+                client,
+                bucket,
+                entry,
+                check=check,
+            )
             encoded = _json_dumps(value).encode("utf-8")
             digest.update(len(encoded).to_bytes(8, "big"))
             digest.update(encoded)
@@ -301,7 +329,7 @@ class BucketMigrationMaintenanceMixin:
                 )
             )
 
-    def _cleanup_verified_source(self, migration, item, source, target, check) -> None:
+    def _cleanup_verified_source(self, item, source, target, check) -> None:
         if not item.target_created_by_migration:
             raise RuntimeError(
                 "Destination provenance is missing; source deletion is blocked"
@@ -331,7 +359,6 @@ class BucketMigrationMaintenanceMixin:
                     "Verified destination changed since deletion began. Source cleanup is blocked."
                 )
         else:
-            item.cleanup_status = "verifying"
             self._commit()
             self._apply_read_only_policy(source.execution_context, item.source_bucket, item)
             source_hash = self._cleanup_fingerprint(
@@ -344,7 +371,6 @@ class BucketMigrationMaintenanceMixin:
             item.cleanup_verification_json = _json_dumps(
                 {"target_sha256": target_hash, "verified_at": utcnow().isoformat()}
             )
-            item.cleanup_status = "deleting"
             self._commit()
         check()
         source_exists = self._precheck_bucket_exists(source, item.source_bucket)

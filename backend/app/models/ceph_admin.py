@@ -10,6 +10,7 @@ from app.models.bucket_compare import (
     BucketCompareConfigFeature,
     BucketConfigDiff,
     BucketContentDiff,
+    normalize_bucket_compare_scope,
 )
 from app.models.bucket_operation import RgwBucketReference
 from app.models.bucket_listing import BucketListingSummary
@@ -39,11 +40,11 @@ class CephAdminEndpoint(ApiModel):
     id: int
     name: str
     endpoint_url: str
-    admin_endpoint: Optional[str] = None
-    region: Optional[str] = None
-    is_default: bool = False
-    capabilities: dict[str, bool] = Field(default_factory=dict)
-    tags: list[TagDefinitionSummary] = Field(default_factory=list)
+    admin_endpoint: Optional[str]
+    region: Optional[str]
+    is_default: bool
+    capabilities: dict[str, bool]
+    tags: list[TagDefinitionSummary]
 
 
 class CephAdminEndpointAccess(ApiModel):
@@ -286,7 +287,7 @@ class CephAdminRgwUserDetail(ApiModel):
 
 class CephAdminRgwUserCapsUpdate(ApiModel):
     mode: Literal["replace", "add", "remove"] = "replace"
-    values: list[str] = Field(default_factory=list)
+    values: list[str]
 
 
 class CephAdminRgwAccountCreate(ApiModel):
@@ -459,14 +460,11 @@ class CephAdminBucketCompareRequest(ApiModel):
 
     @model_validator(mode="after")
     def validate_comparison_scope(self):
-        if not self.include_content and not self.include_config:
-            raise ValueError("At least one comparison scope must be enabled.")
-        if self.config_features is not None:
-            self.config_features = list(dict.fromkeys(self.config_features))
-            if self.include_config and not self.config_features:
-                raise ValueError(
-                    "At least one config feature must be enabled when include_config is true."
-                )
+        self.config_features = normalize_bucket_compare_scope(
+            include_content=self.include_content,
+            include_config=self.include_config,
+            config_features=self.config_features,
+        )
         return self
 
 

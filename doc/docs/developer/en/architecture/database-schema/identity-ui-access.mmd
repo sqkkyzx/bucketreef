@@ -175,7 +175,6 @@ erDiagram
     first_admin_bootstrap {
         integer id PK "NN"
         varchar_64 token_digest
-        datetime issued_at
         datetime expires_at
         datetime consumed_at
         integer created_user_id FK
@@ -280,11 +279,8 @@ erDiagram
         integer revision "NN"
         text draft_json "NN"
         text resources_json "NN"
-        text evidence_json "NN"
-        text readiness_json "NN"
         varchar_40 pending_step
         datetime configured_at
-        datetime validated_at
         datetime created_at "NN"
         datetime updated_at "NN"
     }

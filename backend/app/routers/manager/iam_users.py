@@ -14,24 +14,32 @@ from app.routers.dependencies import (
     get_audit_service,
     require_iam_capable_manager,
 )
-from app.utils.http_errors import raise_bad_gateway_from_runtime, raise_http_exception_from_exception
+from app.utils.http_errors import (
+    raise_bad_gateway_from_runtime,
+    raise_http_error_from_value_error,
+    raise_http_exception_from_exception,
+)
 from app.routers.manager.iam_common import (
     ensure_unmanaged_iam_user,
     ensure_inline_policy_name,
     get_iam_service_for_context,
 )
 from app.services.audit_service import AuditService
-from app.services.resource_name_validation import validate_inline_policy_request, validate_inline_policy_requests
+from app.services.resource_name_validation import validate_inline_policy_request
 from app.services.access_key_metadata_service import AccessKeyMetadataService
 from app.services.manager_iam_support import (
+    create_iam_user,
+    load_iam_user_details,
     load_inline_policies,
     managed_iam_user_source,
     resolve_attached_policy,
     save_inline_policy,
+    update_iam_user,
+    validate_iam_user_create,
 )
 from app.services.managed_private_access_service import ManagedPrivateAccessService
 from app.services.managed_private_access_sources import iam_source_reference
-from app.services.managed_resource_naming import PORTAL_MANAGED_IAM_GROUP_NAMES
+from app.services.rgw_iam import RGWIAMService
 
 router = APIRouter(prefix="/manager/iam/users", tags=["manager-iam-users"])
 
@@ -79,17 +87,12 @@ def get_user(
         user = service.get_user(user_name)
         if user is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-        user.groups = [group.name for group in service.list_groups_for_user(user_name)]
-        user.policies = [policy.arn for policy in service.list_user_policies(user_name) if policy.arn]
-        inline = service.list_user_inline_policies(user_name)
-        user.inline_policies = inline or None
-        user.has_keys = bool(service.list_access_keys(user_name))
-        return _annotate_managed_user(db, context, user)
+        return _annotate_managed_user(db, context, load_iam_user_details(service, user))
     except RuntimeError as exc:
         raise_bad_gateway_from_runtime(exc)
 
 
-@router.put("/{user_name}", response_model=IAMUser)
+@router.patch("/{user_name}", response_model=IAMUser)
 def update_user(
     user_name: str,
     payload: IAMUserUpdate,
@@ -100,44 +103,24 @@ def update_user(
 ) -> IAMUser:
     service = get_iam_service_for_context(context)
     try:
-        existing = service.get_user(user_name)
-        if existing is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-        _annotate_managed_user(db, context, existing)
-        if existing.is_bucketreef_managed:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="BucketReef-managed IAM users cannot be renamed or moved",
-            )
-        new_name = payload.name if payload.name is not None and payload.name != user_name else None
-        new_path = payload.path if payload.path is not None and payload.path != existing.path else None
-        service.update_user(user_name, new_name=new_name, new_path=new_path)
-        effective_name = new_name or user_name
-        if new_name is not None and context.id is not None:
-            AccessKeyMetadataService(db).rename_iam_principal_metadata(context.id, user_name, effective_name)
-        updated = service.get_user(effective_name)
-        if updated is None:
-            raise RuntimeError("Updated IAM user could not be reloaded")
-        updated.groups = [group.name for group in service.list_groups_for_user(effective_name)]
-        updated.policies = [policy.arn for policy in service.list_user_policies(effective_name) if policy.arn]
-        inline = service.list_user_inline_policies(effective_name)
-        updated.inline_policies = inline or None
-        updated.has_keys = bool(service.list_access_keys(effective_name))
-        if new_name is not None or new_path is not None:
+        result = update_iam_user(db, context, service, user_name, payload)
+        if result.name_updated or result.path_updated:
             audit_service.record_action(
                 user=current_user,
                 scope="manager",
                 action="update_iam_user",
                 entity_type="iam_user",
-                entity_id=effective_name,
+                entity_id=result.user.name,
                 execution_context=context,
                 metadata={
-                    "previous_name": user_name if new_name is not None else None,
-                    "name_updated": new_name is not None,
-                    "path_updated": new_path is not None,
+                    "previous_name": result.previous_name,
+                    "name_updated": result.name_updated,
+                    "path_updated": result.path_updated,
                 },
             )
-        return updated
+        return result.user
+    except ValueError as exc:
+        raise_http_error_from_value_error(exc)
     except RuntimeError as exc:
         raise_bad_gateway_from_runtime(exc)
 
@@ -149,26 +132,13 @@ def create_user(
     current_user: ManagerActor = Depends(require_iam_capable_manager),
     audit_service: AuditService = Depends(get_audit_service),
 ) -> IAMUserWithKey:
-    if any(group in PORTAL_MANAGED_IAM_GROUP_NAMES for group in (payload.groups or [])):
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Portal-managed IAM groups cannot be assigned through generic IAM user creation",
-        )
-    validate_inline_policy_requests(payload.inline_policies, "user", context)
+    try:
+        validate_iam_user_create(payload, context)
+    except ValueError as exc:
+        raise_http_error_from_value_error(exc)
     service = get_iam_service_for_context(context)
     try:
-        created_user, created_key = service.create_user(payload.name, create_key=payload.create_key)
-        # Optionally attach user to groups
-        if payload.groups:
-            for group_name in payload.groups:
-                service.add_user_to_group(group_name, payload.name)
-        # Optionally attach managed policies
-        if payload.policies:
-            for policy_arn in payload.policies:
-                service.attach_user_policy(payload.name, policy_arn)
-        if payload.inline_policies:
-            for inline in payload.inline_policies:
-                service.put_user_inline_policy(payload.name, inline.name, inline.document)
+        result = create_iam_user(service, payload)
         audit_service.record_action(
             user=current_user,
             scope="manager",
@@ -181,10 +151,10 @@ def create_user(
                 "groups": payload.groups or [],
                 "policies": payload.policies or [],
                 "inline_policies": [p.name for p in payload.inline_policies] if payload.inline_policies else [],
-                "access_key_created": bool(created_key),
+                "access_key_created": result.access_key is not None,
             },
         )
-        return IAMUserWithKey(**created_user.model_dump(), access_key=created_key)
+        return result
     except RuntimeError as exc:
         raise_http_exception_from_exception(status.HTTP_502_BAD_GATEWAY, exc)
 
@@ -296,7 +266,7 @@ def create_access_key(
         raise_http_exception_from_exception(status.HTTP_502_BAD_GATEWAY, exc)
 
 
-@router.put("/{user_name}/keys/{access_key_id}/metadata", response_model=AccessKeyMetadata)
+@router.patch("/{user_name}/keys/{access_key_id}/metadata", response_model=AccessKeyMetadata)
 def update_access_key_metadata(
     user_name: str,
     access_key_id: str,

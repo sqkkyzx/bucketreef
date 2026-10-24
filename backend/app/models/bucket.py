@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Any, Optional, List, Literal
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import field_validator, model_validator
 
 from app.models.base import ApiModel
 from app.utils.normalize import normalize_optional_scalar
@@ -31,10 +31,17 @@ class Bucket(ApiModel):
 
 
 class BucketPublicAccessBlock(ApiModel):
-    block_public_acls: Optional[bool] = None
-    ignore_public_acls: Optional[bool] = None
-    block_public_policy: Optional[bool] = None
-    restrict_public_buckets: Optional[bool] = None
+    block_public_acls: Optional[bool]
+    ignore_public_acls: Optional[bool]
+    block_public_policy: Optional[bool]
+    restrict_public_buckets: Optional[bool]
+
+
+class BucketPublicAccessBlockUpdate(ApiModel):
+    block_public_acls: bool
+    ignore_public_acls: bool
+    block_public_policy: bool
+    restrict_public_buckets: bool
 
 
 class BucketCreate(ApiModel):
@@ -79,21 +86,21 @@ class BucketTags(ApiModel):
 
 
 class BucketTagsUpdate(ApiModel):
-    tags: List[BucketTag] = Field(default_factory=list)
+    tags: List[BucketTag]
 
 
 class BucketObjectLock(ApiModel):
-    enabled: Optional[bool] = None
-    mode: Optional[str] = None
-    days: Optional[int] = None
-    years: Optional[int] = None
+    enabled: Optional[bool]
+    mode: Optional[str]
+    days: Optional[int]
+    years: Optional[int]
 
 
 class BucketObjectLockUpdate(ApiModel):
-    enabled: Optional[bool] = None
-    mode: Optional[str] = None
-    days: Optional[int] = None
-    years: Optional[int] = None
+    enabled: Optional[bool]
+    mode: Optional[str]
+    days: Optional[int]
+    years: Optional[int]
 
     @field_validator("days", "years")
     @classmethod
@@ -174,16 +181,16 @@ class FeatureRuleInventoryRule(ApiModel):
     type: str
     title: str
     summary: str
-    chips: list[str] = Field(default_factory=list)
-    raw: dict[str, Any] = Field(default_factory=dict)
+    chips: list[str]
+    raw: dict[str, Any]
 
 
 class FeatureRuleInventoryBucket(ApiModel):
     bucket_name: str
     feature: FeatureRuleInventoryFeature
     status: FeatureRuleInventoryStatus
-    rules: list[FeatureRuleInventoryRule] = Field(default_factory=list)
-    error: Optional[str] = None
+    rules: list[FeatureRuleInventoryRule]
+    error: Optional[str]
 
 
 class BucketReplicationConfiguration(ApiModel):
@@ -202,7 +209,14 @@ class BucketWebsiteRedirectAllRequestsTo(ApiModel):
 
 
 class BucketWebsiteConfiguration(ApiModel):
-    index_document: Optional[str] = None
-    error_document: Optional[str] = None
-    redirect_all_requests_to: Optional[BucketWebsiteRedirectAllRequestsTo] = None
+    index_document: Optional[str]
+    error_document: Optional[str]
+    redirect_all_requests_to: Optional[BucketWebsiteRedirectAllRequestsTo]
+    routing_rules: List[dict]
+
+
+class BucketWebsiteUpdate(ApiModel):
+    index_document: Optional[str]
+    error_document: Optional[str]
+    redirect_all_requests_to: Optional[BucketWebsiteRedirectAllRequestsTo]
     routing_rules: List[dict]

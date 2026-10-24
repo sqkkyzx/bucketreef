@@ -5,6 +5,7 @@ from datetime import timedelta
 from types import SimpleNamespace
 
 import pytest
+import sqlalchemy as sa
 from fastapi import HTTPException
 from sqlalchemy.orm import sessionmaker
 
@@ -20,7 +21,6 @@ def _seed_migration(session_factory: sessionmaker, *, status: str) -> int:
             target_context_id="target-ctx",
             mode="one_shot",
             copy_bucket_settings=False,
-            delete_source=False,
             lock_target_writes=True,
             use_same_endpoint_copy=False,
             auto_grant_source_read_for_copy=False,
@@ -203,8 +203,10 @@ def test_manager_migration_stream_emits_multiple_snapshots_when_item_timestamp_c
     async def _touch_item_timestamp() -> None:
         await asyncio.sleep(0.06)
         with test_session_factory() as db:
-            migration = db.query(BucketMigration).filter(BucketMigration.id == migration_id).first()
-            item = db.query(BucketMigrationItem).filter(BucketMigrationItem.migration_id == migration_id).first()
+            migration = db.scalar(sa.select(BucketMigration).where(BucketMigration.id == migration_id))
+            item = db.scalar(
+                sa.select(BucketMigrationItem).where(BucketMigrationItem.migration_id == migration_id)
+            )
             assert migration is not None
             assert item is not None
             migration.updated_at = migration.updated_at + timedelta(seconds=2)

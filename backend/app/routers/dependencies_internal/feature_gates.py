@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.db import User
+from app.models.account_capabilities import AccountCapabilities
 from app.models.feature_policy import FeaturePolicy
 from app.models.access_context import BucketMigrationAccessScope, ManagerActor
 from app.models.session import ManagerSessionPrincipal
@@ -58,6 +59,27 @@ def _require_supervision_access(
     required_feature: Literal["metrics", "usage"],
 ) -> ManagerActor:
     caps = require_manager_capabilities(context)
+    _require_usage_metrics_policy(context, db)
+    _require_supervision_actor_capabilities(actor, caps)
+    _resolve_connection_supervision_identity(
+        context,
+        required_feature=required_feature,
+        disabled_detail=disabled_detail,
+    )
+    _require_endpoint_supervision_feature(
+        context,
+        required_feature=required_feature,
+        disabled_detail=disabled_detail,
+    )
+    if not has_supervision_credentials(context):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Supervision credentials are not configured for this context",
+        )
+    return actor
+
+
+def _require_usage_metrics_policy(context: S3ExecutionContext, db: Session) -> None:
     settings = app_settings_service.load_app_settings_for_db_readonly(db)
     metrics_state = manager_rgw_usage_metrics_state(
         settings.manager.feature_policies,
@@ -69,45 +91,71 @@ def _require_supervision_access(
             detail="RGW traffic and usage metrics are disabled",
         )
 
+
+def _require_supervision_actor_capabilities(
+    actor: ManagerActor,
+    caps: AccountCapabilities,
+) -> None:
     if isinstance(actor, ManagerSessionPrincipal) and not actor.capabilities.can_view_traffic:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Metrics are not available for this profile")
     if not caps.can_manage_buckets:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Metrics are not available for this context")
+
+
+def _resolve_connection_supervision_identity(
+    context: S3ExecutionContext,
+    *,
+    required_feature: Literal["metrics", "usage"],
+    disabled_detail: str,
+) -> None:
+    if context.context_kind != "connection":
+        return
+    source_connection = context.source_connection
+    if (
+        source_connection is None
+        or context.s3_connection_id is None
+        or source_connection.id != context.s3_connection_id
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Metrics are unavailable: connection context is incomplete.",
+        )
+    resolution = ConnectionIdentityService().resolve_metrics_identity(source_connection)
+    if not resolution.eligible:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=resolution.reason or disabled_detail,
+        )
+    if required_feature == "metrics" and not resolution.metrics_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Storage metrics are disabled for this endpoint",
+        )
+    if required_feature == "usage" and not resolution.usage_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Usage logs are disabled for this endpoint",
+        )
+    context.rgw_tenant = resolution.rgw_tenant
+    if resolution.rgw_account_id:
+        context.rgw_account_id = resolution.rgw_account_id
+    if resolution.rgw_user_uid:
+        context.rgw_user_uid = resolution.rgw_user_uid
+
+
+def _require_endpoint_supervision_feature(
+    context: S3ExecutionContext,
+    *,
+    required_feature: Literal["metrics", "usage"],
+    disabled_detail: str,
+) -> None:
     endpoint = context.storage_endpoint
-
-    if context.context_kind == "connection":
-        source_connection = context.source_connection
-        if (
-            source_connection is None
-            or context.s3_connection_id is None
-            or source_connection.id != context.s3_connection_id
-        ):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Metrics are unavailable: connection context is incomplete.",
-            )
-        resolution = ConnectionIdentityService().resolve_metrics_identity(source_connection)
-        if not resolution.eligible:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=resolution.reason or disabled_detail)
-        if required_feature == "metrics" and not resolution.metrics_enabled:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Storage metrics are disabled for this endpoint")
-        if required_feature == "usage" and not resolution.usage_enabled:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Usage logs are disabled for this endpoint")
-        context.rgw_tenant = resolution.rgw_tenant
-        if resolution.rgw_account_id:
-            context.rgw_account_id = resolution.rgw_account_id
-        if resolution.rgw_user_uid:
-            context.rgw_user_uid = resolution.rgw_user_uid
-
     if endpoint:
         flags = resolve_feature_flags(endpoint)
         if required_feature == "metrics" and not flags.metrics_enabled:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=disabled_detail)
         if required_feature == "usage" and not flags.usage_enabled:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=disabled_detail)
-    if not has_supervision_credentials(context):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Supervision credentials are not configured for this context")
-    return actor
 
 
 def require_iam_capable_manager(
@@ -164,14 +212,14 @@ def require_usage_logs_capable_manager(
     )
 
 
-def _manager_tool_global_state(tool: ManagerToolKey) -> tuple[bool, str]:
-    app_settings = app_settings_service.load_app_settings()
+def _manager_tool_global_state(tool: ManagerToolKey, db: Session) -> tuple[bool, str]:
+    app_settings = app_settings_service.load_app_settings_for_db_readonly(db)
     disabled_detail = _MANAGER_TOOL_DISABLED_MESSAGES[tool]
     return getattr(app_settings.manager.feature_policies, tool) != FeaturePolicy.DISABLED, disabled_detail
 
 
 def ensure_manager_tool_allowed(user: User, tool: ManagerToolKey, db: Session) -> ResolvedUserAccess:
-    enabled, disabled_detail = _manager_tool_global_state(tool)
+    enabled, disabled_detail = _manager_tool_global_state(tool, db)
     if not enabled:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=disabled_detail)
     if user.role not in MANAGER_TOOL_ROLES:
@@ -205,8 +253,8 @@ def require_bucket_purge_enabled(user: User = Depends(get_current_user), db: Ses
     return user
 
 
-def require_bucket_purge_global_enabled() -> None:
-    app_settings = app_settings_service.load_app_settings()
+def require_bucket_purge_global_enabled(db: Session = Depends(get_db)) -> None:
+    app_settings = app_settings_service.load_app_settings_for_db_readonly(db)
     if app_settings.manager.feature_policies.bucket_purge == FeaturePolicy.DISABLED:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Bucket purge feature is disabled")
 
@@ -295,31 +343,34 @@ def require_manager_rgw_access_key_management(
     return context
 
 
-def require_manager_enabled() -> None:
-    settings = app_settings_service.load_app_settings()
+def require_manager_enabled(db: Session = Depends(get_db)) -> None:
+    settings = app_settings_service.load_app_settings_for_db_readonly(db)
     if not settings.general.manager_enabled:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Manager feature is disabled")
 
 
-def require_ceph_admin_enabled() -> None:
-    settings = app_settings_service.load_app_settings()
+def require_ceph_admin_enabled(db: Session = Depends(get_db)) -> None:
+    settings = app_settings_service.load_app_settings_for_db_readonly(db)
     if not settings.general.ceph_admin_enabled:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Ceph admin feature is disabled")
 
 
-def require_storage_ops_enabled() -> None:
-    settings = app_settings_service.load_app_settings()
+def require_storage_ops_enabled(db: Session = Depends(get_db)) -> None:
+    settings = app_settings_service.load_app_settings_for_db_readonly(db)
     if not settings.general.storage_ops_enabled:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Storage Ops feature is disabled")
 
 
-def require_browser_enabled() -> None:
-    settings = app_settings_service.load_app_settings()
+def require_browser_enabled(db: Session = Depends(get_db)) -> None:
+    settings = app_settings_service.load_app_settings_for_db_readonly(db)
     if not settings.general.browser_enabled:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Browser feature is disabled")
 
 
-def require_browser_workspace_surface(request: Request) -> None:
+def require_browser_workspace_surface(
+    request: Request,
+    db: Session = Depends(get_db),
+) -> None:
     surface = browser_workspace_header(request)
     if surface not in {"", "portal", "manager-browser"}:
         raise HTTPException(
@@ -328,7 +379,7 @@ def require_browser_workspace_surface(request: Request) -> None:
         )
     if surface != "manager-browser":
         return
-    settings = app_settings_service.load_app_settings()
+    settings = app_settings_service.load_app_settings_for_db_readonly(db)
     if not settings.general.manager_enabled:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -341,13 +392,13 @@ def require_browser_workspace_surface(request: Request) -> None:
         )
 
 
-def require_portal_enabled() -> None:
-    settings = app_settings_service.load_app_settings()
+def require_portal_enabled(db: Session = Depends(get_db)) -> None:
+    settings = app_settings_service.load_app_settings_for_db_readonly(db)
     if not settings.general.portal_enabled:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Portal feature is disabled")
 
 
-def require_manager_context_enabled() -> None:
-    settings = app_settings_service.load_app_settings()
+def require_manager_context_enabled(db: Session = Depends(get_db)) -> None:
+    settings = app_settings_service.load_app_settings_for_db_readonly(db)
     if not settings.general.manager_enabled and not settings.general.browser_enabled:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Manager access is disabled")

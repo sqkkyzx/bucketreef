@@ -14,11 +14,13 @@ import type {
   BucketPolicy,
   BucketProperties,
   BucketPublicAccessBlock,
+  BucketPublicAccessBlockUpdate,
   BucketQuotaUpdate,
   BucketReplicationConfiguration,
   BucketTag,
   BucketVersioningStatus,
   BucketWebsiteConfiguration,
+  BucketWebsiteUpdate,
 } from "./bucketContracts";
 import client from "./client";
 
@@ -317,7 +319,7 @@ export async function getCephAdminBucketWebsite(
 export async function putCephAdminBucketWebsite(
   endpointId: number,
   bucketName: string,
-  payload: BucketWebsiteConfiguration,
+  payload: BucketWebsiteUpdate,
   tenant?: string | null,
 ): Promise<BucketWebsiteConfiguration> {
   return writeCephAdminBucketResource<BucketWebsiteConfiguration>(endpointId, bucketName, "website", payload, tenant);
@@ -384,7 +386,7 @@ export async function getCephAdminBucketPublicAccessBlock(
 export async function updateCephAdminBucketPublicAccessBlock(
   endpointId: number,
   bucketName: string,
-  payload: BucketPublicAccessBlock,
+  payload: BucketPublicAccessBlockUpdate,
   tenant?: string | null,
 ): Promise<BucketPublicAccessBlock> {
   return writeCephAdminBucketResource<BucketPublicAccessBlock>(endpointId, bucketName, "public-access-block", payload, tenant);
@@ -413,5 +415,9 @@ export async function updateCephAdminBucketQuota(
   payload: BucketQuotaUpdate,
   tenant?: string | null,
 ): Promise<void> {
-  return writeCephAdminBucketResourceWithoutResponse(endpointId, bucketName, "quota", payload, tenant);
+  await client.patch(
+    `${cephAdminBucketPath(endpointId, bucketName)}/quota`,
+    payload,
+    cephAdminBucketRequestConfig(tenant),
+  );
 }

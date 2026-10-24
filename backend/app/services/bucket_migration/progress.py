@@ -3,14 +3,12 @@
 from __future__ import annotations
 
 from sqlalchemy import or_, select, update
-from app.core.sensitive_data import sanitized_error_log_detail
-
 import logging
 from datetime import timedelta
 from typing import Any, Optional
 
 from app.core.config import get_settings
-from app.core.sensitive_data import sanitize_error_detail
+from app.core.sensitive_data import sanitize_error_detail, sanitized_error_log_detail
 from app.db import BucketMigration, BucketMigrationEvent, BucketMigrationItem
 from app.services.s3_execution_context import S3ExecutionTarget
 from app.services.webhook_catalog import MIGRATION_EVENT_TYPE
@@ -106,8 +104,6 @@ class BucketMigrationProgressMixin:
 
             error_text = sanitized_error_log_detail(error or "unknown fatal error")
             migration.status = "failed"
-            migration.pause_requested = False
-            migration.cancel_requested = False
             migration.worker_lease_owner = None
             migration.worker_lease_until = None
             migration.error_message = _truncate_optional_db_text(
@@ -152,8 +148,6 @@ class BucketMigrationProgressMixin:
             select(
                 BucketMigration.worker_lease_owner,
                 BucketMigration.worker_lease_until,
-                BucketMigration.cancel_requested,
-                BucketMigration.pause_requested,
                 BucketMigration.status,
             ).where(BucketMigration.id == migration_id)
         ).one()
@@ -171,15 +165,14 @@ class BucketMigrationProgressMixin:
                 if not self._renew_migration_lease(migration_id, worker_id=worker_id, lease_seconds=effective_lease_seconds):
                     return "lost_lease"
                 migration = self.get_migration(migration_id)
-        if migration.cancel_requested or migration.status == "cancel_requested":
+        if migration.status == "cancel_requested":
             return "cancel"
-        if migration.pause_requested or migration.status == "pause_requested":
+        if migration.status == "pause_requested":
             return "pause"
         return "run"
 
     def _mark_paused(self, migration: BucketMigration) -> None:
         migration.status = "paused"
-        migration.pause_requested = False
         migration.worker_lease_owner = None
         migration.worker_lease_until = None
         migration.updated_at = utcnow()
@@ -316,8 +309,6 @@ class BucketMigrationProgressMixin:
         target_ctx: Optional[_ResolvedContext] = None,
     ) -> None:
         migration.status = "canceled"
-        migration.pause_requested = False
-        migration.cancel_requested = False
         migration.worker_lease_owner = None
         migration.worker_lease_until = None
         migration.finished_at = utcnow()
@@ -341,47 +332,50 @@ class BucketMigrationProgressMixin:
         self._add_event(migration, level="info", message="Migration canceled.")
         self._recompute_counters(migration)
 
-    def _finalize_or_wait_cutover(
+    def _ready_for_cutover(self, migration: BucketMigration) -> bool:
+        if migration.mode != "pre_sync" or migration.awaiting_items <= 0:
+            return False
+        actionable_items = migration.total_items - migration.skipped_items
+        return (
+            migration.awaiting_items + migration.completed_items == actionable_items
+        )
+
+    def _mark_awaiting_cutover(self, migration: BucketMigration) -> None:
+        migration.status = "awaiting_cutover"
+        migration.worker_lease_owner = None
+        migration.worker_lease_until = None
+        migration.updated_at = utcnow()
+        self._add_event(
+            migration,
+            level="info",
+            message="All items pre-synced; waiting for cutover.",
+        )
+
+    def _has_pending_migration_items(self, migration: BucketMigration) -> bool:
+        return any(
+            item.status in {"pending", "running", "paused"}
+            for item in migration.items
+        )
+
+    def _mark_migration_finished(
         self,
         migration: BucketMigration,
         *,
-        source_ctx: Optional[_ResolvedContext] = None,
-        target_ctx: Optional[_ResolvedContext] = None,
+        target_ctx: Optional[_ResolvedContext],
     ) -> None:
-        self._recompute_counters(migration)
-        if migration.cancel_requested or migration.status == "cancel_requested":
-            self._mark_canceled(migration, source_ctx=source_ctx, target_ctx=target_ctx)
-            return
-        if migration.pause_requested or migration.status == "pause_requested":
-            self._mark_paused(migration)
-            return
-
-        total_actionable = len([item for item in migration.items if item.status not in {"skipped"}])
-        awaiting_count = len([item for item in migration.items if item.status == "awaiting_cutover"])
-        pending_count = len([item for item in migration.items if item.status in {"pending", "running", "paused"}])
-
-        if migration.mode == "pre_sync" and awaiting_count > 0 and awaiting_count + migration.completed_items == total_actionable:
-            migration.status = "awaiting_cutover"
-            migration.worker_lease_owner = None
-            migration.worker_lease_until = None
-            migration.updated_at = utcnow()
-            self._add_event(migration, level="info", message="All items pre-synced; waiting for cutover.")
-            return
-
-        if pending_count > 0:
-            migration.status = "running"
-            migration.updated_at = utcnow()
-            return
-
-        if migration.failed_items > 0:
-            migration.status = "completed_with_errors"
-        else:
-            migration.status = "completed"
+        migration.status = (
+            "completed_with_errors" if migration.failed_items > 0 else "completed"
+        )
         migration.worker_lease_owner = None
         migration.worker_lease_until = None
         migration.finished_at = utcnow()
         migration.updated_at = utcnow()
-        release_errors = self._release_target_write_locks(migration, target_ctx, verify_restored=True, preserve_awaiting=True)
+        release_errors = self._release_target_write_locks(
+            migration,
+            target_ctx,
+            verify_restored=True,
+            preserve_awaiting=True,
+        )
         if release_errors:
             if migration.status == "completed":
                 migration.status = "completed_with_errors"
@@ -390,7 +384,37 @@ class BucketMigrationProgressMixin:
                 + " | ".join(release_errors[:3]),
                 max_chars=_DB_ERROR_MESSAGE_MAX_CHARS,
             )
-        self._add_event(migration, level="info", message=f"Migration finished with status '{migration.status}'.")
+        self._add_event(
+            migration,
+            level="info",
+            message=f"Migration finished with status '{migration.status}'.",
+        )
+
+    def _finalize_or_wait_cutover(
+        self,
+        migration: BucketMigration,
+        *,
+        source_ctx: Optional[_ResolvedContext] = None,
+        target_ctx: Optional[_ResolvedContext] = None,
+    ) -> None:
+        self._recompute_counters(migration)
+        if migration.status == "cancel_requested":
+            self._mark_canceled(migration, source_ctx=source_ctx, target_ctx=target_ctx)
+            return
+        if migration.status == "pause_requested":
+            self._mark_paused(migration)
+            return
+
+        if self._ready_for_cutover(migration):
+            self._mark_awaiting_cutover(migration)
+            return
+
+        if self._has_pending_migration_items(migration):
+            migration.status = "running"
+            migration.updated_at = utcnow()
+            return
+
+        self._mark_migration_finished(migration, target_ctx=target_ctx)
 
     def _recompute_counters(self, migration: BucketMigration) -> None:
         completed = 0
@@ -485,7 +509,6 @@ class BucketMigrationProgressMixin:
                 "source_context_id": migration.source_context_id,
                 "target_context_id": migration.target_context_id,
                 "copy_bucket_settings": bool(migration.copy_bucket_settings),
-                "delete_source": bool(migration.delete_source),
                 "strong_integrity_check": bool(migration.strong_integrity_check),
                 "lock_target_writes": bool(migration.lock_target_writes),
                 "use_same_endpoint_copy": bool(migration.use_same_endpoint_copy),

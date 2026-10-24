@@ -76,7 +76,7 @@ def portal_state(
     actor = access.actor
     if not isinstance(actor, User):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Portal endpoints require a UI user")
-    eligible, reasons = service.check_eligibility(actor, access)
+    eligible, reasons = service.check_eligibility(access)
     if not eligible:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="; ".join(reasons) or "Portal not available")
     try:
@@ -102,7 +102,7 @@ def get_portal_project_settings(
     return service.get_portal_project_settings(access.account, can_update=can_update)
 
 
-@router.put("/settings", response_model=PortalProjectSettings, response_model_exclude_unset=True)
+@router.patch("/settings", response_model=PortalProjectSettings, response_model_exclude_unset=True)
 def update_portal_project_settings(
     payload: PortalSettingsOverride,
     access: AccountAccess = Depends(get_portal_account_access),

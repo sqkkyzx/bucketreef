@@ -200,16 +200,24 @@ class RGWAdminTransport:
             data=data,
             timeout=timeout,
         )
-        handled_error = (
-            (resp.status_code == 409 and allow_conflict)
-            or (resp.status_code == 404 and allow_not_found)
-            or (resp.status_code in (405, 501) and allow_not_implemented)
-            or resp.status_code >= 400
-        )
-        error_code: Optional[str] = None
-        safe_detail = "Upstream service error."
-        if handled_error:
-            error_code, safe_detail = self._safe_response_error_details(resp)
+        if resp.status_code >= 400:
+            return self._request_error_result(
+                resp,
+                allow_conflict=allow_conflict,
+                allow_not_found=allow_not_found,
+                allow_not_implemented=allow_not_implemented,
+            )
+        return self._request_success_result(resp)
+
+    def _request_error_result(
+        self,
+        resp: requests.Response,
+        *,
+        allow_conflict: bool,
+        allow_not_found: bool,
+        allow_not_implemented: bool,
+    ) -> Dict[str, Any]:
+        error_code, safe_detail = self._safe_response_error_details(resp)
         if resp.status_code == 409 and allow_conflict:
             return {
                 "conflict": True,
@@ -231,19 +239,20 @@ class RGWAdminTransport:
                 "error_code": error_code,
                 "detail": safe_detail,
             }
-        if resp.status_code >= 400:
-            logger.warning(
-                "RGW admin error status=%s code=%s detail=%s",
-                resp.status_code,
-                error_code or "unknown",
-                safe_detail,
-            )
-            raise RGWAdminError(
-                f"RGW admin error {resp.status_code} "
-                f"code={error_code or 'unknown'} detail={safe_detail}",
-                status_code=resp.status_code,
-                error_code=error_code,
-            )
+        logger.warning(
+            "RGW admin error status=%s code=%s detail=%s",
+            resp.status_code,
+            error_code or "unknown",
+            safe_detail,
+        )
+        raise RGWAdminError(
+            f"RGW admin error {resp.status_code} "
+            f"code={error_code or 'unknown'} detail={safe_detail}",
+            status_code=resp.status_code,
+            error_code=error_code,
+        )
+
+    def _request_success_result(self, resp: requests.Response) -> Dict[str, Any]:
         if not self._response_has_body(resp):
             return {}
         try:
@@ -301,7 +310,7 @@ class RGWAdminTransport:
         return bool(getattr(resp, "content", b"") or getattr(resp, "text", ""))
 
     @staticmethod
-    def _operation_error_details(payload: Any) -> tuple[Optional[str], Optional[str]]:
+    def _unwrap_operation_error_payload(payload: Any) -> Any:
         candidate = payload
         if isinstance(candidate, dict) and len(candidate) == 1:
             nested = next(iter(candidate.values()))
@@ -311,21 +320,35 @@ class RGWAdminTransport:
             nested_error = candidate.get("Error") or candidate.get("error")
             if isinstance(nested_error, dict):
                 candidate = nested_error
+        return candidate
+
+    @staticmethod
+    def _operation_error_field(candidate: dict[str, Any], *keys: str) -> Optional[str]:
+        raw_value: Any = None
+        for key in keys:
+            raw_value = candidate.get(key)
+            if raw_value:
+                break
+        return str(raw_value).strip() if raw_value is not None else None
+
+    @classmethod
+    def _operation_error_details(cls, payload: Any) -> tuple[Optional[str], Optional[str]]:
+        candidate = cls._unwrap_operation_error_payload(payload)
         if not isinstance(candidate, dict):
             return None, candidate if isinstance(candidate, str) and candidate else None
-        raw_code = (
-            candidate.get("Code")
-            or candidate.get("code")
-            or candidate.get("error_code")
-        )
-        raw_message = (
-            candidate.get("Message")
-            or candidate.get("message")
-            or candidate.get("error_message")
-        )
         return (
-            str(raw_code).strip() if raw_code is not None else None,
-            str(raw_message).strip() if raw_message is not None else None,
+            cls._operation_error_field(
+                candidate,
+                "Code",
+                "code",
+                "error_code",
+            ),
+            cls._operation_error_field(
+                candidate,
+                "Message",
+                "message",
+                "error_message",
+            ),
         )
 
     @classmethod

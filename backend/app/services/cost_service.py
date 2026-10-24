@@ -49,6 +49,21 @@ from app.services.cost_calculations import (
 CostSubject: TypeAlias = S3Account | S3User
 
 
+_COST_SUBJECT_SORT_VALUE_GETTERS = {
+    "cost": lambda entry: (
+        entry.cost.total_cost
+        if entry.cost and entry.cost.total_cost is not None
+        else -1
+    ),
+    "egress": lambda entry: entry.usage.bytes_out,
+    "ingress": lambda entry: entry.usage.bytes_in,
+    "storage": lambda entry: entry.storage.avg_bytes or 0,
+    "requests": lambda entry: entry.usage.ops_total,
+    "endpoint": lambda entry: entry.storage_endpoint_name.casefold(),
+    "name": lambda entry: entry.name.casefold(),
+}
+
+
 def _resolve_cost_model(db: Session, endpoint_id: Optional[int]) -> Optional[EffectiveCostModel]:
     global_model = db.get(CostModel, 1)
     if global_model is None:
@@ -86,6 +101,28 @@ class CostService:
     def summary(self, month: str, endpoint_id: Optional[int]) -> CostSummary:
         period = parse_cost_month(month)
         return self._summary_for_period(period, endpoint_id, "all")
+
+    @staticmethod
+    def _subject_matches_search(
+        entry: CostSubjectSummary,
+        search_value: str,
+    ) -> bool:
+        return any(
+            search_value in candidate.casefold()
+            for candidate in (
+                entry.name,
+                entry.rgw_identifier or "",
+                entry.storage_endpoint_name,
+            )
+        )
+
+    @staticmethod
+    def _subject_sort_value(entry: CostSubjectSummary, sort_by: str):
+        getter = _COST_SUBJECT_SORT_VALUE_GETTERS.get(
+            sort_by,
+            _COST_SUBJECT_SORT_VALUE_GETTERS["name"],
+        )
+        return getter(entry)
 
     def _summary_for_period(
         self,
@@ -152,27 +189,12 @@ class CostService:
             items = [
                 entry
                 for entry in items
-                if search_value in entry.name.casefold()
-                or search_value in (entry.rgw_identifier or "").casefold()
-                or search_value in entry.storage_endpoint_name.casefold()
+                if self._subject_matches_search(entry, search_value)
             ]
-
-        def sort_key(entry: CostSubjectSummary):
-            if sort_by == "cost":
-                return entry.cost.total_cost if entry.cost and entry.cost.total_cost is not None else -1
-            if sort_by == "egress":
-                return entry.usage.bytes_out
-            if sort_by == "ingress":
-                return entry.usage.bytes_in
-            if sort_by == "storage":
-                return entry.storage.avg_bytes or 0
-            if sort_by == "requests":
-                return entry.usage.ops_total
-            if sort_by == "endpoint":
-                return entry.storage_endpoint_name.casefold()
-            return entry.name.casefold()
-
-        items.sort(key=sort_key, reverse=sort_dir == "desc")
+        items.sort(
+            key=lambda entry: self._subject_sort_value(entry, sort_by),
+            reverse=sort_dir == "desc",
+        )
         total = len(items)
         start = max(page - 1, 0) * page_size
         end = start + page_size
@@ -459,7 +481,6 @@ class CostService:
         return CostAnalyticsConcentration(
             top_five_cost=top_five_cost,
             other_cost=max(subject_total_cost - top_five_cost, 0),
-            subject_total_cost=subject_total_cost,
             top_five_ratio=top_five_cost / subject_total_cost if subject_total_cost > 0 else 0,
         )
 
@@ -624,19 +645,14 @@ class CostService:
             CostUsageDaily.day >= period.start,
             CostUsageDaily.day < period.end,
         )
-        if endpoint_id is not None:
-            usage_statement = usage_statement.where(
-                CostUsageDaily.storage_endpoint_id == endpoint_id
-            )
-        else:
-            usage_statement = usage_statement.join(
-                StorageEndpoint,
-                StorageEndpoint.id == CostUsageDaily.storage_endpoint_id,
-            ).where(StorageEndpoint.provider == StorageProvider.CEPH.value)
-        if subject_type == "account":
-            usage_statement = usage_statement.where(CostUsageDaily.s3_account_id.isnot(None))
-        elif subject_type == "s3_user":
-            usage_statement = usage_statement.where(CostUsageDaily.s3_user_id.isnot(None))
+        usage_statement = self._scope_daily_cost_statement(
+            usage_statement,
+            endpoint_column=CostUsageDaily.storage_endpoint_id,
+            account_column=CostUsageDaily.s3_account_id,
+            user_column=CostUsageDaily.s3_user_id,
+            endpoint_id=endpoint_id,
+            subject_type=subject_type,
+        )
         usage_row = self.db.execute(usage_statement).one()
         bytes_in = int(usage_row[0] or 0)
         bytes_out = int(usage_row[1] or 0)
@@ -651,19 +667,14 @@ class CostService:
             CostStorageDaily.day >= period.start,
             CostStorageDaily.day < period.end,
         )
-        if endpoint_id is not None:
-            storage_statement = storage_statement.where(
-                CostStorageDaily.storage_endpoint_id == endpoint_id
-            )
-        else:
-            storage_statement = storage_statement.join(
-                StorageEndpoint,
-                StorageEndpoint.id == CostStorageDaily.storage_endpoint_id,
-            ).where(StorageEndpoint.provider == StorageProvider.CEPH.value)
-        if subject_type == "account":
-            storage_statement = storage_statement.where(CostStorageDaily.s3_account_id.isnot(None))
-        elif subject_type == "s3_user":
-            storage_statement = storage_statement.where(CostStorageDaily.s3_user_id.isnot(None))
+        storage_statement = self._scope_daily_cost_statement(
+            storage_statement,
+            endpoint_column=CostStorageDaily.storage_endpoint_id,
+            account_column=CostStorageDaily.s3_account_id,
+            user_column=CostStorageDaily.s3_user_id,
+            endpoint_id=endpoint_id,
+            subject_type=subject_type,
+        )
         storage_row = self.db.execute(storage_statement).one()
         total_bytes = storage_row[0] or 0
         total_objects = storage_row[1]
@@ -682,6 +693,29 @@ class CostService:
             storage_days_with_data=days_with_storage,
             usage_days_with_data=days_with_usage,
         )
+
+    @staticmethod
+    def _scope_daily_cost_statement(
+        statement,
+        *,
+        endpoint_column,
+        account_column,
+        user_column,
+        endpoint_id: Optional[int],
+        subject_type: Optional[str],
+    ):
+        if endpoint_id is not None:
+            statement = statement.where(endpoint_column == endpoint_id)
+        else:
+            statement = statement.join(
+                StorageEndpoint,
+                StorageEndpoint.id == endpoint_column,
+            ).where(StorageEndpoint.provider == StorageProvider.CEPH.value)
+        if subject_type == "account":
+            return statement.where(account_column.isnot(None))
+        if subject_type == "s3_user":
+            return statement.where(user_column.isnot(None))
+        return statement
 
     def _usage_totals_by_subject(
         self,

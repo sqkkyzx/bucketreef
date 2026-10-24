@@ -37,10 +37,12 @@ from app.models.bucket import (
     BucketReplicationConfiguration,
     BucketProperties,
     BucketPublicAccessBlock,
+    BucketPublicAccessBlockUpdate,
     BucketQuotaUpdate,
     BucketTag,
     BucketWebsiteConfiguration,
     BucketWebsiteRedirectAllRequestsTo,
+    BucketWebsiteUpdate,
     LifecycleRule,
 )
 from app.utils.rgw_identifiers import (
@@ -99,7 +101,6 @@ class BucketConfigurationService:
 
     def _resolve_bucket_quota_scope(
         self,
-        name: str,
         execution_context: S3ExecutionTarget,
         *,
         rgw_tenant: str | None = None,
@@ -270,15 +271,13 @@ class BucketConfigurationService:
         self,
         name: str,
         execution_context: S3ExecutionTarget,
-        payload: BucketPublicAccessBlock,
+        payload: BucketPublicAccessBlockUpdate,
     ) -> BucketPublicAccessBlock:
         config = {
-            "BlockPublicAcls": bool(payload.block_public_acls) if payload.block_public_acls is not None else False,
-            "IgnorePublicAcls": bool(payload.ignore_public_acls) if payload.ignore_public_acls is not None else False,
-            "BlockPublicPolicy": bool(payload.block_public_policy) if payload.block_public_policy is not None else False,
-            "RestrictPublicBuckets": bool(payload.restrict_public_buckets)
-            if payload.restrict_public_buckets is not None
-            else False,
+            "BlockPublicAcls": payload.block_public_acls,
+            "IgnorePublicAcls": payload.ignore_public_acls,
+            "BlockPublicPolicy": payload.block_public_policy,
+            "RestrictPublicBuckets": payload.restrict_public_buckets,
         }
         if not any(config.values()):
             config = {}
@@ -308,7 +307,6 @@ class BucketConfigurationService:
     ) -> None:
         client = rgw_admin or self._rgw_bucket_quota_admin_for_context(execution_context)
         _account_id, tenant, root_uid = self._resolve_bucket_quota_scope(
-            name,
             execution_context,
             rgw_tenant=rgw_tenant,
         )
@@ -560,7 +558,12 @@ class BucketConfigurationService:
             **self._bucket_client_kwargs(execution_context, name),
         )
         if not config:
-            return BucketWebsiteConfiguration(routing_rules=[])
+            return BucketWebsiteConfiguration(
+                index_document=None,
+                error_document=None,
+                redirect_all_requests_to=None,
+                routing_rules=[],
+            )
         index_document = None
         error_document = None
         redirect = None
@@ -592,7 +595,7 @@ class BucketConfigurationService:
         self,
         name: str,
         execution_context: S3ExecutionTarget,
-        payload: BucketWebsiteConfiguration,
+        payload: BucketWebsiteUpdate,
     ) -> BucketWebsiteConfiguration:
         config: dict = {}
         if payload.redirect_all_requests_to:

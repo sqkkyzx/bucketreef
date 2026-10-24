@@ -16,11 +16,13 @@ import type {
   BucketPolicy,
   BucketProperties,
   BucketPublicAccessBlock,
+  BucketPublicAccessBlockUpdate,
   BucketQuotaUpdate,
   BucketReplicationConfiguration,
   BucketTag,
   BucketVersioningStatus,
   BucketWebsiteConfiguration,
+  BucketWebsiteUpdate,
 } from "./bucketContracts";
 import client from "./client";
 
@@ -135,7 +137,7 @@ function createManagerBucketDetailsApi() {
     updateBucketPublicAccessBlock: (
       contextId: S3ExecutionContextSelector,
       bucketName: string,
-      payload: BucketPublicAccessBlock,
+      payload: BucketPublicAccessBlockUpdate,
     ) =>
       write<BucketPublicAccessBlock>(
         contextId,
@@ -143,11 +145,17 @@ function createManagerBucketDetailsApi() {
         "public-access-block",
         payload,
       ),
-    updateBucketQuota: (
+    updateBucketQuota: async (
       contextId: S3ExecutionContextSelector,
       bucketName: string,
       payload: BucketQuotaUpdate,
-    ) => writeWithoutResponse(contextId, bucketName, "quota", payload),
+    ) => {
+      await client.patch(
+        `${bucketPath(bucketName)}/quota`,
+        payload,
+        requestConfig(contextId),
+      );
+    },
     getBucketVersioning: (
       contextId: S3ExecutionContextSelector,
       bucketName: string,
@@ -280,7 +288,7 @@ function createManagerBucketDetailsApi() {
     putBucketWebsite: (
       contextId: S3ExecutionContextSelector,
       bucketName: string,
-      payload: BucketWebsiteConfiguration,
+      payload: BucketWebsiteUpdate,
     ) =>
       write<BucketWebsiteConfiguration>(
         contextId,

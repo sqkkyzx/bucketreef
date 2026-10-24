@@ -40,16 +40,16 @@ BucketMigrationItemStatus = Literal[
 
 class BucketMigrationBucketMapping(ApiModel):
     source_bucket: str
-    target_bucket: Optional[str] = None
+    target_bucket: str
 
     @model_validator(mode="after")
     def validate_names(self):
         self.source_bucket = (self.source_bucket or "").strip()
         if not self.source_bucket:
             raise ValueError("source_bucket is required")
-        if self.target_bucket is not None:
-            normalized_target = self.target_bucket.strip()
-            self.target_bucket = normalized_target or None
+        self.target_bucket = (self.target_bucket or "").strip()
+        if not self.target_bucket:
+            raise ValueError("target_bucket is required")
         return self
 
 
@@ -58,10 +58,8 @@ class BucketMigrationDraftRequest(ApiModel):
     target_context_id: str
     buckets: list[BucketMigrationBucketMapping] = Field(default_factory=list, min_length=1)
 
-    mapping_prefix: str = ""
     mode: BucketMigrationMode = "pre_sync"
     copy_bucket_settings: bool = False
-    delete_source: bool = False
     strong_integrity_check: bool = False
     lock_target_writes: bool = True
     use_same_endpoint_copy: bool = False
@@ -69,11 +67,8 @@ class BucketMigrationDraftRequest(ApiModel):
     parallelism_max: Optional[int] = Field(default=None, ge=1, le=128)
     @model_validator(mode="after")
     def validate_payload(self):
-        if self.delete_source:
-            raise ValueError("Source deletion is a separate operation after migration verification")
         self.source_context_id = (self.source_context_id or "").strip()
         self.target_context_id = (self.target_context_id or "").strip()
-        self.mapping_prefix = (self.mapping_prefix or "").strip()
         if not self.source_context_id:
             raise ValueError("source_context_id is required")
         if not self.target_context_id:
@@ -128,72 +123,71 @@ class BucketMigrationDiagnostic(ApiModel):
     details: Optional[dict]
 
 
+class BucketMigrationPrecheckItemView(ApiModel):
+    item_id: int
+    source_bucket: str
+    strategy: str
+    state: Literal["ready", "blocked", "unverified", "warning"]
+    blocking: bool
+    warnings: int
+    settings_copied: list[str]
+    settings_omitted: list[str]
+    source_object_count: Optional[int]
+    checks: list[BucketMigrationDiagnostic]
+
+
+class BucketMigrationPrecheckReportView(ApiModel):
+    errors: int
+    warnings: int
+    checks: list[BucketMigrationDiagnostic]
+    items: list[BucketMigrationPrecheckItemView]
+
+
 class BucketMigrationItemView(ApiModel):
     id: int
     source_bucket: str
     target_bucket: str
     status: BucketMigrationItemStatus
     step: str
-    pre_sync_done: bool
     read_only_applied: bool
     target_lock_applied: bool
-    target_bucket_exists: bool
     target_created_by_migration: bool
     recovery_required: bool
     source_deleted: bool
-    cleanup_status: str
     cleanup_error: Optional[str]
 
     objects_copied: int
-    objects_deleted: int
 
-    source_count: Optional[int]
-    target_count: Optional[int]
-    matched_count: Optional[int]
     different_count: Optional[int]
     only_source_count: Optional[int]
     only_target_count: Optional[int]
     diff_sample: Optional[dict]
 
     error_message: Optional[str]
-    started_at: Optional[datetime]
-    finished_at: Optional[datetime]
-    created_at: datetime
-    updated_at: datetime
 
 
 class BucketMigrationEventView(ApiModel):
     id: int
-    item_id: Optional[int]
-    level: str
     message: str
-    metadata: Optional[dict]
     created_at: datetime
 
 
 class BucketMigrationView(ApiModel):
     id: int
-    created_by_user_id: Optional[int]
 
     source_context_id: str
     target_context_id: str
     mode: BucketMigrationMode
     copy_bucket_settings: bool
-    delete_source: bool
-    strong_integrity_check: bool
     lock_target_writes: bool
     use_same_endpoint_copy: bool
     auto_grant_source_read_for_copy: bool
-    mapping_prefix: Optional[str]
 
     status: BucketMigrationStatus
-    pause_requested: bool
-    cancel_requested: bool
     precheck_status: BucketMigrationPrecheckStatus
-    precheck_report: Optional[dict]
+    precheck_report: Optional[BucketMigrationPrecheckReportView]
     precheck_checked_at: Optional[datetime]
     configuration_revision: int
-    checked_revision: Optional[int]
     preparation_status: Literal["unverified", "checking", "blocked", "ready", "stale"]
     preparation_active_checks: bool
     preparation_completed_items: int
@@ -202,8 +196,6 @@ class BucketMigrationView(ApiModel):
     maintenance_error: Optional[str]
     available_actions: dict[str, BucketMigrationActionAvailability]
 
-    parallelism_max: int
-
     total_items: int
     completed_items: int
     failed_items: int
@@ -211,12 +203,6 @@ class BucketMigrationView(ApiModel):
     awaiting_items: int
 
     error_message: Optional[str]
-
-    started_at: Optional[datetime]
-    finished_at: Optional[datetime]
-    last_heartbeat_at: Optional[datetime]
-
-    created_at: datetime
     updated_at: datetime
 
 
@@ -225,8 +211,25 @@ class BucketMigrationDetail(BucketMigrationView):
     recent_events: list[BucketMigrationEventView]
 
 
+class BucketMigrationListItem(ApiModel):
+    id: int
+    source_context_id: str
+    target_context_id: str
+    status: BucketMigrationStatus
+    precheck_checked_at: Optional[datetime]
+    preparation_status: Literal["unverified", "checking", "blocked", "ready", "stale"]
+    preparation_completed_items: int
+    maintenance_status: str
+    total_items: int
+    completed_items: int
+    failed_items: int
+    skipped_items: int
+    awaiting_items: int
+    updated_at: datetime
+
+
 class BucketMigrationListResponse(ApiModel):
-    items: list[BucketMigrationView]
+    items: list[BucketMigrationListItem]
 
 
 class BucketMigrationActionResponse(ApiModel):

@@ -16,10 +16,11 @@ from app.models.bucket import (
     BucketTags,
     BucketTagsUpdate,
     BucketWebsiteConfiguration,
+    BucketWebsiteUpdate,
 )
 from app.services.storage_endpoint_feature_guards import require_replication_feature
 from app.routers.dependencies import get_s3_execution_context, get_current_account_admin
-from app.routers.manager.bucket_config_core import get_manager_bucket_config_mutation_service
+from app.routers.manager.bucket_config_common import get_manager_bucket_config_mutation_service
 from app.services import bucket_config_actions
 from app.services.bucket_config_mutation_service import BucketConfigMutationService
 from app.services.bucket_configuration_service import (
@@ -301,7 +302,7 @@ def get_website(
 @router.put("/{bucket_name}/website", response_model=BucketWebsiteConfiguration)
 def put_website(
     bucket_name: str,
-    payload: BucketWebsiteConfiguration,
+    payload: BucketWebsiteUpdate,
     context: S3ExecutionContext = Depends(get_s3_execution_context),
     current_user: ManagerActor = Depends(get_current_account_admin),
     mutation: BucketConfigMutationService = Depends(get_manager_bucket_config_mutation_service),

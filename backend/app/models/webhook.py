@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Literal
 from urllib.parse import urlparse
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import field_validator, model_validator
 
 from app.models.base import ApiModel
 
@@ -25,8 +25,8 @@ def _normalize_event_types(values: list[str] | None) -> list[str]:
 class WebhookEndpointPayload(ApiModel):
     name: str
     url: str
-    enabled: bool = False
-    event_types: list[str] = Field(default_factory=lambda: ["*"])
+    enabled: bool
+    event_types: list[str]
 
     @field_validator("name", mode="before")
     @classmethod
@@ -67,17 +67,12 @@ class WebhookEndpointPayload(ApiModel):
 
 class WebhookDeliveryOut(ApiModel):
     id: int
-    delivery_id: str
-    event_id: str
-    endpoint_id: int
     event_type: str
     is_test: bool
     status: Literal["pending", "retrying", "delivered", "failed"]
     attempt_count: int
-    next_attempt_at: datetime
     last_http_status: int | None
     last_error: str | None
-    created_at: datetime
     updated_at: datetime
     delivered_at: datetime | None
 

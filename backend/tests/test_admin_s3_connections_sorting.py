@@ -5,6 +5,8 @@ from __future__ import annotations
 from datetime import UTC, datetime
 import json
 
+import sqlalchemy as sa
+
 from app.db import S3Connection, UiGroup, UiGroupS3Connection, User, UserRole, UserS3Connection
 from app.services.tags_service import TagsService
 from tests.auth_test_utils import authenticate_ui_client
@@ -208,7 +210,7 @@ def test_admin_s3_connections_update_replaces_direct_group_links(client, db_sess
     db_session.add(UiGroupS3Connection(group_id=old_group.id, s3_connection_id=connection.id))
     db_session.commit()
 
-    response = client.put(f"/api/admin/s3-connections/{connection.id}", json={"group_ids": [new_group.id]})
+    response = client.patch(f"/api/admin/s3-connections/{connection.id}", json={"group_ids": [new_group.id]})
     assert response.status_code == 200, response.text
     payload = response.json()
 
@@ -216,5 +218,7 @@ def test_admin_s3_connections_update_replaces_direct_group_links(client, db_sess
     assert payload["group_details"][0]["id"] == new_group.id
     assert payload["group_details"][0]["name"] == "New Connection Group"
     assert payload["group_details"][0]["avatar"]["initials"] == "NG"
-    rows = db_session.query(UiGroupS3Connection).filter(UiGroupS3Connection.s3_connection_id == connection.id).all()
+    rows = db_session.scalars(
+        sa.select(UiGroupS3Connection).where(UiGroupS3Connection.s3_connection_id == connection.id)
+    ).all()
     assert [row.group_id for row in rows] == [new_group.id]

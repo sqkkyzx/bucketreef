@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import logging
-import ipaddress
-import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Optional
@@ -21,6 +19,7 @@ from app.models.bucket_migration import (
     BucketMigrationDraftRequest,
     BucketMigrationUpdateRequest,
 )
+from app.utils.resource_names import validate_s3_bucket_name
 from app.utils.time import utcnow
 
 from ._shared import (
@@ -81,37 +80,19 @@ class BucketMigrationPlanningMixin:
         seen_targets: set[str] = set()
         for entry in payload.buckets:
             source_bucket = (entry.source_bucket or "").strip()
-            target_bucket = (
-                (entry.target_bucket or "").strip()
-                or f"{payload.mapping_prefix}{source_bucket}"
-            ).strip()
+            target_bucket = (entry.target_bucket or "").strip()
             if not source_bucket:
                 raise ValueError("source bucket is required")
             if not target_bucket:
                 raise ValueError(
                     f"target bucket is required for source '{source_bucket}'"
                 )
-            invalid_name = (
-                not re.fullmatch(r"[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]", target_bucket)
-                or ".." in target_bucket
-                or ".-" in target_bucket
-                or "-." in target_bucket
-            )
             try:
-                ipaddress.ip_address(target_bucket)
-                invalid_name = True
-            except ValueError:
-                pass
-            if (
-                invalid_name
-                or target_bucket.startswith(("xn--", "sthree-", "amzn-s3-demo-"))
-                or target_bucket.endswith(
-                    ("-s3alias", "--ol-s3", ".mrap", "--x-s3", "--table-s3")
-                )
-            ):
+                validate_s3_bucket_name(target_bucket)
+            except ValueError as exc:
                 raise ValueError(
                     f"Invalid destination bucket name '{target_bucket}'. Use 3–63 lowercase letters, numbers, dots or hyphens."
-                )
+                ) from exc
             if target_bucket in seen_targets:
                 raise ValueError(f"Duplicate target bucket mapping: {target_bucket}")
             seen_targets.add(target_bucket)
@@ -200,7 +181,6 @@ class BucketMigrationPlanningMixin:
             "target_context_id": payload.target_context_id,
             "mode": payload.mode,
             "copy_bucket_settings": bool(payload.copy_bucket_settings),
-            "delete_source": bool(payload.delete_source),
             "strong_integrity_check": bool(payload.strong_integrity_check),
             "lock_target_writes": bool(payload.lock_target_writes),
             "use_same_endpoint_copy": configuration.use_same_endpoint_copy,
@@ -244,7 +224,6 @@ class BucketMigrationPlanningMixin:
         item.pre_sync_done = False
         item.read_only_applied = False
         item.target_lock_applied = False
-        item.target_bucket_exists = False
         item.objects_copied = 0
         item.objects_deleted = 0
         item.source_count = None
@@ -302,12 +281,10 @@ class BucketMigrationPlanningMixin:
             target_context_id=payload.target_context_id,
             mode=payload.mode,
             copy_bucket_settings=bool(payload.copy_bucket_settings),
-            delete_source=False,
             strong_integrity_check=bool(payload.strong_integrity_check),
             lock_target_writes=bool(payload.lock_target_writes),
             use_same_endpoint_copy=configuration.use_same_endpoint_copy,
             auto_grant_source_read_for_copy=configuration.auto_grant_source_read_for_copy,
-            mapping_prefix=payload.mapping_prefix or None,
             status="draft",
             precheck_status="pending",
             precheck_report_json=None,
@@ -370,18 +347,14 @@ class BucketMigrationPlanningMixin:
         migration.target_context_id = payload.target_context_id
         migration.mode = payload.mode
         migration.copy_bucket_settings = bool(payload.copy_bucket_settings)
-        migration.delete_source = False
         migration.strong_integrity_check = bool(payload.strong_integrity_check)
         migration.lock_target_writes = bool(payload.lock_target_writes)
         migration.use_same_endpoint_copy = configuration.use_same_endpoint_copy
         migration.auto_grant_source_read_for_copy = (
             configuration.auto_grant_source_read_for_copy
         )
-        migration.mapping_prefix = payload.mapping_prefix or None
         migration.parallelism_max = configuration.parallelism
         migration.status = "draft"
-        migration.pause_requested = False
-        migration.cancel_requested = False
         migration.worker_lease_owner = None
         migration.worker_lease_until = None
         migration.precheck_status = "pending"
@@ -489,14 +462,13 @@ class BucketMigrationPlanningMixin:
         self.db.delete(migration)
         self._commit()
 
-    def start_migration(
+    def _validate_start_request(
         self,
-        migration_id: int,
+        migration: BucketMigration,
         *,
-        configuration_revision: int | None = None,
-        confirm_write_interruption: bool = False,
-    ) -> BucketMigration:
-        migration = self.get_migration(migration_id)
+        configuration_revision: int | None,
+        confirm_write_interruption: bool,
+    ) -> None:
         self._assert_migration_creator_access(migration)
         self._assert_cross_account_admin_contexts(
             migration.source_context_id, migration.target_context_id
@@ -510,30 +482,41 @@ class BucketMigrationPlanningMixin:
             raise ValueError(
                 "Confirm the source write interruption before starting an immediate migration"
             )
+
+    def _record_start_precondition_failure(
+        self,
+        migration: BucketMigration,
+        exc: ValueError,
+    ) -> None:
+        from .precheck import _check_entry
+
+        migration.preparation_status = "stale"
+        migration.checked_revision = None
+        migration.precheck_status = "failed"
+        report = _json_loads(migration.precheck_report_json) or {}
+        report["checks"] = [
+            _check_entry(
+                code="start_precondition_changed",
+                severity="error",
+                blocking=True,
+                scope="migration",
+                message=sanitized_error_log_detail(exc),
+            )
+        ]
+        report["errors"] = max(1, report.get("errors", 0))
+        report["status"] = "failed"
+        migration.precheck_report_json = _json_dumps(report)
+        self._commit()
+
+    def _revalidate_start_preconditions(self, migration: BucketMigration) -> None:
         try:
             self._revalidate_transfer_preconditions(migration)
         except ValueError as exc:
-            migration.preparation_status = "stale"
-            migration.checked_revision = None
-            migration.precheck_status = "failed"
-            report = _json_loads(migration.precheck_report_json) or {}
-            from .precheck import _check_entry
-
-            report["checks"] = [
-                _check_entry(
-                    code="start_precondition_changed",
-                    severity="error",
-                    blocking=True,
-                    scope="migration",
-                    message=sanitized_error_log_detail(exc),
-                )
-            ]
-            report["errors"] = max(1, report.get("errors", 0))
-            report["status"] = "failed"
-            migration.precheck_report_json = _json_dumps(report)
-            self._commit()
+            self._record_start_precondition_failure(migration, exc)
             raise
-        if migration.status not in {"draft"}:
+
+    def _validate_start_execution_plan(self, migration: BucketMigration) -> None:
+        if migration.status != "draft":
             raise ValueError("Migration cannot be started from current status")
         if migration.precheck_status != "passed":
             raise ValueError("Precheck must pass before start. Run /precheck first.")
@@ -545,9 +528,9 @@ class BucketMigrationPlanningMixin:
                     "Precheck must be re-run before start. "
                     f"Item '{item.source_bucket}' -> '{item.target_bucket}' is not runnable: {exc}"
                 ) from exc
+
+    def _queue_migration_for_start(self, migration: BucketMigration) -> None:
         self._transition_command(migration, status="queued")
-        migration.pause_requested = False
-        migration.cancel_requested = False
         migration.worker_lease_owner = None
         migration.worker_lease_until = None
         migration.error_message = None
@@ -563,6 +546,23 @@ class BucketMigrationPlanningMixin:
             item.updated_at = utcnow()
         self._add_event(migration, level="info", message="Migration queued.")
         self._commit()
+
+    def start_migration(
+        self,
+        migration_id: int,
+        *,
+        configuration_revision: int | None = None,
+        confirm_write_interruption: bool = False,
+    ) -> BucketMigration:
+        migration = self.get_migration(migration_id)
+        self._validate_start_request(
+            migration,
+            configuration_revision=configuration_revision,
+            confirm_write_interruption=confirm_write_interruption,
+        )
+        self._revalidate_start_preconditions(migration)
+        self._validate_start_execution_plan(migration)
+        self._queue_migration_for_start(migration)
         self.db.refresh(migration)
         return migration
 
@@ -577,7 +577,6 @@ class BucketMigrationPlanningMixin:
             migration,
             allowed_statuses=("queued", "running", "pause_requested"),
             status="pause_requested",
-            pause_requested=True,
         )
         migration.updated_at = utcnow()
         self._add_event(migration, level="info", message="Pause requested.")
@@ -591,8 +590,6 @@ class BucketMigrationPlanningMixin:
         self._revalidate_transfer_preconditions(migration)
         if migration.status not in {"paused"}:
             raise ValueError("Resume is only available from paused status")
-        migration.pause_requested = False
-        migration.cancel_requested = False
         self._transition_command(migration, status="queued")
         migration.worker_lease_owner = None
         migration.worker_lease_until = None
@@ -609,9 +606,7 @@ class BucketMigrationPlanningMixin:
     def stop_migration(self, migration_id: int) -> BucketMigration:
         migration = self.get_migration(migration_id)
         require_action(migration, "stop")
-        self._transition_command(
-            migration, status="cancel_requested", cancel_requested=True
-        )
+        self._transition_command(migration, status="cancel_requested")
         migration.updated_at = utcnow()
         self._add_event(migration, level="info", message="Stop requested.")
         self._commit()
@@ -631,8 +626,6 @@ class BucketMigrationPlanningMixin:
                 "Continue is only available when migration is awaiting cutover"
             )
         self._transition_command(migration, status="queued")
-        migration.pause_requested = False
-        migration.cancel_requested = False
         migration.worker_lease_owner = None
         migration.worker_lease_until = None
         migration.updated_at = utcnow()

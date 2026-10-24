@@ -7,10 +7,9 @@ from typing import Any, Callable
 
 
 @dataclass(frozen=True)
-class PrecheckItemSafety:
-    same_endpoint_copy_safe: bool
-    delete_source_safe: bool
-    rollback_safe: bool
+class SourceStrategyDecision:
+    strategy: str
+    requires_object_lock_governance: bool
 
 
 class BucketMigrationPrecheckRules:
@@ -19,7 +18,47 @@ class BucketMigrationPrecheckRules:
     def __init__(self, service: Any) -> None:
         self._service = service
 
-    def add_source_strategy_check(
+    def evaluate_source_strategy(
+        self,
+        *,
+        profile: dict[str, Any],
+        initial_strategy: str,
+        add_check: Callable[..., None],
+    ) -> SourceStrategyDecision:
+        versioning = profile.get("versioning") or {}
+        version_scan = profile.get("version_scan") or {}
+        object_lock = profile.get("object_lock") or {}
+        requires_version_aware = bool(
+            versioning.get("enabled")
+            or versioning.get("suspended")
+            or version_scan.get("has_noncurrent_versions")
+            or version_scan.get("has_delete_markers")
+        )
+        requires_object_lock_governance = bool(
+            object_lock.get("enabled")
+            or object_lock.get("mode")
+            or object_lock.get("days") is not None
+            or object_lock.get("years") is not None
+        )
+        strategy = (
+            "version_aware"
+            if requires_version_aware or requires_object_lock_governance
+            else initial_strategy
+        )
+        self._add_source_strategy_check(
+            versioning=versioning,
+            version_scan=version_scan,
+            object_lock=object_lock,
+            requires_version_aware=requires_version_aware,
+            requires_object_lock_governance=requires_object_lock_governance,
+            add_check=add_check,
+        )
+        return SourceStrategyDecision(
+            strategy=strategy,
+            requires_object_lock_governance=requires_object_lock_governance,
+        )
+
+    def _add_source_strategy_check(
         self,
         *,
         versioning: dict[str, Any],
@@ -176,7 +215,7 @@ class BucketMigrationPrecheckRules:
                 message=f"Version-aware source access precheck failed: {exc}",
             )
 
-    def evaluate_item_safety(
+    def add_item_safety_checks(
         self,
         source_context: Any,
         target_context: Any,
@@ -189,8 +228,8 @@ class BucketMigrationPrecheckRules:
         strategy: str,
         same_endpoint_copy_enabled: bool,
         add_check: Callable[..., None],
-    ) -> PrecheckItemSafety:
-        same_endpoint_copy_safe = self._check_same_endpoint_copy_safety(
+    ) -> None:
+        self._check_same_endpoint_copy_safety(
             source_context,
             target_context,
             item,
@@ -208,19 +247,14 @@ class BucketMigrationPrecheckRules:
                 target_context,
                 item,
                 migration,
+                source_profile=source_profile,
                 strategy=strategy,
                 add_check=add_check,
             )
-        delete_source_safe, rollback_safe = self._check_destructive_safety(
+        self._check_rollback_safety(
             source_profile,
-            migration=migration,
             strategy=strategy,
             add_check=add_check,
-        )
-        return PrecheckItemSafety(
-            same_endpoint_copy_safe=same_endpoint_copy_safe,
-            delete_source_safe=delete_source_safe,
-            rollback_safe=rollback_safe,
         )
 
     def _check_same_endpoint_copy_safety(
@@ -236,11 +270,11 @@ class BucketMigrationPrecheckRules:
         strategy: str,
         enabled: bool,
         add_check: Callable[..., None],
-    ) -> bool:
+    ) -> None:
         if not enabled:
-            return True
+            return
         if target_exists is True or not source_access_ok:
-            return False
+            return
         try:
             probe = self._service._precheck_same_endpoint_copy_source_access(
                 source_context,
@@ -259,7 +293,7 @@ class BucketMigrationPrecheckRules:
                 scope="same_endpoint_copy",
                 message=("Same-endpoint x-amz-copy-source precheck failed: " f"{exc}"),
             )
-            return False
+            return
         if probe == "source_empty":
             add_check(
                 code="same_endpoint_copy_unvalidated",
@@ -271,7 +305,7 @@ class BucketMigrationPrecheckRules:
                     "permissions cannot be validated in fail-closed mode."
                 ),
             )
-            return False
+            return
         if probe == "validated_with_temporary_grant":
             add_check(
                 code="same_endpoint_copy_validated_with_grant",
@@ -283,7 +317,7 @@ class BucketMigrationPrecheckRules:
                     "with a temporary source-read grant."
                 ),
             )
-            return True
+            return
         add_check(
             code="same_endpoint_copy_validated",
             severity="info",
@@ -291,7 +325,6 @@ class BucketMigrationPrecheckRules:
             scope="same_endpoint_copy",
             message="Same-endpoint x-amz-copy-source permissions are valid.",
         )
-        return True
 
     def _check_cutover_policies(
         self,
@@ -300,6 +333,7 @@ class BucketMigrationPrecheckRules:
         item,
         migration,
         *,
+        source_profile,
         strategy,
         add_check,
     ) -> None:
@@ -333,7 +367,12 @@ class BucketMigrationPrecheckRules:
             )
         try:
             self._service._precheck_destination(
-                migration, item, source_context, target_context, strategy=strategy
+                migration,
+                item,
+                source_context,
+                target_context,
+                source_profile=source_profile,
+                strategy=strategy,
             )
             add_check(
                 code="target_write_validated",
@@ -351,56 +390,30 @@ class BucketMigrationPrecheckRules:
                 message=f"Destination write test or temporary bucket cleanup failed: {exc}",
             )
 
-    def _check_destructive_safety(
+    def _check_rollback_safety(
         self,
         source_profile: dict[str, Any] | None,
         *,
-        migration: Any,
         strategy: str,
         add_check: Callable[..., None],
-    ) -> tuple[bool, bool]:
+    ) -> None:
         object_lock = (source_profile or {}).get("object_lock", {})
         object_lock_configured = any(
             bool(object_lock.get(field))
             for field in ("enabled", "mode", "days", "years")
         )
-        delete_source_safe = True
-        if migration.delete_source:
-            delete_source_safe = not (
-                strategy == "version_aware" and object_lock_configured
-            )
-            add_check(
-                code=(
-                    "delete_source_supported"
-                    if delete_source_safe
-                    else "delete_source_object_lock_not_supported"
-                ),
-                severity="info" if delete_source_safe else "error",
-                blocking=not delete_source_safe,
-                scope="delete_source",
-                message=(
-                    "Source deletion is compatible with the planned migration strategy."
-                    if delete_source_safe
-                    else (
-                        "Source deletion is blocked because object-lock governance "
-                        "is not supported by the version-aware migration worker."
-                    )
-                ),
-            )
-
-        rollback_safe = (
+        if (
             strategy in {"current_only", "skip_existing", "version_aware"}
             and not object_lock_configured
+        ):
+            return
+        add_check(
+            code="rollback_not_safe",
+            severity="error",
+            blocking=True,
+            scope="rollback",
+            message=(
+                "Rollback safety cannot be guaranteed for this bucket with the "
+                "current migration engine."
+            ),
         )
-        if not rollback_safe:
-            add_check(
-                code="rollback_not_safe",
-                severity="error",
-                blocking=True,
-                scope="rollback",
-                message=(
-                    "Rollback safety cannot be guaranteed for this bucket with the "
-                    "current migration engine."
-                ),
-            )
-        return delete_source_safe, rollback_safe

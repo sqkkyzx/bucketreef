@@ -20,7 +20,8 @@ from app.services.audit_service import AuditService
 from app.services.user_notifications_service import UserNotificationsService
 from app.services.users_service import UsersService
 from app.services.app_settings_service import load_app_settings_for_db
-from app.services.user_avatar_service import MAX_AVATAR_BYTES, UserAvatarService
+from app.services.avatar_image_service import MAX_AVATAR_BYTES
+from app.services.user_avatar_service import UserAvatarService
 from app.core.database import get_db
 from app.utils.http_errors import (
     raise_bad_request_from_value_error,
@@ -107,7 +108,7 @@ def delete_my_notification(
     )
 
 
-@router.put("/me", response_model=UserOut)
+@router.patch("/me", response_model=UserOut)
 def update_users_me(
     payload: UserSelfUpdate,
     current_user: User = Depends(get_current_account_user),
@@ -121,22 +122,7 @@ def update_users_me(
             detail="Profile name editing is disabled by the application administrator",
         )
     try:
-        user = users_service.update_current_user(
-            current_user,
-            full_name=payload.full_name if "full_name" in update_fields else None,
-            ui_language=payload.ui_language,
-            update_ui_language="ui_language" in update_fields,
-            quota_alerts_enabled=payload.quota_alerts_enabled,
-            update_quota_alerts_enabled="quota_alerts_enabled" in update_fields,
-            quota_alerts_global_watch=payload.quota_alerts_global_watch,
-            update_quota_alerts_global_watch="quota_alerts_global_watch" in update_fields,
-            ui_preferences=payload.ui_preferences,
-            update_ui_preferences="ui_preferences" in update_fields,
-            avatar_preference=payload.avatar_preference,
-            update_avatar_preference="avatar_preference" in update_fields,
-            current_password=payload.current_password,
-            new_password=payload.new_password,
-        )
+        user = users_service.update_current_user(current_user, payload)
     except ValueError as exc:
         raise_bad_request_from_value_error(exc)
 

@@ -169,7 +169,10 @@ def test_portal_cost_requires_project_opt_in(db_session, monkeypatch):
         capabilities=AccountCapabilities(),
         portal_role="portal_user",
     )
-    monkeypatch.setattr("app.routers.portal_cost.load_app_settings", _enabled_cost_settings)
+    monkeypatch.setattr(
+        "app.routers.portal_cost.load_app_settings_for_db_readonly",
+        lambda _db: _enabled_cost_settings(),
+    )
     monkeypatch.setattr(
         "app.routers.portal_cost.PortalService.get_effective_portal_settings",
         lambda _self, _account: SimpleNamespace(cost_estimation_enabled=False),
@@ -195,7 +198,10 @@ def test_portal_cost_returns_estimate_after_project_opt_in(db_session, monkeypat
         capabilities=AccountCapabilities(),
         portal_role="portal_user",
     )
-    monkeypatch.setattr("app.routers.portal_cost.load_app_settings", _enabled_cost_settings)
+    monkeypatch.setattr(
+        "app.routers.portal_cost.load_app_settings_for_db_readonly",
+        lambda _db: _enabled_cost_settings(),
+    )
     monkeypatch.setattr(
         "app.routers.portal_cost.PortalService.get_effective_portal_settings",
         lambda _self, _account: SimpleNamespace(cost_estimation_enabled=True),
@@ -247,7 +253,7 @@ def test_cost_collection_returns_structured_errors_without_exception_detail(db_s
     class AppSettings:
         general = GeneralSettings()
 
-    monkeypatch.setattr("app.services.app_settings_service.load_app_settings", lambda: AppSettings())
+    monkeypatch.setattr("app.services.app_settings_service.load_app_settings_for_db_readonly", lambda _db: AppSettings())
     monkeypatch.setattr(
         "app.services.cost_collection_service.get_supervision_rgw_client",
         lambda _endpoint: (_ for _ in ()).throw(RuntimeError("secret upstream detail")),
@@ -627,7 +633,7 @@ def test_admin_cost_subject_detail_includes_scoped_twelve_month_history(db_sessi
         ]
     )
     db_session.commit()
-    monkeypatch.setattr(admin_cost_service, "load_app_settings", _enabled_cost_settings)
+    monkeypatch.setattr(admin_cost_service, "load_app_settings_for_db_readonly", lambda _db: _enabled_cost_settings())
 
     detail = AdminCostService(db_session).subject_detail("2026-07", endpoint.id, "account", account.id)
 
@@ -673,7 +679,7 @@ def test_admin_cost_subject_detail_distinguishes_missing_from_invalid_input(
     expected_status,
 ):
     endpoint = _seed_endpoint(db_session)
-    monkeypatch.setattr(admin_cost_service, "load_app_settings", _enabled_cost_settings)
+    monkeypatch.setattr(admin_cost_service, "load_app_settings_for_db_readonly", lambda _db: _enabled_cost_settings())
 
     response = client.get(
         f"/api/admin/cost/subject/{subject_type}/{subject_id}",
@@ -684,7 +690,7 @@ def test_admin_cost_subject_detail_distinguishes_missing_from_invalid_input(
 
 
 def test_admin_cost_service_rejects_missing_and_non_ceph_endpoints(db_session, monkeypatch):
-    monkeypatch.setattr(admin_cost_service, "load_app_settings", _enabled_cost_settings)
+    monkeypatch.setattr(admin_cost_service, "load_app_settings_for_db_readonly", lambda _db: _enabled_cost_settings())
     service = AdminCostService(db_session)
 
     with pytest.raises(ValueError, match="Endpoint not found"):
@@ -706,13 +712,13 @@ def test_admin_cost_service_rejects_missing_and_non_ceph_endpoints(db_session, m
 def test_admin_cost_routes_preserve_feature_and_endpoint_status_codes(client, db_session, monkeypatch):
     disabled = AppSettings()
     disabled.general.cost_enabled = False
-    monkeypatch.setattr(admin_cost_service, "load_app_settings", lambda: disabled)
+    monkeypatch.setattr(admin_cost_service, "load_app_settings_for_db_readonly", lambda _db: disabled)
 
     response = client.get("/api/admin/cost/summary", params={"month": "2026-01"})
     assert response.status_code == 403, response.text
     assert response.json()["detail"] == "Cost is disabled"
 
-    monkeypatch.setattr(admin_cost_service, "load_app_settings", _enabled_cost_settings)
+    monkeypatch.setattr(admin_cost_service, "load_app_settings_for_db_readonly", lambda _db: _enabled_cost_settings())
     response = client.get(
         "/api/admin/cost/summary",
         params={"month": "2026-01", "endpoint_id": 999},
@@ -1037,7 +1043,6 @@ def test_cost_analytics_reconciles_endpoints_pricing_top_ten_and_history(db_sess
     assert len(result.top_subjects) == 10
     assert result.top_subjects[0].name == "user-11"
     assert result.top_subjects[-1].name == "user-02"
-    assert result.concentration.subject_total_cost == pytest.approx(133)
     assert result.concentration.top_five_cost == pytest.approx(90)
     assert result.concentration.other_cost == pytest.approx(43)
     assert result.concentration.top_five_ratio == pytest.approx(90 / 133)
@@ -1058,4 +1063,3 @@ def test_cost_analytics_reconciles_endpoints_pricing_top_ten_and_history(db_sess
     assert no_data.summary.coverage.days_collected == 0
     assert no_data.by_endpoint == []
     assert no_data.top_subjects == []
-    assert no_data.concentration.subject_total_cost == 0

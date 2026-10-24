@@ -137,71 +137,24 @@ class BucketMigrationPreparationMixin:
                 raise RuntimeError(
                     "Temporary changes could not be restored. Restore access before checking again."
                 )
-            report["configuration_revision"] = revision
-            report["active_checks"] = active_checks
-            report["status"] = (
-                "failed"
-                if report.get("errors")
-                else "passed" if active_checks else "pending"
-            )
-            migration.precheck_report_json = _json_dumps(report)
-            migration.precheck_status = report["status"]
-            migration.preparation_status = (
-                "blocked"
-                if report.get("errors")
-                else "ready" if active_checks else "unverified"
-            )
-            migration.checked_revision = (
-                revision if migration.preparation_status == "ready" else None
-            )
-            migration.precheck_checked_at = utcnow()
-            migration.error_message = None
-            self._add_event(
+            self._complete_precheck_report(
                 migration,
-                level="info",
-                message="Preparation checks completed.",
-                metadata={
-                    "revision": revision,
-                    "errors": report.get("errors", 0),
-                    "active_checks": active_checks,
-                },
+                report,
+                revision=revision,
+                active_checks=active_checks,
             )
         except _WorkerLeaseLostError:
             self.db.rollback()
             raise
         except Exception as exc:  # Recovery information remains durable after failures.
             self.db.rollback()
-            migration = self.get_migration(migration_id)
-            if worker_id and migration.worker_lease_owner != worker_id:
-                raise _WorkerLeaseLostError("Preparation lease lost") from exc
-            migration.preparation_status = "blocked"
-            migration.precheck_status = "failed"
-            migration.checked_revision = None
-            migration.error_message = sanitized_error_log_detail(exc)
-            report = _json_loads(migration.precheck_report_json) or new_precheck_report(
-                checked_at=checked_at
+            migration = self._record_precheck_failure(
+                migration_id,
+                exc,
+                worker_id=worker_id,
+                checked_at=checked_at,
+                revision=revision,
             )
-            report.update(
-                status="failed",
-                errors=max(1, int(report.get("errors", 0))),
-                configuration_revision=revision,
-            )
-            report["checks"] = [
-                {
-                    "code": "preparation_interrupted",
-                    "severity": "error",
-                    "blocking": True,
-                    "scope": "migration",
-                    "message": migration.error_message,
-                    "impact": None,
-                    "remediation": "Restore access if required, then run checks again.",
-                    "permission": None,
-                    "context_id": None,
-                    "bucket": None,
-                    "details": None,
-                }
-            ]
-            migration.precheck_report_json = _json_dumps(report)
         finally:
             self._preparation_checkpoint = None
             self._preparation_item = None
@@ -209,6 +162,86 @@ class BucketMigrationPreparationMixin:
         migration.worker_lease_until = None
         migration.updated_at = utcnow()
         self._commit()
+        return migration
+
+    def _complete_precheck_report(
+        self,
+        migration,
+        report: dict,
+        *,
+        revision: int,
+        active_checks: bool,
+    ) -> None:
+        report["configuration_revision"] = revision
+        report["active_checks"] = active_checks
+        report["status"] = (
+            "failed"
+            if report.get("errors")
+            else "passed" if active_checks else "pending"
+        )
+        migration.precheck_report_json = _json_dumps(report)
+        migration.precheck_status = report["status"]
+        migration.preparation_status = (
+            "blocked"
+            if report.get("errors")
+            else "ready" if active_checks else "unverified"
+        )
+        migration.checked_revision = (
+            revision if migration.preparation_status == "ready" else None
+        )
+        migration.precheck_checked_at = utcnow()
+        migration.error_message = None
+        self._add_event(
+            migration,
+            level="info",
+            message="Preparation checks completed.",
+            metadata={
+                "revision": revision,
+                "errors": report.get("errors", 0),
+                "active_checks": active_checks,
+            },
+        )
+
+    def _record_precheck_failure(
+        self,
+        migration_id: int,
+        exc: Exception,
+        *,
+        worker_id: str | None,
+        checked_at,
+        revision: int,
+    ):
+        migration = self.get_migration(migration_id)
+        if worker_id and migration.worker_lease_owner != worker_id:
+            raise _WorkerLeaseLostError("Preparation lease lost") from exc
+        migration.preparation_status = "blocked"
+        migration.precheck_status = "failed"
+        migration.checked_revision = None
+        migration.error_message = sanitized_error_log_detail(exc)
+        report = _json_loads(migration.precheck_report_json) or new_precheck_report(
+            checked_at=checked_at
+        )
+        report.update(
+            status="failed",
+            errors=max(1, int(report.get("errors", 0))),
+            configuration_revision=revision,
+        )
+        report["checks"] = [
+            {
+                "code": "preparation_interrupted",
+                "severity": "error",
+                "blocking": True,
+                "scope": "migration",
+                "message": migration.error_message,
+                "impact": None,
+                "remediation": "Restore access if required, then run checks again.",
+                "permission": None,
+                "context_id": None,
+                "bucket": None,
+                "details": None,
+            }
+        ]
+        migration.precheck_report_json = _json_dumps(report)
         return migration
 
     def _journal_preparation_effect(self, item, name: str, payload: dict) -> None:
@@ -242,19 +275,11 @@ class BucketMigrationPreparationMixin:
                 context = self._resolve_context(effect["context_id"])
                 bucket = effect["bucket"]
                 if name == "probe_bucket":
-                    exists = self._precheck_bucket_exists(context, bucket)
-                    if exists is None:
-                        raise RuntimeError(
-                            "Unable to establish whether the temporary probe bucket still exists"
-                        )
-                    if exists:
-                        if effect.get("policy_tested"):
-                            self._configuration.delete_policy(bucket, context.execution_context)
-                        self._buckets.delete_bucket(bucket, context.execution_context, force=True)
-                    if self._precheck_bucket_exists(context, bucket) is not False:
-                        raise RuntimeError(
-                            "Temporary bucket removal could not be verified"
-                        )
+                    self._cleanup_destination_probe_bucket(
+                        context,
+                        bucket,
+                        policy_tested=bool(effect.get("policy_tested")),
+                    )
                 else:
                     self._restore_checked_policy(
                         context.execution_context, bucket, effect.get("policy")
@@ -273,8 +298,135 @@ class BucketMigrationPreparationMixin:
                 f"Policy restoration could not be verified for bucket '{bucket}'"
             )
 
+    def _cleanup_destination_probe_bucket(
+        self,
+        target_ctx,
+        probe: str,
+        *,
+        policy_tested: bool,
+    ) -> None:
+        self._assert_workflow_lease()
+        exists = self._precheck_bucket_exists(target_ctx, probe)
+        if exists is None:
+            raise RuntimeError(
+                "Unable to establish whether the temporary probe bucket still exists"
+            )
+        if exists:
+            if policy_tested:
+                self._configuration.delete_policy(
+                    probe, target_ctx.execution_context
+                )
+            self._buckets.delete_bucket(
+                probe, target_ctx.execution_context, force=True
+            )
+        if self._precheck_bucket_exists(target_ctx, probe) is not False:
+            raise RuntimeError("Temporary bucket removal could not be verified")
+
+    def _probe_destination_object_access(self, client, probe: str) -> dict[str, str]:
+        key = MIGRATION_PROBE_OBJECT_KEY
+        response = client.put_object(
+            Bucket=probe, Key=key, Body=b"migration permission check"
+        )
+        identity = {"Bucket": probe, "Key": key}
+        if response.get("VersionId"):
+            identity["VersionId"] = response["VersionId"]
+        client.put_object_tagging(
+            **identity,
+            Tagging={"TagSet": [{"Key": "check", "Value": "permission"}]},
+        )
+        client.get_object_tagging(**identity)
+        body = client.get_object(**identity).get("Body")
+        if body is None:
+            raise RuntimeError("Destination content could not be read for verification")
+        try:
+            body.read(1)
+        finally:
+            body.close()
+        return identity
+
+    def _probe_destination_multipart_access(self, client, probe: str) -> None:
+        upload = client.create_multipart_upload(Bucket=probe, Key="multipart-check")
+        try:
+            part = client.upload_part(
+                Bucket=probe,
+                Key="multipart-check",
+                UploadId=upload["UploadId"],
+                PartNumber=1,
+                Body=b"check",
+            )
+            client.complete_multipart_upload(
+                Bucket=probe,
+                Key="multipart-check",
+                UploadId=upload["UploadId"],
+                MultipartUpload={
+                    "Parts": [{"PartNumber": 1, "ETag": part["ETag"]}]
+                },
+            )
+        except Exception:
+            client.abort_multipart_upload(
+                Bucket=probe,
+                Key="multipart-check",
+                UploadId=upload["UploadId"],
+            )
+            raise
+
+        abort_probe = client.create_multipart_upload(Bucket=probe, Key="abort-check")
+        client.abort_multipart_upload(
+            Bucket=probe,
+            Key="abort-check",
+            UploadId=abort_probe["UploadId"],
+        )
+
+    def _probe_same_endpoint_copy(
+        self,
+        migration,
+        item,
+        source_ctx,
+        target_ctx,
+        client,
+        probe: str,
+        *,
+        source_profile: Optional[dict[str, Any]] = None,
+    ) -> None:
+        page = self._context_client(source_ctx).list_objects_v2(
+            Bucket=item.source_bucket, MaxKeys=1
+        )
+        contents = page.get("Contents") or []
+        candidate = self._sample_version_probe_candidate(
+            source_profile=source_profile
+        )
+        copy_source = {"Bucket": item.source_bucket}
+        if candidate:
+            copy_source.update(Key=candidate[0], VersionId=candidate[1])
+        elif contents:
+            copy_source["Key"] = contents[0]["Key"]
+        else:
+            raise RuntimeError(
+                "No source object is available to validate storage-side copy. Use Copy via BucketReef."
+            )
+        grant = (
+            self._temporary_source_copy_grant(
+                source_ctx,
+                target_ctx,
+                source_bucket=item.source_bucket,
+                sample_key=copy_source["Key"],
+                sample_version_id=copy_source.get("VersionId"),
+            )
+            if migration.auto_grant_source_read_for_copy
+            else nullcontext()
+        )
+        with grant:
+            client.copy_object(Bucket=probe, Key="copy-check", CopySource=copy_source)
+
     def _precheck_destination(
-        self, migration, item, source_ctx, target_ctx, *, strategy: str
+        self,
+        migration,
+        item,
+        source_ctx,
+        target_ctx,
+        *,
+        source_profile: Optional[dict[str, Any]] = None,
+        strategy: str,
     ) -> None:
         probe = migration_probe_bucket_name(migration.id)
         self._journal_preparation_effect(
@@ -315,111 +467,42 @@ class BucketMigrationPreparationMixin:
                     self._build_target_write_lock_policy(probe, policy),
                 )
             client = self._context_client(target_ctx)
-            key = MIGRATION_PROBE_OBJECT_KEY
-            response = client.put_object(
-                Bucket=probe, Key=key, Body=b"migration permission check"
-            )
-            identity = {"Bucket": probe, "Key": key}
-            if response.get("VersionId"):
-                identity["VersionId"] = response["VersionId"]
-            client.put_object_tagging(
-                **identity,
-                Tagging={"TagSet": [{"Key": "check", "Value": "permission"}]},
-            )
-            client.get_object_tagging(**identity)
-            body = client.get_object(**identity).get("Body")
-            if body is None:
-                raise RuntimeError(
-                    "Destination content could not be read for verification"
-                )
-            try:
-                body.read(1)
-            finally:
-                body.close()
-            # Streaming large objects needs multipart permissions as well as PutObject.
-            upload = client.create_multipart_upload(Bucket=probe, Key="multipart-check")
-            try:
-                part = client.upload_part(
-                    Bucket=probe,
-                    Key="multipart-check",
-                    UploadId=upload["UploadId"],
-                    PartNumber=1,
-                    Body=b"check",
-                )
-                client.complete_multipart_upload(
-                    Bucket=probe,
-                    Key="multipart-check",
-                    UploadId=upload["UploadId"],
-                    MultipartUpload={
-                        "Parts": [{"PartNumber": 1, "ETag": part["ETag"]}]
-                    },
-                )
-            except Exception:
-                client.abort_multipart_upload(
-                    Bucket=probe, Key="multipart-check", UploadId=upload["UploadId"]
-                )
-                raise
-            abort_probe = client.create_multipart_upload(
-                Bucket=probe, Key="abort-check"
-            )
-            client.abort_multipart_upload(
-                Bucket=probe, Key="abort-check", UploadId=abort_probe["UploadId"]
-            )
+            identity = self._probe_destination_object_access(client, probe)
+            self._probe_destination_multipart_access(client, probe)
             if migration.use_same_endpoint_copy:
-                page = self._context_client(source_ctx).list_objects_v2(
-                    Bucket=item.source_bucket, MaxKeys=1
+                self._probe_same_endpoint_copy(
+                    migration,
+                    item,
+                    source_ctx,
+                    target_ctx,
+                    client,
+                    probe,
+                    source_profile=source_profile,
                 )
-                contents = page.get("Contents") or []
-                candidate = self._sample_version_probe_candidate(
-                    source_profile=_json_loads(item.source_snapshot_json)
-                )
-                copy_source = {"Bucket": item.source_bucket}
-                if candidate:
-                    copy_source.update(Key=candidate[0], VersionId=candidate[1])
-                elif contents:
-                    copy_source["Key"] = contents[0]["Key"]
-                else:
-                    raise RuntimeError(
-                        "No source object is available to validate storage-side copy. Use Copy via BucketReef."
-                    )
-                grant = (
-                    self._temporary_source_copy_grant(
-                        source_ctx,
-                        target_ctx,
-                        source_bucket=item.source_bucket,
-                        sample_key=copy_source["Key"],
-                        sample_version_id=copy_source.get("VersionId"),
-                    )
-                    if migration.auto_grant_source_read_for_copy
-                    else nullcontext()
-                )
-                with grant:
-                    client.copy_object(
-                        Bucket=probe, Key="copy-check", CopySource=copy_source
-                    )
             client.delete_object(**identity)
             if strategy == "version_aware":
-                marker = client.delete_object(Bucket=probe, Key=key)
+                marker = client.delete_object(
+                    Bucket=probe, Key=MIGRATION_PROBE_OBJECT_KEY
+                )
                 if not marker.get("VersionId"):
                     raise RuntimeError(
                         "Destination did not create the expected versioned delete marker"
                     )
                 client.delete_object(
-                    Bucket=probe, Key=key, VersionId=marker["VersionId"]
+                    Bucket=probe,
+                    Key=MIGRATION_PROBE_OBJECT_KEY,
+                    VersionId=marker["VersionId"],
                 )
         except Exception as exc:
             error = exc
         try:
-            self._assert_workflow_lease()
-            exists = self._precheck_bucket_exists(target_ctx, probe)
-            if exists is None:
-                raise RuntimeError("Temporary bucket existence is unknown")
-            if exists:
-                if migration.lock_target_writes or migration.copy_bucket_settings:
-                    self._configuration.delete_policy(probe, target_ctx.execution_context)
-                self._buckets.delete_bucket(probe, target_ctx.execution_context, force=True)
-            if self._precheck_bucket_exists(target_ctx, probe) is not False:
-                raise RuntimeError("Temporary bucket removal could not be verified")
+            self._cleanup_destination_probe_bucket(
+                target_ctx,
+                probe,
+                policy_tested=bool(
+                    migration.lock_target_writes or migration.copy_bucket_settings
+                ),
+            )
             self._clear_preparation_effect(item, "probe_bucket")
         except Exception as cleanup_error:
             raise RuntimeError(
@@ -444,51 +527,55 @@ class BucketMigrationPreparationMixin:
                 continue
             if item.preparation_effects_json:
                 raise ValueError("Restore temporary changes before continuing")
-            try:
-                self._precheck_can_list_bucket(source, item.source_bucket)
-                current = self._inspector.inspect_bucket_state(
-                    source,
-                    item.source_bucket,
-                    probe_policy=self._inspector.build_probe_policy(
-                        copy_bucket_settings=migration.copy_bucket_settings
-                    ),
-                    scan_versions=False,
-                )
-                previous = _json_loads(item.source_snapshot_json) or {}
-                for feature in ("versioning", "object_lock", "encryption"):
-                    if previous.get(feature) != current.get(feature):
-                        raise ValueError(
-                            f"Source {feature.replace('_', ' ')} changed since preparation. Prepare a new migration before continuing."
-                        )
-                if any(
-                    value.get("state") == "unavailable"
-                    for value in current.get("feature_availability", {}).values()
-                ):
+            self._revalidate_source_transfer_preconditions(migration, source, item)
+            self._revalidate_destination_transfer_preconditions(target, item)
+
+    def _revalidate_source_transfer_preconditions(self, migration, source, item) -> None:
+        try:
+            self._precheck_can_list_bucket(source, item.source_bucket)
+            current = self._inspector.inspect_bucket_state(
+                source,
+                item.source_bucket,
+                probe_policy=self._inspector.build_probe_policy(
+                    copy_bucket_settings=migration.copy_bucket_settings
+                ),
+                scan_versions=False,
+            )
+            previous = _json_loads(item.source_snapshot_json) or {}
+            for feature in ("versioning", "object_lock", "encryption"):
+                if previous.get(feature) != current.get(feature):
                     raise ValueError(
-                        "A required source feature cannot be verified. Restore access before continuing."
+                        f"Source {feature.replace('_', ' ')} changed since preparation. Prepare a new migration before continuing."
                     )
-                if migration.copy_bucket_settings and current.get(
-                    "unsupported_settings"
-                ):
-                    raise ValueError(
-                        "The source now has unsupported settings. Prepare a new migration with compatible settings."
-                    )
-                if self._item_execution_strategy(item) == "version_aware":
-                    self._precheck_version_aware_source_access(
-                        source, item.source_bucket, previous
-                    )
-            except PermissionError:
-                raise
-            except Exception as exc:
+            if any(
+                value.get("state") == "unavailable"
+                for value in current.get("feature_availability", {}).values()
+            ):
                 raise ValueError(
-                    f"Source '{item.source_bucket}' needs attention: {sanitized_error_log_detail(exc)}"
-                ) from exc
-            exists = self._precheck_bucket_exists(target, item.target_bucket)
-            if exists is None or (exists and not item.target_created_by_migration):
-                raise ValueError(
-                    f"Destination '{item.target_bucket}' is unavailable or already exists. Check its name and permissions."
+                    "A required source feature cannot be verified. Restore access before continuing."
                 )
-            if item.target_created_by_migration and not exists:
+            if migration.copy_bucket_settings and current.get("unsupported_settings"):
                 raise ValueError(
-                    f"Destination '{item.target_bucket}' created by this migration is missing. It cannot be resumed safely."
+                    "The source now has unsupported settings. Prepare a new migration with compatible settings."
                 )
+            if self._item_execution_strategy(item) == "version_aware":
+                self._precheck_version_aware_source_access(
+                    source, item.source_bucket, previous
+                )
+        except PermissionError:
+            raise
+        except Exception as exc:
+            raise ValueError(
+                f"Source '{item.source_bucket}' needs attention: {sanitized_error_log_detail(exc)}"
+            ) from exc
+
+    def _revalidate_destination_transfer_preconditions(self, target, item) -> None:
+        exists = self._precheck_bucket_exists(target, item.target_bucket)
+        if exists is None or (exists and not item.target_created_by_migration):
+            raise ValueError(
+                f"Destination '{item.target_bucket}' is unavailable or already exists. Check its name and permissions."
+            )
+        if item.target_created_by_migration and not exists:
+            raise ValueError(
+                f"Destination '{item.target_bucket}' created by this migration is missing. It cannot be resumed safely."
+            )

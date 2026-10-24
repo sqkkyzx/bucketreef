@@ -9,7 +9,7 @@ from app.services.feature_policy_service import (
 from app.services.app_settings_service import load_app_settings_for_db_readonly
 from dataclasses import dataclass
 import logging
-from typing import Any, Optional
+from typing import Any, Iterator, Optional
 
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
@@ -25,12 +25,14 @@ from app.db import (
     UserS3Account,
 )
 from app.models.s3_account import (
+    PaginatedS3AccountsResponse,
     S3Account as S3AccountSchema,
     S3AccountCreate,
     S3AccountImport,
     S3AccountSummary,
     S3AccountUpdate,
 )
+from app.models.iam import IAMGroup, IAMRole, IAMUser
 from app.services.app_settings_service import load_app_settings_for_db
 from app.services.managed_resource_naming import (
     PORTAL_MANAGED_IAM_GROUP_NAMES,
@@ -76,6 +78,23 @@ from app.utils.name_ordering import name_order_by
 logger = logging.getLogger(__name__)
 
 
+def _account_search_values(account: S3AccountSchema) -> Iterator[Optional[str]]:
+    yield account.name
+    yield account.rgw_account_id
+    yield from (tag.label for tag in account.tags or [])
+    for link in account.user_links or []:
+        yield link.user_email
+        yield link.user_full_name
+    yield from (link.group_name for link in account.group_links or [])
+
+
+def _account_matches_search(account: S3AccountSchema, search_value: str) -> bool:
+    return any(
+        search_value in (candidate or "").lower()
+        for candidate in _account_search_values(account)
+    )
+
+
 @dataclass(frozen=True)
 class _PreparedAccountImport:
     source: S3AccountImport
@@ -85,6 +104,14 @@ class _PreparedAccountImport:
     root_uid: str
     root_display_name: str
     rgw_tenant: str
+
+
+@dataclass(frozen=True)
+class _AccountIAMDeletionInventory:
+    users: list[IAMUser]
+    groups: list[IAMGroup]
+    roles: list[IAMRole]
+    group_members: dict[str, list[IAMUser]]
 
 
 class S3AccountsService:
@@ -306,8 +333,7 @@ class S3AccountsService:
             return None, None
         if not account_info:
             return 0, []
-        info = account_info.get("account") if isinstance(account_info.get("account"), dict) else account_info
-        user_list = info.get("user_list", info.get("users"))
+        info, user_list = self._embedded_account_user_list(account_info)
         if not isinstance(user_list, list):
             # Standard Ceph AccountInfo does not embed the account's users.
             # Do not scan the endpoint-wide user inventory here: account
@@ -316,17 +342,37 @@ class S3AccountsService:
             # Ops lookups. Import keeps its deliberate one-shot discovery path,
             # while deletion proves that no non-root users remain through IAM.
             return None, None
-        cleaned: list[str] = []
         root_uid = root_uid or self.account_roots.root_uid(account_identifier)
+        deduped = self._clean_account_user_uids(
+            user_list,
+            root_uid=root_uid,
+            account_tenant=str(info.get("tenant") or ""),
+        )
+        return len(deduped), deduped
+
+    @staticmethod
+    def _embedded_account_user_list(account_info: dict[str, Any]) -> tuple[dict[str, Any], Any]:
+        info = account_info.get("account")
+        if not isinstance(info, dict):
+            info = account_info
+        return info, info.get("user_list", info.get("users"))
+
+    @staticmethod
+    def _clean_account_user_uids(
+        user_list: list[Any],
+        *,
+        root_uid: str,
+        account_tenant: str,
+    ) -> list[str]:
+        cleaned: list[str] = []
         for entry in user_list:
             uid = str(entry.get("uid", entry.get("user_id", ""))) if isinstance(entry, dict) else str(entry or "")
             if not uid:
                 continue
-            if uid == root_uid or uid == f"{info.get('tenant') or ''}${root_uid}":
+            if uid == root_uid or uid == f"{account_tenant}${root_uid}":
                 continue
             cleaned.append(uid)
-        deduped = sorted(set(cleaned))
-        return len(deduped), deduped
+        return sorted(set(cleaned))
 
     def _generate_account_id(self) -> str:
         prefix = load_app_settings_for_db(self.db).general.rgw_account_id_prefix
@@ -399,6 +445,53 @@ class S3AccountsService:
                 )
             )
         return results
+
+    def list_accounts_page(
+        self,
+        *,
+        page: int,
+        page_size: int,
+        search: Optional[str],
+        sort_by: str,
+        sort_dir: str,
+        include_quota: bool,
+        include_rgw_details: bool,
+    ) -> PaginatedS3AccountsResponse:
+        accounts = self.list_accounts(
+            include_usage_stats=False,
+            include_quota=include_quota,
+            include_rgw_details=include_rgw_details,
+        )
+        search_value = search.strip().lower() if isinstance(search, str) else ""
+        if search_value:
+            accounts = [
+                account
+                for account in accounts
+                if _account_matches_search(account, search_value)
+            ]
+
+        descending = sort_dir.lower() == "desc"
+        if sort_by == "rgw_account_id":
+            accounts.sort(
+                key=lambda account: (account.rgw_account_id.lower(), account.id),
+                reverse=descending,
+            )
+        else:
+            accounts.sort(
+                key=lambda account: (account.name.lower(), account.name, account.id),
+                reverse=descending,
+            )
+
+        total = len(accounts)
+        start = (page - 1) * page_size
+        end = start + page_size
+        return PaginatedS3AccountsResponse(
+            items=accounts[start:end],
+            total=total,
+            page=page,
+            page_size=page_size,
+            has_next=end < total,
+        )
 
     def list_accounts_minimal(self) -> list[S3AccountSummary]:
         db_accounts = self.db.scalars(
@@ -486,40 +579,54 @@ class S3AccountsService:
             if item.rgw_account_id in seen_ids:
                 continue
             seen_ids.add(item.rgw_account_id)
-            endpoint = self._resolve_storage_endpoint(item.storage_endpoint_id, require_ceph=True)
-            admin = self._admin_for_endpoint(endpoint, allow_missing=False)
-            if admin is None:
-                raise ValueError("Admin operations are disabled for this endpoint.")
-            rgw_info = admin.get_account(item.rgw_account_id, allow_not_found=True)
-            if not rgw_info or rgw_info.get("not_found"):
-                raise ValueError(f"S3Account {item.rgw_account_id} not found in RGW")
-            account_info = rgw_info.get("account") if isinstance(rgw_info.get("account"), dict) else rgw_info
-            account_name = account_info.get("name") or item.name or item.rgw_account_id
-            root_uid, rgw_tenant = self.account_roots.resolve_import_identity(
-                admin,
-                rgw_info,
-                item.rgw_account_id,
-                item.root_uid,
-            )
-            if item.rgw_tenant is not None and item.rgw_tenant != rgw_tenant:
-                raise ValueError("Requested RGW tenant does not match the account tenant returned by RGW")
-            if rgw_tenant and not app_settings.general.allow_managed_rgw_tenant_creation:
-                raise ValueError("Managed RGW tenant creation is disabled")
             prepared.append(
-                _PreparedAccountImport(
-                    source=item,
-                    endpoint=endpoint,
-                    admin=admin,
-                    account_name=str(account_name),
-                    root_uid=root_uid,
-                    root_display_name=self.account_roots.root_display_name(
-                        str(account_name),
-                        item.rgw_account_id,
-                    ),
-                    rgw_tenant=rgw_tenant,
+                self._prepare_account_import(
+                    item,
+                    allow_managed_rgw_tenant_creation=app_settings.general.allow_managed_rgw_tenant_creation,
                 )
             )
+        self._validate_prepared_account_names(prepared)
+        return prepared
 
+    def _prepare_account_import(
+        self,
+        item: S3AccountImport,
+        *,
+        allow_managed_rgw_tenant_creation: bool,
+    ) -> _PreparedAccountImport:
+        endpoint = self._resolve_storage_endpoint(item.storage_endpoint_id, require_ceph=True)
+        admin = self._admin_for_endpoint(endpoint, allow_missing=False)
+        if admin is None:
+            raise ValueError("Admin operations are disabled for this endpoint.")
+        rgw_info = admin.get_account(item.rgw_account_id, allow_not_found=True)
+        if not rgw_info or rgw_info.get("not_found"):
+            raise ValueError(f"S3Account {item.rgw_account_id} not found in RGW")
+        account_info = rgw_info.get("account") if isinstance(rgw_info.get("account"), dict) else rgw_info
+        account_name = str(account_info.get("name") or item.name or item.rgw_account_id)
+        root_uid, rgw_tenant = self.account_roots.resolve_import_identity(
+            admin,
+            rgw_info,
+            item.rgw_account_id,
+            item.root_uid,
+        )
+        if item.rgw_tenant is not None and item.rgw_tenant != rgw_tenant:
+            raise ValueError("Requested RGW tenant does not match the account tenant returned by RGW")
+        if rgw_tenant and not allow_managed_rgw_tenant_creation:
+            raise ValueError("Managed RGW tenant creation is disabled")
+        return _PreparedAccountImport(
+            source=item,
+            endpoint=endpoint,
+            admin=admin,
+            account_name=account_name,
+            root_uid=root_uid,
+            root_display_name=self.account_roots.root_display_name(
+                account_name,
+                item.rgw_account_id,
+            ),
+            rgw_tenant=rgw_tenant,
+        )
+
+    def _validate_prepared_account_names(self, prepared: list[_PreparedAccountImport]) -> None:
         seen_scopes: set[tuple[int, str, str]] = set()
         for item in prepared:
             scope = (item.endpoint.id, item.rgw_tenant, item.account_name)
@@ -532,7 +639,6 @@ class S3AccountsService:
                 error_message=f"S3Account name already exists: {item.account_name}",
             )
             seen_scopes.add(scope)
-        return prepared
 
     def import_accounts(self, imports: list[S3AccountImport]) -> list[S3AccountSchema]:
         prepared = self._prepare_account_imports(imports)
@@ -953,6 +1059,14 @@ class S3AccountsService:
             return
 
         iam = self._iam_for_account(account)
+        inventory = self._load_account_iam_deletion_inventory(iam)
+        self._require_account_iam_deletion_ready(inventory)
+        self._remove_portal_iam_groups(iam, inventory.groups)
+
+    @staticmethod
+    def _load_account_iam_deletion_inventory(
+        iam: RGWIAMService,
+    ) -> _AccountIAMDeletionInventory:
         try:
             users = iam.list_users()
             groups = iam.list_groups()
@@ -965,25 +1079,40 @@ class S3AccountsService:
             raise ValueError(
                 f"Unable to verify RGW IAM resources; cannot delete the RGW tenant: {sanitized_error_log_detail(exc)}"
             ) from exc
+        return _AccountIAMDeletionInventory(
+            users=users,
+            groups=groups,
+            roles=roles,
+            group_members=group_members,
+        )
 
+    @staticmethod
+    def _require_account_iam_deletion_ready(
+        inventory: _AccountIAMDeletionInventory,
+    ) -> None:
         unexpected_groups = sorted(
             group.name
-            for group in groups
+            for group in inventory.groups
             if group.name not in PORTAL_MANAGED_IAM_GROUP_NAMES
         )
         groups_with_members = sorted(
             group_name
-            for group_name, members in group_members.items()
+            for group_name, members in inventory.group_members.items()
             if members
         )
-        if users or roles or unexpected_groups or groups_with_members:
+        if inventory.users or inventory.roles or unexpected_groups or groups_with_members:
             raise ValueError(
                 "RGW tenant still has attached IAM resources "
-                f"(users={len(users)}, roles={len(roles)}, "
+                f"(users={len(inventory.users)}, roles={len(inventory.roles)}, "
                 f"groups={len(unexpected_groups)}, groups_with_members={len(groups_with_members)}); "
                 "remove them first."
             )
 
+    @staticmethod
+    def _remove_portal_iam_groups(
+        iam: RGWIAMService,
+        groups: list[IAMGroup],
+    ) -> None:
         try:
             for group in groups:
                 for policy_arn in group.policies or []:

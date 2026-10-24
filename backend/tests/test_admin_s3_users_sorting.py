@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+import sqlalchemy as sa
+
 from app.db import S3User, StorageEndpoint, StorageProvider, UiGroup, UiGroupS3User, User, UserRole, UserS3User
 from app.main import app
 from app.routers.admin import s3_users as s3_users_router
@@ -17,7 +19,7 @@ def _seed_s3_user(
     uid: str,
     created_at: datetime | None = None,
 ) -> S3User:
-    endpoint = db_session.query(StorageEndpoint).order_by(StorageEndpoint.id.asc()).first()
+    endpoint = db_session.scalar(sa.select(StorageEndpoint).order_by(StorageEndpoint.id.asc()))
     if endpoint is None:
         endpoint = StorageEndpoint(
             name="sorting-ceph",
@@ -210,7 +212,7 @@ def test_admin_s3_users_update_replaces_direct_group_links(client, db_session):
     db_session.add(UiGroupS3User(group_id=old_group.id, s3_user_id=s3_user.id))
     db_session.commit()
 
-    response = client.put(
+    response = client.patch(
         f"/api/admin/s3-users/{s3_user.id}",
         json={
             "user_links": [
@@ -238,10 +240,12 @@ def test_admin_s3_users_update_replaces_direct_group_links(client, db_session):
     assert payload["group_links"][0]["group_name"] == "New User Group"
     assert payload["group_links"][0]["group_avatar"]["initials"] == "NG"
     assert payload["group_links"][0]["allow_manager_browser_data_access"] is True
-    rows = db_session.query(UiGroupS3User).filter(UiGroupS3User.s3_user_id == s3_user.id).all()
+    rows = db_session.scalars(
+        sa.select(UiGroupS3User).where(UiGroupS3User.s3_user_id == s3_user.id)
+    ).all()
     assert [row.group_id for row in rows] == [new_group.id]
 
-    removed_contract = client.put(
+    removed_contract = client.patch(
         f"/api/admin/s3-users/{s3_user.id}",
         json={"user_ids": [linked_user.id], "group_ids": [new_group.id]},
     )

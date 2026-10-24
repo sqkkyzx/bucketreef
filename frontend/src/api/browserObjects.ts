@@ -21,12 +21,16 @@ import type {
   ListBrowserObjectsResponse,
   ListObjectVersionsResponse,
   ObjectAcl,
+  ObjectAclUpdate,
   ObjectLegalHold,
+  ObjectLegalHoldUpdate,
   ObjectMetadata,
   ObjectMetadataUpdate,
   ObjectRestoreRequest,
   ObjectRetention,
+  ObjectRetentionUpdate,
   ObjectTags,
+  ObjectTagsUpdate,
 } from "./browserContracts";
 import type { BrowserRequestOptions } from "./browserWorkspace";
 
@@ -171,7 +175,7 @@ export async function getObjectTags(
 export async function updateObjectTags(
   contextId: S3ExecutionContextSelector,
   bucketName: string,
-  payload: ObjectTags,
+  payload: ObjectTagsUpdate,
   signal?: AbortSignal,
   options?: BrowserRequestOptions,
 ): Promise<ObjectTags> {
@@ -209,7 +213,7 @@ export async function updateObjectMetadata(
 export async function updateObjectAcl(
   contextId: S3ExecutionContextSelector,
   bucketName: string,
-  payload: ObjectAcl,
+  payload: ObjectAclUpdate,
   signal?: AbortSignal,
   options?: BrowserRequestOptions,
 ): Promise<ObjectAcl> {
@@ -243,7 +247,7 @@ export async function getObjectLegalHold(
 export async function updateObjectLegalHold(
   contextId: S3ExecutionContextSelector,
   bucketName: string,
-  payload: ObjectLegalHold,
+  payload: ObjectLegalHoldUpdate,
   signal?: AbortSignal,
   options?: BrowserRequestOptions,
 ): Promise<ObjectLegalHold> {
@@ -277,7 +281,7 @@ export async function getObjectRetention(
 export async function updateObjectRetention(
   contextId: S3ExecutionContextSelector,
   bucketName: string,
-  payload: ObjectRetention,
+  payload: ObjectRetentionUpdate,
   signal?: AbortSignal,
   options?: BrowserRequestOptions,
 ): Promise<ObjectRetention> {

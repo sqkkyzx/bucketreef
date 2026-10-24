@@ -24,6 +24,7 @@ from app.models.bucket import (
     BucketPolicyOut,
     BucketProperties,
     BucketPublicAccessBlock,
+    BucketPublicAccessBlockUpdate,
     BucketQuotaUpdate,
     BucketVersioningStatus,
     BucketReplicationConfiguration,
@@ -31,6 +32,7 @@ from app.models.bucket import (
     BucketTagsUpdate,
     BucketVersioningUpdate,
     BucketWebsiteConfiguration,
+    BucketWebsiteUpdate,
 )
 from app.utils.http_errors import raise_bad_gateway_from_runtime, raise_bad_request_from_value_error
 from app.services.bucket_configuration_service import BucketConfigurationService
@@ -279,10 +281,10 @@ def put_bucket_public_access_block_config(
     service: BucketConfigurationService,
     context: S3ExecutionTarget,
     bucket_name: str,
-    payload: BucketPublicAccessBlock,
+    payload: BucketPublicAccessBlockUpdate,
 ) -> tuple[BucketPublicAccessBlock, dict[str, Any]]:
     result = _map_runtime_error(lambda: service.set_public_access_block(bucket_name, context, payload))
-    return result, payload.model_dump(exclude_none=True)
+    return result, payload.model_dump()
 
 
 def get_bucket_lifecycle_config(*, service: BucketConfigurationService, context: S3ExecutionTarget, bucket_name: str) -> BucketLifecycleConfig:
@@ -398,7 +400,7 @@ def put_bucket_website_config(
     service: BucketConfigurationService,
     context: S3ExecutionTarget,
     bucket_name: str,
-    payload: BucketWebsiteConfiguration,
+    payload: BucketWebsiteUpdate,
 ) -> tuple[BucketWebsiteConfiguration, dict[str, Any]]:
     result = _map_value_and_runtime_errors(lambda: service.set_bucket_website(bucket_name, context, payload))
     return result, payload.model_dump(exclude_none=True)

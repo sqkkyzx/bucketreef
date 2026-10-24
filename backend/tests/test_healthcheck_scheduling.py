@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
+import sqlalchemy as sa
 from botocore.exceptions import EndpointConnectionError
 from sqlalchemy.orm import sessionmaker
 
@@ -31,7 +32,7 @@ def scheduled_settings(db_session, test_engine, monkeypatch):
     factory = sessionmaker(bind=test_engine, autocommit=False, autoflush=False)
     monkeypatch.setattr(background, "SessionLocal", factory)
     for module in (background, healthcheck_service, healthchecks, cost_collect):
-        monkeypatch.setattr(module, "load_app_settings", lambda: settings)
+        monkeypatch.setattr(module, "load_app_settings_for_db_readonly", lambda _db: settings)
     monkeypatch.setattr(dependencies.settings, "internal_cron_token", "expected-token")
     return settings
 
@@ -82,7 +83,7 @@ def test_disabled_scheduled_features_skip_without_work(
 
     assert response.status_code == 200, response.text
     assert response.json() == {"status": "skipped", "reason": "feature_disabled", "operation": operation}
-    assert db_session.query(EndpointHealthLatest).count() == 0
+    assert db_session.scalar(sa.select(sa.func.count()).select_from(EndpointHealthLatest)) == 0
 
 
 @pytest.mark.parametrize("enabled", [False, True])
@@ -100,7 +101,9 @@ def test_scheduled_healthcheck_persists_status(client, db_session, monkeypatch, 
 
     assert response.status_code == 200, response.text
     assert response.json()["total"] == 1
-    latest = db_session.query(EndpointHealthLatest).filter_by(storage_endpoint_id=endpoint_id).one()
+    latest = db_session.scalars(
+        sa.select(EndpointHealthLatest).where(EndpointHealthLatest.storage_endpoint_id == endpoint_id)
+    ).one()
     assert latest.status == "up"
     assert latest.checked_at is not None
     assert OperationLeaseService(db_session).current_owner(HEALTHCHECK_RUN_OPERATION) is None
@@ -132,7 +135,7 @@ def test_initial_check_only_probes_the_created_endpoint(db_session, monkeypatch,
     background.run_initial_healthchecks(endpoint_id=endpoint_id)
 
     assert urls == ["https://probe.example.test"]
-    latest = db_session.query(EndpointHealthLatest).one()
+    latest = db_session.scalars(sa.select(EndpointHealthLatest)).one()
     assert latest.storage_endpoint_id == endpoint_id
     assert latest.status == "up"
 
@@ -146,7 +149,7 @@ def test_initial_check_rechecks_feature_before_execution(db_session, monkeypatch
     background.run_initial_healthchecks()
     acquire.assert_not_called()
     run.assert_not_called()
-    assert db_session.query(EndpointHealthLatest).count() == 0
+    assert db_session.scalar(sa.select(sa.func.count()).select_from(EndpointHealthLatest)) == 0
 
 
 def test_initial_check_respects_the_scheduler_lease(db_session, monkeypatch, scheduled_settings):
@@ -180,7 +183,7 @@ def test_endpoint_creation_runs_initial_check_after_persisting(client, db_sessio
     })
 
     assert response.status_code == 201, response.text
-    latest = db_session.query(EndpointHealthLatest).one()
+    latest = db_session.scalars(sa.select(EndpointHealthLatest)).one()
     assert latest.storage_endpoint_id == response.json()["id"]
     assert latest.status == "up"
 
@@ -197,7 +200,9 @@ def test_initial_failure_keeps_endpoint_creation_successful(
     })
 
     assert response.status_code == 201, response.text
-    assert db_session.query(StorageEndpoint).filter_by(id=response.json()["id"]).count() == 1
+    assert db_session.scalar(
+        sa.select(sa.func.count()).select_from(StorageEndpoint).where(StorageEndpoint.id == response.json()["id"])
+    ) == 1
     assert "Initial endpoint healthcheck failed" in caplog.text
     assert OperationLeaseService(db_session).current_owner(HEALTHCHECK_RUN_OPERATION) is None
 
@@ -212,7 +217,7 @@ def test_settings_only_trigger_initial_check_on_effective_activation(
     saved = AppSettings()
     saved.general.endpoint_status_enabled = after
     monkeypatch.setattr(admin_settings, "load_app_settings_for_db", lambda db: current)
-    monkeypatch.setattr(admin_settings, "save_app_settings", lambda payload: saved)
+    monkeypatch.setattr(admin_settings, "save_app_settings_for_db", lambda _db, payload: saved)
     monkeypatch.setattr(admin_settings, "get_portal_service", lambda db: SimpleNamespace(
         reconcile_all_portal_server_access_logging=lambda settings: {},
     ))
@@ -233,7 +238,7 @@ def test_settings_skip_portal_logging_reconcile_when_toggle_is_unchanged(
     requested = current.model_copy(deep=True)
     requested.general.project_feature_policies.bucket_usage_stats = "disabled"
     monkeypatch.setattr(admin_settings, "load_app_settings_for_db", lambda db: current)
-    monkeypatch.setattr(admin_settings, "save_app_settings", lambda payload: requested)
+    monkeypatch.setattr(admin_settings, "save_app_settings_for_db", lambda _db, payload: requested)
     monkeypatch.setattr(admin_settings, "get_portal_service", _forbid_call)
 
     response = client.put("/api/admin/settings", json=requested.model_dump(mode="json"))
@@ -250,7 +255,7 @@ def test_settings_reconcile_portal_logging_when_toggle_changes(
     requested.portal.feature_policies.server_access_logging = "disabled"
     calls = []
     monkeypatch.setattr(admin_settings, "load_app_settings_for_db", lambda db: current)
-    monkeypatch.setattr(admin_settings, "save_app_settings", lambda payload: requested)
+    monkeypatch.setattr(admin_settings, "save_app_settings_for_db", lambda _db, payload: requested)
     monkeypatch.setattr(
         admin_settings,
         "get_portal_service",
@@ -300,7 +305,7 @@ def test_environment_lock_prevents_initial_check_on_requested_activation(
     requested = AppSettings()
     requested.general.endpoint_status_enabled = True
     monkeypatch.setattr(admin_settings, "load_app_settings_for_db", lambda db: locked)
-    monkeypatch.setattr(admin_settings, "save_app_settings", lambda payload: locked)
+    monkeypatch.setattr(admin_settings, "save_app_settings_for_db", lambda _db, payload: locked)
     monkeypatch.setattr(admin_settings, "get_portal_service", lambda db: SimpleNamespace(
         reconcile_all_portal_server_access_logging=lambda settings: {},
     ))

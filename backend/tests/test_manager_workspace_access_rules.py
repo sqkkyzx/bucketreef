@@ -7,6 +7,7 @@ import json
 from types import SimpleNamespace
 
 import pytest
+import sqlalchemy as sa
 from fastapi import HTTPException
 
 from app.db import (
@@ -231,8 +232,8 @@ def test_portal_browser_context_uses_portal_credentials_without_manager_admin(db
     db_session.commit()
     monkeypatch.setattr(
         app_settings_service,
-        "load_app_settings",
-        lambda: AppSettings(
+        "load_app_settings_for_db_readonly",
+        lambda _db: AppSettings(
             general=GeneralSettings(
                 portal_enabled=True,
                 browser_enabled=True,
@@ -301,8 +302,8 @@ def test_portal_browser_context_rejects_unavailable_storage_space_bucket(db_sess
     db_session.commit()
     monkeypatch.setattr(
         app_settings_service,
-        "load_app_settings",
-        lambda: AppSettings(
+        "load_app_settings_for_db_readonly",
+        lambda _db: AppSettings(
             general=GeneralSettings(
                 portal_enabled=True,
                 browser_enabled=True,
@@ -334,7 +335,9 @@ def test_portal_browser_context_rejects_unavailable_storage_space_bucket(db_sess
     ("method", "path"),
     [
         ("GET", "/api/browser/settings"),
+        ("GET", "/api/browser/direct-transfer-policy"),
         ("GET", "/api/browser/buckets/search"),
+        ("GET", "/api/browser/usage-summary"),
         ("GET", "/api/browser/buckets/research/objects"),
         ("GET", "/api/browser/buckets/research/cors"),
         ("GET", "/api/browser/buckets/research/download"),
@@ -730,7 +733,6 @@ def test_manager_context_connection_exposes_detected_identity_and_stats_enabled(
 def test_manager_context_reports_global_rgw_metrics_disablement(db_session, monkeypatch):
     settings = AppSettings()
     settings.manager.feature_policies.rgw_usage_metrics = "disabled"
-    monkeypatch.setattr(manager_context_router, "load_app_settings", lambda: settings)
     monkeypatch.setattr(manager_context_router, "load_app_settings_for_db_readonly", lambda _db: settings)
     user = User(
         email="manager-context-rgw-metrics-disabled@example.com",
@@ -982,8 +984,8 @@ def test_browser_workspace_rejects_forged_account_and_shared_connection(db_sessi
 def test_manager_context_s3_user_enables_ceph_keys_when_management_possible(db_session, monkeypatch):
     settings = AppSettings()
     settings.manager.feature_policies.ceph_s3_user_keys = "targeted"
-    monkeypatch.setattr(app_settings_service, "load_app_settings", lambda: settings)
-    monkeypatch.setattr(manager_context_router, "load_app_settings", lambda: settings)
+    monkeypatch.setattr(app_settings_service, "load_app_settings_for_db_readonly", lambda _db: settings)
+    monkeypatch.setattr(manager_context_router, "load_app_settings_for_db_readonly", lambda _db: settings)
 
     endpoint = _ceph_s3_user_management_endpoint(name="ceph-s3u-keys-ok")
     user, account = _build_linked_s3_user_context(
@@ -1001,8 +1003,8 @@ def test_manager_context_s3_user_enables_ceph_keys_when_management_possible(db_s
 def test_manager_context_s3_user_disables_ceph_keys_without_target_grant(db_session, monkeypatch):
     settings = AppSettings()
     settings.manager.feature_policies.ceph_s3_user_keys = "targeted"
-    monkeypatch.setattr(app_settings_service, "load_app_settings", lambda: settings)
-    monkeypatch.setattr(manager_context_router, "load_app_settings", lambda: settings)
+    monkeypatch.setattr(app_settings_service, "load_app_settings_for_db_readonly", lambda _db: settings)
+    monkeypatch.setattr(manager_context_router, "load_app_settings_for_db_readonly", lambda _db: settings)
 
     endpoint = _ceph_s3_user_management_endpoint(name="ceph-s3u-keys-no-target-grant")
     user, account = _build_linked_s3_user_context(
@@ -1011,7 +1013,9 @@ def test_manager_context_s3_user_disables_ceph_keys_without_target_grant(db_sess
         email="manager-ceph-keys-no-target-grant@example.com",
         ceph_keys_access=True,
     )
-    s3_user = db_session.query(S3User).filter(S3User.id == getattr(account, "s3_user_id")).first()
+    s3_user = db_session.scalar(
+        sa.select(S3User).where(S3User.id == getattr(account, "s3_user_id"))
+    )
     assert s3_user is not None
     s3_user.allow_access_key_management = False
     db_session.add(s3_user)
@@ -1025,8 +1029,8 @@ def test_manager_context_s3_user_disables_ceph_keys_without_target_grant(db_sess
 def test_manager_context_s3_user_keys_do_not_require_s3_user_tool_access(db_session, monkeypatch):
     settings = AppSettings()
     settings.manager.feature_policies.ceph_s3_user_keys = "targeted"
-    monkeypatch.setattr(app_settings_service, "load_app_settings", lambda: settings)
-    monkeypatch.setattr(manager_context_router, "load_app_settings", lambda: settings)
+    monkeypatch.setattr(app_settings_service, "load_app_settings_for_db_readonly", lambda _db: settings)
+    monkeypatch.setattr(manager_context_router, "load_app_settings_for_db_readonly", lambda _db: settings)
 
     endpoint = _ceph_s3_user_management_endpoint(name="ceph-s3u-keys-no-user-access")
     user, account = _build_linked_s3_user_context(
@@ -1050,8 +1054,8 @@ def test_manager_context_exposes_managed_private_access_without_ceph_key_invento
     settings = enable_manager_features(db_session)
     settings.manager.feature_policies.ceph_s3_user_keys = "targeted"
     settings.manager.feature_policies.managed_private_connection_provisioning = "targeted"
-    monkeypatch.setattr(app_settings_service, "load_app_settings", lambda: settings)
-    monkeypatch.setattr(manager_context_router, "load_app_settings", lambda: settings)
+    monkeypatch.setattr(app_settings_service, "load_app_settings_for_db_readonly", lambda _db: settings)
+    monkeypatch.setattr(manager_context_router, "load_app_settings_for_db_readonly", lambda _db: settings)
 
     endpoint = _ceph_s3_user_management_endpoint(name="ceph-s3u-managed-only")
     user, account = _build_linked_s3_user_context(
@@ -1072,8 +1076,8 @@ def test_manager_context_hides_managed_private_access_when_global_flag_is_disabl
     monkeypatch,
 ):
     settings = AppSettings()
-    monkeypatch.setattr(app_settings_service, "load_app_settings", lambda: settings)
-    monkeypatch.setattr(manager_context_router, "load_app_settings", lambda: settings)
+    monkeypatch.setattr(app_settings_service, "load_app_settings_for_db_readonly", lambda _db: settings)
+    monkeypatch.setattr(manager_context_router, "load_app_settings_for_db_readonly", lambda _db: settings)
 
     endpoint = _ceph_s3_user_management_endpoint(name="ceph-s3u-managed-global-off")
     user, account = _build_linked_s3_user_context(
@@ -1094,8 +1098,8 @@ def test_manager_context_does_not_infer_managed_private_access_from_ceph_key_inv
     settings = AppSettings()
     settings.manager.feature_policies.ceph_s3_user_keys = "targeted"
     settings.manager.feature_policies.managed_private_connection_provisioning = "targeted"
-    monkeypatch.setattr(app_settings_service, "load_app_settings", lambda: settings)
-    monkeypatch.setattr(manager_context_router, "load_app_settings", lambda: settings)
+    monkeypatch.setattr(app_settings_service, "load_app_settings_for_db_readonly", lambda _db: settings)
+    monkeypatch.setattr(manager_context_router, "load_app_settings_for_db_readonly", lambda _db: settings)
 
     endpoint = _ceph_s3_user_management_endpoint(name="ceph-s3u-inventory-only")
     user, account = _build_linked_s3_user_context(
@@ -1128,8 +1132,8 @@ def test_manager_context_s3_user_disables_ceph_keys_when_management_not_possible
 ):
     settings = AppSettings()
     settings.manager.feature_policies.ceph_s3_user_keys = "targeted" if feature_enabled else "disabled"
-    monkeypatch.setattr(app_settings_service, "load_app_settings", lambda: settings)
-    monkeypatch.setattr(manager_context_router, "load_app_settings", lambda: settings)
+    monkeypatch.setattr(app_settings_service, "load_app_settings_for_db_readonly", lambda _db: settings)
+    monkeypatch.setattr(manager_context_router, "load_app_settings_for_db_readonly", lambda _db: settings)
 
     user, account = _build_linked_s3_user_context(
         db_session,
@@ -1178,7 +1182,7 @@ def test_browser_workspace_accepts_ceph_admin_selector_for_authorized_user(db_se
     settings = AppSettings()
     settings.general.ceph_admin_enabled = True
     settings.general.browser_ceph_admin_enabled = True
-    monkeypatch.setattr(app_settings_service, "load_app_settings", lambda: settings)
+    monkeypatch.setattr(app_settings_service, "load_app_settings_for_db_readonly", lambda _db: settings)
 
     user = User(
         email="ceph-admin-browser-ok@example.com",
@@ -1221,7 +1225,7 @@ def test_browser_workspace_rejects_ceph_admin_selector_for_invalid_ceph_admin_id
     settings = AppSettings()
     settings.general.ceph_admin_enabled = True
     settings.general.browser_ceph_admin_enabled = True
-    monkeypatch.setattr(app_settings_service, "load_app_settings", lambda: settings)
+    monkeypatch.setattr(app_settings_service, "load_app_settings_for_db_readonly", lambda _db: settings)
 
     user = User(
         email="ceph-admin-browser-invalid@example.com",
@@ -1265,7 +1269,7 @@ def test_browser_workspace_rejects_ceph_admin_selector_for_non_admin_user(db_ses
     settings = AppSettings()
     settings.general.ceph_admin_enabled = True
     settings.general.browser_ceph_admin_enabled = True
-    monkeypatch.setattr(app_settings_service, "load_app_settings", lambda: settings)
+    monkeypatch.setattr(app_settings_service, "load_app_settings_for_db_readonly", lambda _db: settings)
 
     user = User(
         email="ceph-admin-browser-ko@example.com",

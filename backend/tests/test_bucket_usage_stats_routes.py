@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 import pytest
+import sqlalchemy as sa
 from fastapi.testclient import TestClient
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import sessionmaker
@@ -25,6 +26,7 @@ from app.routers import dependencies
 from app.routers.admin import usage_stats as admin_usage_stats_router
 from app.routers.ceph_admin import usage_stats as ceph_usage_stats_router
 from app.routers.manager import usage_stats as manager_usage_stats_router
+from app.routers.storage_ops import usage_stats as storage_ops_usage_stats_router
 from app.services.bucket_usage_stats_service import BucketUsageStatsService
 from app.services.s3_execution_context import S3ExecutionContext
 
@@ -157,6 +159,75 @@ def test_manager_usage_stats_stream_builds_scope_targets(client: TestClient, mon
     assert [target.bucket_name for target in targets] == ["bucket-a", "bucket-b"]
     assert [target.scope_kind for target in targets] == ["manager", "manager"]
     assert captured["parallelism"] == 3
+
+
+def test_storage_ops_usage_stats_stream_uses_authorized_user_for_context_resolution(
+    client: TestClient,
+    monkeypatch,
+):
+    user = _tool_user()
+    context = S3ExecutionContext(
+        context_id="1",
+        context_kind="account",
+        name="Managed Account",
+        access_key=None,
+        secret_key=None,
+        id=1,
+        rgw_account_id="rgw-account",
+        manager_capabilities=AccountCapabilities(can_manage_buckets=True),
+    )
+    captured: dict[str, object] = {}
+
+    class FakeService:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def run(self, targets, options, **_kwargs):
+            captured["targets"] = targets
+            captured["parallelism"] = options.parallelism
+            return {"status": "completed"}
+
+    def fake_context_names(actor, _db):
+        captured["catalog_actor"] = actor
+        return {"1": "Managed Account"}
+
+    def fake_execution_context(*, request, context_ref, actor, db):
+        captured["execution_actor"] = actor
+        captured["context_ref"] = context_ref
+        return context
+
+    def fake_stream(_request, run_check, **_kwargs):
+        run_check(lambda _event: None, lambda: False)
+        return JSONResponse({"ok": True})
+
+    monkeypatch.setattr(storage_ops_usage_stats_router, "storage_ops_context_names", fake_context_names)
+    monkeypatch.setattr(storage_ops_usage_stats_router, "get_s3_execution_context", fake_execution_context)
+    monkeypatch.setattr(storage_ops_usage_stats_router, "BucketUsageStatsService", FakeService)
+    monkeypatch.setattr(storage_ops_usage_stats_router, "stream_bucket_usage_stats", fake_stream)
+    app.dependency_overrides[dependencies.require_storage_ops_enabled] = lambda: None
+    app.dependency_overrides[storage_ops_usage_stats_router.get_current_storage_ops_admin] = lambda: user
+
+    try:
+        response = client.post(
+            "/api/storage-ops/buckets/usage-stats/stream",
+            json={
+                "targets": [{"context_id": "1", "bucket_name": "bucket-a"}],
+                "parallelism": 2,
+            },
+        )
+    finally:
+        app.dependency_overrides.pop(dependencies.require_storage_ops_enabled, None)
+        app.dependency_overrides.pop(storage_ops_usage_stats_router.get_current_storage_ops_admin, None)
+
+    assert response.status_code == 200, response.text
+    assert captured["catalog_actor"] is user
+    assert captured["execution_actor"] is user
+    assert captured["context_ref"] == "1"
+    targets = captured["targets"]
+    assert len(targets) == 1
+    assert targets[0].context_name == "Managed Account"
+    assert targets[0].scope_id == "1"
+    assert captured["parallelism"] == 2
 
 
 def test_ceph_admin_usage_stats_latest_aggregates_endpoint_scope(client: TestClient, db_session, monkeypatch):
@@ -356,7 +427,7 @@ def test_manager_scan_persists_and_reads_resolved_scope(
         assert aggregate.json()["aggregate"]["total_bytes"] == 10
         assert aggregate.json()["aggregate"]["buckets_with_snapshot"] == 1
 
-    row, = db_session.query(SnapshotRow).all()
+    row, = db_session.scalars(sa.select(SnapshotRow)).all()
     assert (row.scope_kind, row.scope_id, row.bucket_name) == ("manager", expected_scope, "bucket-a")
     assert len(executed_contexts) == 2
     assert all(context.context_id == expected_scope for context in executed_contexts)

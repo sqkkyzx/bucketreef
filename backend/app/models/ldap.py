@@ -8,7 +8,6 @@ from pydantic import Field, field_validator, model_validator
 from app.models.base import ApiModel
 from app.utils.identity_provider_ids import normalize_identity_provider_id
 from app.utils.ldap_validation import (
-    LDAP_PROVIDER_DEFAULT_USER_FILTER,
     normalize_optional_ldap_string,
     normalize_required_ldap_string,
     validate_ldap_url,
@@ -88,20 +87,20 @@ class LDAPProviderAdminPayload(ApiModel):
     provider_id: str
     display_name: str
     url: str
-    bind_dn: Optional[str] = None
+    bind_dn: Optional[str]
     bind_password: Optional[str] = None
     user_base_dn: str
-    user_filter: str = LDAP_PROVIDER_DEFAULT_USER_FILTER
-    email_attribute: str = "mail"
-    name_attribute: Optional[str] = "displayName"
-    subject_attribute: Optional[str] = None
-    start_tls: bool = False
-    tls_verify: bool = True
-    tls_ca_file: Optional[str] = None
-    allow_legacy_tls: bool = False
-    timeout_seconds: float = Field(5.0, gt=0, le=60)
-    enabled: bool = True
-    allow_insecure: bool = False
+    user_filter: str
+    email_attribute: str
+    name_attribute: Optional[str]
+    subject_attribute: Optional[str]
+    start_tls: bool
+    tls_verify: bool
+    tls_ca_file: Optional[str]
+    allow_legacy_tls: bool
+    timeout_seconds: float = Field(..., gt=0, le=60)
+    enabled: bool
+    allow_insecure: bool
     clear_bind_password: bool = False
 
     normalize_provider_id = field_validator("provider_id", mode="before")(normalize_identity_provider_id)

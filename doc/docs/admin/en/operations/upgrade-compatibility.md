@@ -1,5 +1,240 @@
 # Operations: Upgrade and Compatibility Notes
 
+## 2026-10 bucket quota updates use PATCH
+
+Manager and Ceph Admin bucket quota updates now use `PATCH` on their existing
+quota resource URLs. Quota payloads intentionally allow individual limits to
+be updated independently, while an empty payload disables the quota, so the
+former `PUT` routes have been removed instead of retained as compatibility
+aliases. Other bucket configuration resources keep their replacement-style
+`PUT` semantics.
+
+The bundled frontend has been updated with the API cutover. No database
+migration is required.
+
+## 2026-10 access-key metadata updates use PATCH
+
+Manager access-key metadata updates now use `PATCH` for both RGW-user keys and
+IAM-user keys. Metadata payloads intentionally preserve omitted fields and only
+apply values present in the request, so the former `PUT` routes have been
+removed instead of retained as compatibility aliases. Access-key status
+updates remain `PUT` because the status payload is a complete boolean state.
+
+The bundled frontend has been updated with the API cutover. No database
+migration is required.
+
+## 2026-10 Manager IAM identity updates use PATCH
+
+Manager IAM user, group, and role updates now use `PATCH` on their existing
+identity resource URLs. Their update payloads are intentionally sparse and
+apply only supplied fields, so the former top-level `PUT` routes have been
+removed instead of retained as compatibility aliases. `PUT` remains in use for
+complete IAM sub-resources such as inline policies and role tags.
+
+The bundled frontend has been updated with the API cutover. No database
+migration is required.
+
+## 2026-10 Ceph Admin account and user config updates use PATCH
+
+Ceph Admin account and user configuration updates now use
+`PATCH /ceph-admin/endpoints/{endpoint_id}/accounts/{account_id}/config` and
+`PATCH /ceph-admin/endpoints/{endpoint_id}/users/{user_id}/config`. Both
+contracts are intentionally sparse and apply only supplied fields, so the
+former `PUT` routes have been removed instead of retained as compatibility
+aliases.
+
+The bundled frontend has been updated with the API cutover. No database
+migration is required.
+
+## 2026-10 Portal project settings partial updates use PATCH
+
+Delegated Portal project settings now use `PATCH /portal/settings`. Project
+overrides are intentionally sparse and apply only supplied fields, so the
+former `PUT` route has been removed instead of retained as a compatibility
+alias.
+
+The bundled frontend has been updated with the API cutover. No database
+migration is required.
+
+## 2026-10 current-user profile partial updates use PATCH
+
+Authenticated profile updates now use `PATCH /users/me`. The profile payload is
+intentionally sparse and applies only supplied fields, so the former `PUT`
+route has been removed instead of retained as a compatibility alias. Avatar
+replacement remains `PUT /users/me/avatar`.
+
+The bundled frontend has been updated with the API cutover. No database
+migration is required.
+
+## 2026-10 private S3 connection partial updates use PATCH
+
+User-owned S3 connection updates now use `PATCH /connections/{connection_id}`.
+The payload is intentionally sparse and applies only supplied fields, including
+credential and endpoint changes, so the former `PUT` route has been removed
+instead of retained as a compatibility alias.
+
+The bundled frontend has been updated with the API cutover. No database
+migration is required.
+
+## 2026-10 RGW User partial updates use PATCH
+
+Admin RGW User updates now use `PATCH /admin/s3-users/{user_id}`. The update
+payload is intentionally sparse and applies only supplied fields, so the former
+`PUT` route has been removed instead of retained as a compatibility alias.
+
+The bundled frontend has been updated with the API cutover. No database
+migration is required.
+
+## 2026-10 RGW Account partial updates use PATCH
+
+Admin RGW Account updates now use `PATCH /admin/accounts/{account_id}`. Account
+Portal overrides now use `PATCH /admin/accounts/{account_id}/portal-settings`.
+Both payloads intentionally apply only supplied fields, so their former `PUT`
+routes have been removed instead of retained as compatibility aliases.
+
+The bundled frontend has been updated with the API cutover. No database
+migration is required.
+
+## 2026-10 shared S3 connection partial updates use PATCH
+
+The admin shared-S3-connection update now uses
+`PATCH /admin/s3-connections/{connection_id}` because
+`S3ConnectionAdminUpdate` intentionally applies only supplied fields. The
+former `PUT` route has been removed instead of retained as a compatibility
+alias.
+
+The bundled frontend has been updated with the API cutover. No database
+migration is required.
+
+## 2026-10 storage endpoint partial updates use PATCH
+
+The admin storage-endpoint configuration update now uses
+`PATCH /admin/storage-endpoints/{endpoint_id}` because
+`StorageEndpointUpdate` intentionally applies only supplied fields. The
+former `PUT` route has been removed instead of retained as a compatibility
+alias.
+
+The dedicated tags/default operations keep their existing `PUT` routes. The
+bundled frontend has been updated with the API cutover. No database migration
+is required.
+
+## 2026-10 UI user partial updates use PATCH
+
+The admin UI-user update endpoint now uses `PATCH /admin/users/{user_id}`
+because `UserUpdate` intentionally applies only supplied fields. The former
+`PUT` route has been removed instead of retained as a compatibility alias.
+
+Avatar replacement and administrator password replacement keep their existing
+`PUT` endpoints. The bundled frontend has been updated with the API cutover.
+No database migration is required.
+
+## 2026-10 UI group partial updates use PATCH
+
+The admin UI-group update endpoint now uses `PATCH /admin/groups/{group_id}`
+because its payload is intentionally partial. The former `PUT` route has been
+removed instead of retained as a compatibility alias.
+
+The bundled frontend has been updated with the API cutover. No database
+migration is required.
+
+## 2026-10 explicit identity-provider configuration payloads
+
+OIDC and LDAP provider create/update requests now require the complete
+non-secret configuration. Nullable configuration fields must be sent
+explicitly as `null` when unset.
+
+Secret controls remain optional so an update can preserve an existing OIDC
+client secret or LDAP bind password. The bundled frontend already sends the
+complete provider configuration. No database migration is required.
+
+## 2026-10 explicit webhook endpoint payloads
+
+Webhook endpoint create and update requests now require both `enabled` and
+`event_types`. Requests no longer inject `false` and `["*"]` when those
+fields are omitted, preventing incomplete PUT payloads from silently resetting
+the endpoint state.
+
+The bundled frontend already sends both fields. No database migration is
+required.
+
+## 2026-10 canonical static website payloads
+
+Bucket static-website reads and updates now use separate contracts and require
+the complete four-field shape: `index_document`, `error_document`,
+`redirect_all_requests_to`, and `routing_rules`. Nullable values remain
+nullable, but callers must send them explicitly instead of relying on omission
+defaults.
+
+The bundled frontend already sends the complete update payload. No database
+migration is required.
+
+## 2026-10 canonical Object Lock payloads
+
+Bucket Object Lock reads and updates now require the complete four-field shape:
+`enabled`, `mode`, `days`, and `years`. Each value remains nullable, but callers
+must state the intended value instead of relying on omission defaults.
+
+The bundled frontend already sends the complete payload. No database migration
+is required.
+
+## 2026-10 canonical public access block updates
+
+Bucket public-access-block reads now return all four nullable state fields,
+while update requests require all four boolean values explicitly. Omitted or
+`null` write fields are no longer interpreted as `false`.
+
+The bundled frontend already normalizes and sends the complete write payload.
+No database migration is required.
+
+## 2026-10 explicit Ceph Admin user caps updates
+
+Ceph Admin RGW user-capability updates now require an explicit `values` array.
+An omitted array no longer means an empty replacement set; callers that intend
+to clear all caps must send `values: []` explicitly.
+
+The bundled frontend already sends the canonical payload. No database
+migration is required.
+
+## 2026-10 explicit tag update payloads
+
+Bucket and storage-endpoint tag updates now require the `tags` field instead of
+silently treating an omitted field as an empty list. The bundled frontend
+already sends the intended tag list for every update; bucket tags can also be
+cleared through the dedicated delete route.
+
+Deploy the backend and bundled frontend together. No database migration is
+required.
+
+## 2026-10 canonical storage endpoint responses
+
+Admin storage-endpoint responses now require the complete normalized endpoint
+state, including nullable metadata, service-identity status, capabilities,
+permissions, tags, and feature configuration. The nested Admin Ops permission
+object likewise requires all eight read/write flags. The backend already
+materialized these fields; the bundled frontend no longer carries omission
+fallbacks.
+
+Deploy the backend and bundled frontend together. No database migration is
+required.
+
+## 2026-10 canonical Browser object protection payloads
+
+Browser ACL, legal-hold, and retention writes now use dedicated update payloads.
+Legal-hold status plus retention mode and retain-until are required on writes.
+Read responses always include their nullable state and version fields, and
+retention responses no longer expose the write-only governance-bypass option.
+
+Deploy the backend and bundled frontend together. No database migration is
+required.
+
+## 2026-10 canonical Browser object-tag payloads
+
+Browser object-tag updates now require an explicit `tags` collection. Object-tag
+responses always include `tags` and nullable `version_id`.
+
+Deploy the backend and bundled frontend together. Direct callers must send the
+canonical update object. No database migration is required.
+
 ## 2026-10 canonical SNS policy and configuration payloads
 
 Manager SNS topic policy responses and updates now require `policy`, and topic
@@ -97,6 +332,268 @@ field omission.
 Deploy the migration, backend, and frontend together. New diagnostics always
 emit the complete canonical shape. Downgrade removes nullable fields whose value
 is `null` for compatibility with the previous application version.
+
+## 2026-10 bucket migration source-cleanup contract
+
+Migration `0183_remove_bucket_migration_delete_source` removes the obsolete
+`bucket_migrations.delete_source` column and `delete_source_safe` precheck fields.
+Source deletion is already an explicit, separately confirmed maintenance operation
+through `/cleanup-source`; current migrations never schedule source deletion as a
+transfer step.
+
+Deploy the migration, backend, and frontend together. Creation and update payloads,
+responses, precheck reports, and migration webhook payloads no longer expose the
+retired setting. Downgrade recreates `delete_source=false` and restores the retired
+precheck field as `true`, which matches the non-destructive transfer contract.
+
+## 2026-10 bucket migration precheck safety cleanup
+
+Migration `0184_remove_bucket_migration_report_safety` removes the redundant
+`rollback_safe` and `same_endpoint_copy_safe` booleans from persisted precheck
+reports. Blocking safety is already represented by typed diagnostics with explicit
+codes, severity and blocking state, and no runtime or frontend logic consumes the
+aggregate booleans.
+
+Deploy the migration, backend, and frontend together. Downgrade reconstructs the
+retired booleans from the persisted diagnostics so older downgrade steps can still
+rebuild their historical execution-plan shape.
+
+## 2026-10 explicit bucket migration targets
+
+Migration `0185_remove_bucket_migration_mapping_prefix` removes the unused
+`bucket_migrations.mapping_prefix` column. Each bucket mapping now requires its
+final `target_bucket` explicitly; the Manager wizard already sends this canonical
+shape after applying its prefix, suffix and per-bucket overrides.
+
+Deploy the migration, backend, and frontend together. Existing migrations keep
+their final destination names on `bucket_migration_items`, so no target data is
+lost. Downgrade recreates the retired nullable prefix column without attempting to
+infer a prefix from explicit target names.
+
+## 2026-10 bucket migration target-state cleanup
+
+Migration `0186_remove_bucket_migration_target_exists` removes the unused
+`bucket_migration_items.target_bucket_exists` column and the matching internal API
+field. The value was never set to `true` or used by migration execution or the
+Manager UI; target creation ownership is tracked separately by
+`target_created_by_migration`.
+
+Deploy the migration, backend, and frontend together. Downgrade recreates the
+retired column with its historical `false` default.
+
+## 2026-10 bucket migration cleanup-state simplification
+
+Migration `0187_remove_bucket_migration_cleanup_status` removes the unused
+per-item `cleanup_status` column and matching internal API field. Maintenance
+progress is tracked by the migration-level `maintenance_status`, while per-item
+failures remain available through `cleanup_error`.
+
+Deploy the migration, backend, and frontend together. Downgrade recreates the
+retired per-item status with its historical `idle` default.
+
+## 2026-10 bucket migration request-state simplification
+
+Migration `0188_remove_bucket_migration_request_flags` removes the redundant
+`pause_requested` and `cancel_requested` boolean columns. The migration status
+already carries the same request states atomically as `pause_requested` and
+`cancel_requested`, and worker control now reads that status as the single source
+of truth.
+
+Deploy the migration and backend together. Downgrade recreates both booleans and
+derives their values from the matching status so older code sees the historical
+mirrored representation.
+
+## 2026-10 onboarding journey state cleanup
+
+Migration `0189_remove_onboarding_journey_dead_state` removes the unused
+`evidence_json`, `readiness_json`, and `validated_at` columns from
+`onboarding_journeys`. The current guided onboarding flow stores its canonical
+draft, created resources, pending step, and configured timestamp; the retired
+columns were no longer populated or consumed.
+
+Deploy the migration and backend together. Downgrade recreates the removed JSON
+columns as empty objects and restores the nullable validation timestamp.
+
+## 2026-10 operation lease timestamp cleanup
+
+Migration `0190_remove_operation_lease_acquired_at` removes the unused
+`backend_operation_leases.acquired_at` column. Lease ownership is determined by
+`lease_owner` and `lease_until`, while `updated_at` already records acquisition,
+renewal, and release writes; no runtime path consumed a separate acquisition
+timestamp.
+
+Deploy the migration and backend together. Downgrade recreates `acquired_at`
+from the row's current `updated_at` value.
+
+## 2026-10 first-admin bootstrap timestamp cleanup
+
+Migration `0191_remove_first_admin_bootstrap_issued_at` removes the unused
+`first_admin_bootstrap.issued_at` column. Bootstrap availability and token
+expiry are determined by `token_digest`, `expires_at`, and `consumed_at`;
+no runtime path consumed a separate issuance timestamp.
+
+Deploy the migration and backend together. Downgrade recreates `issued_at` as
+a nullable column without reconstructing historical issuance timestamps.
+
+## 2026-10 API token create response cleanup
+
+The `POST /api/auth/api-tokens` response no longer includes the constant
+`token_type` field. The frontend only consumes the one-time `access_token`
+and the persisted `api_token` metadata.
+
+Deploy matching backend and frontend versions together.
+
+## 2026-10 onboarding response cleanup
+
+Admin onboarding responses no longer expose the unused `actor_id` status field
+or the internal journey `pending_step`. The backend continues to persist and
+use `pending_step` to resume interrupted onboarding work; it is no longer part
+of the frontend contract.
+
+Deploy matching backend and frontend versions together.
+
+## 2026-10 healthcheck response cleanup
+
+Admin healthcheck read responses no longer expose the unused
+`resolution_seconds`, `baseline_latency_ms`, or `sample_count` projection
+fields. Rollup resolution, latency baselines, and sample counts remain internal
+inputs to health evaluation and aggregation.
+
+Deploy matching backend and frontend versions together.
+
+## 2026-10 admin stats response cleanup
+
+Admin statistics responses no longer expose the unused `unassigned_accounts`,
+`unassigned_s3_users`, or `accounts_with_usage` counters. Assignment totals
+and storage usage aggregates that are displayed by the frontend remain
+unchanged.
+
+Deploy matching backend and frontend versions together.
+
+## 2026-10 bucket overview response cleanup
+
+Admin and Manager storage statistics no longer expose the unused
+`largest_bucket` and `most_objects_bucket` overview fields. Bucket-level
+usage remains available in `bucket_usage`, while the overview keeps the
+counts and averages displayed by the frontend.
+
+Deploy matching backend and frontend versions together.
+
+## 2026-10 quota test-email response cleanup
+
+The quota notification SMTP test endpoint now returns only the recipient
+address used for the successful test. The constant `status` and redundant
+`sent_at` response fields were unused by the frontend; the message body still
+records the send timestamp.
+
+Deploy matching backend and frontend versions together.
+
+## 2026-10 cost analytics response cleanup
+
+Cost analytics concentration responses no longer expose
+`subject_total_cost`. The value remains an internal intermediate used to
+derive `other_cost` and `top_five_ratio`, which are the values displayed by
+the frontend.
+
+Deploy matching backend and frontend versions together.
+
+## 2026-10 authentication response cleanup
+
+Authentication responses no longer expose the unused S3-session
+`session_id` and `user_uid` descriptor fields or the external-identity
+`link_request_id`. Session and RGW user identifiers remain internal to
+authentication and audit workflows, and external-identity link requests remain
+traceable through audit records.
+
+Deploy matching backend and frontend versions together.
+
+## 2026-10 bucket comparison action response cleanup
+
+Manager bucket-comparison action responses now return only
+`succeeded_count`, `failed_count`, and the user-facing `message`. Request
+identity fields, the planned count, and failed-key samples remain available to
+the backend for orchestration and audit metadata instead of being duplicated in
+the frontend response.
+
+Deploy matching backend and frontend versions together.
+
+## 2026-10 admin dashboard scope response cleanup
+
+The Admin dashboard scope response now returns only each supervised endpoint's
+`endpoint_id` and `name`. Internal Admin Ops URLs and per-feature enablement
+flags remain backend inputs for collection, while collection failures continue
+to expose their sanitized endpoint URL through `coverage.issues` where the
+frontend actually displays it.
+
+Deploy matching backend and frontend versions together.
+
+## 2026-10 webhook delivery response cleanup
+
+Admin webhook delivery read models no longer expose the unused
+`delivery_id`, `event_id`, `endpoint_id`, `next_attempt_at`, or
+`created_at` fields. Delivery scheduling and external webhook identifiers
+remain persisted and continue to drive the worker and outbound webhook
+protocol. The test-delivery action still returns its queued `delivery_id`.
+
+Deploy matching backend and frontend versions together.
+
+## 2026-10 bucket migration precheck response cleanup
+
+Manager migration responses now expose an explicit precheck read model instead
+of returning the persisted precheck JSON verbatim. The response keeps the
+blocking/warning counts, diagnostics, and reviewed per-bucket plan used by the
+frontend. Internal context snapshots, source/target bucket profiles, target
+object counts, capability summaries, and duplicated status/revision metadata
+remain persisted for workflow execution but are no longer projected through
+the application API.
+
+Deploy matching backend and frontend versions together.
+
+## 2026-10 endpoint health status segment cleanup
+
+Migration \`0192_remove_endpoint_health_checks_count\` removes the unused
+\`endpoint_health_status_segments.checks_count\` column. Health status segments
+continue to retain their time range and latency aggregates; latency aggregation
+uses the separate \`latency_sample_count\` state.
+
+## 2026-10 quota alert state cleanup
+
+Migration \`0193_remove_unused_quota_alert_state\` removes four write-only
+quota-alert history fields: \`last_ratio_pct\`, \`last_checked_at\`,
+\`last_notified_level\`, and \`last_notified_at\`. Alert transition and
+deduplication behavior continues to use the persisted \`last_level\`.
+
+## 2026-10 Portal deleted-folder restore progress cleanup
+
+Portal deleted-folder restore progress events no longer include the unused
+`current_key` field. The frontend derives progress from the aggregate scan and
+restore counters, so per-file keys are no longer serialized on every restore
+completion event.
+
+Deploy matching backend and frontend versions together.
+
+## 2026-10 bucket migration list response cleanup
+
+The Manager migration list endpoint now returns a dedicated summary read model
+instead of the full migration detail projection. List rows keep context IDs,
+workflow/preparation state, progress counters, maintenance state, and update
+time. Detailed configuration, actions, errors, and precheck reports remain on
+the single-migration endpoint and stream, avoiding unnecessary persisted-report
+parsing during list refreshes.
+
+Deploy matching backend and frontend versions together.
+
+## 2026-10 bucket migration read-model cleanup
+
+Bucket migration list/detail responses no longer expose runtime fields that the
+Manager frontend never consumed. The trimmed fields include internal worker and
+revision state, unused timestamps and counters, plus the persisted strong-integrity
+setting. Recent migration events expose only the identifier, message and creation
+time used by the Manager UI; item linkage, severity and metadata remain persisted
+internally. Execution state remains stored and used by the backend exactly as before.
+
+Deploy the backend and frontend together. This cleanup changes only the internal
+application API response shape and does not require a database migration.
 
 ## 2026-10 bucket migration execution strategy column
 
@@ -222,11 +719,11 @@ expecting `secret_key` on existing-key reads. No database migration is required.
 ## 2026-10 surface-specific bucket operation requests
 
 Bucket integrity checks, purge operations, and targeted usage-statistics scans
-now expose separate request schemas for their execution surface. Manager and
-Ceph Admin routes accept `buckets`; Storage Ops routes accept `targets` with an
-explicit execution context. A request can no longer include, omit, or switch to
-the other surface's target collection and rely on router-side compatibility
-validation.
+now expose separate request schemas for their execution surface. Manager routes
+accept `buckets`; Storage Ops routes accept `targets` with an explicit execution
+context; Ceph Admin routes accept RGW `targets` carrying the tenant and bucket
+name. A request can no longer include, omit, or switch to another surface's
+target shape and rely on router-side compatibility validation.
 
 Deploy the backend and bundled frontend together. The canonical frontend JSON
 payloads are unchanged, but direct callers using the wrong collection now fail
@@ -369,8 +866,9 @@ API compatibility changes:
 - `POST /continue` requires `{ "confirmed": true }` for cutover.
 - `POST /restore-access`, `/cleanup-target` and `/cleanup-source` require explicit
   confirmation and return **202**. Their status is independent of the transfer result.
-- Creation/update rejects `delete_source: true`. The combined rollback endpoints
-  reject execution and direct clients to the separate recovery operations.
+- Source cleanup is available only through the explicit `/cleanup-source` operation.
+  Migration configuration no longer has a `delete_source` field. The combined rollback
+  endpoints reject execution and direct clients to the separate recovery operations.
 
 Preparation has its own worker loop, separate from long copies. Both loops renew
 leases during blocking storage requests. Mutation intents and original policies
@@ -1139,14 +1637,18 @@ both strict.
 
 ## 2026-08 canonical secret keyrings
 
-The backend now accepts only the keyring settings `JWT_KEYS` and
-`CREDENTIAL_KEYS`. Before upgrading, replace a singular `FERNET_KEY` with a
-one-item `JWT_KEYS` list and replace a singular `CREDENTIAL_KEY` with a one-item
-`CREDENTIAL_KEYS` list. Keep every historical key required to validate active
-JWTs or decrypt stored credentials, with the key used for new values first.
+The backend accepts only the keyring settings `UI_JWT_KEYS`, `API_JWT_KEYS`, and
+`CREDENTIAL_KEYS`. `JWT_KEYS`, `FERNET_KEY`, and `CREDENTIAL_KEY` are ignored.
+Before upgrading from a deployment that still uses a shared `JWT_KEYS` ring,
+copy its complete ordered key list to both `UI_JWT_KEYS` and `API_JWT_KEYS` so
+active JWTs remain valid through the cutover. The rings can then be rotated to
+distinct values after the old tokens have expired. Replace a singular
+`CREDENTIAL_KEY` with a one-item `CREDENTIAL_KEYS` list and keep every
+historical credential key required to decrypt stored values, with the key used
+for new values first.
 
-Empty keyrings are rejected at startup. The singular environment variables are
-ignored and no longer provide runtime compatibility.
+Empty keyrings are rejected at startup. Removed environment variables no longer
+provide runtime compatibility.
 
 ## 2026-08 strict credential encryption
 
@@ -1225,7 +1727,7 @@ aliases:
   `/api/admin/stats/summary`, `/api/admin/stats/storage`, and
   `/api/admin/stats/traffic` resources.
 - `POST /api/admin/users/{user_id}/assign-account`: replace account links
-  atomically through `PUT /api/admin/users/{user_id}` with `account_links`.
+  atomically through `PATCH /api/admin/users/{user_id}` with `account_links`.
 - `GET /api/connections/{connection_id}/capabilities`: consume the
   `capabilities` field returned by the connection list and write resources.
 - `GET /api/portal/eligibility`: load `/api/portal/state`, which enforces the

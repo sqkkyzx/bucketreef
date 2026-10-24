@@ -124,12 +124,10 @@ describe("AdminDashboard feature summary", () => {
       total_s3_users: 0,
       total_shared_connections: 0,
       total_users: 0,
-      unassigned_accounts: 0,
-      unassigned_s3_users: 0,
     });
     mocks.fetchAdminDashboardScope.mockResolvedValue({ endpoints: [
-      { endpoint_id: 1, name: "INRAE-eprod-debug", storage_enabled: true, traffic_enabled: true },
-      { endpoint_id: 2, name: "INRAE-eprod-idf", storage_enabled: true, traffic_enabled: true },
+      { endpoint_id: 1, name: "INRAE-eprod-debug" },
+      { endpoint_id: 2, name: "INRAE-eprod-idf" },
     ] });
     mocks.fetchAdminDashboardStorage.mockResolvedValue({
       cache: { hit: true, expires_at: "2026-06-05T11:46:46Z" },
@@ -145,7 +143,6 @@ describe("AdminDashboard feature summary", () => {
         used_bytes: 5_320_000_000_000_000,
         object_count: 2_140_000_000,
         bucket_count: 1850,
-        accounts_with_usage: 12,
       },
       account_usage: [],
       s3_user_usage: [],
@@ -194,7 +191,6 @@ describe("AdminDashboard feature summary", () => {
           latency_ms: 76,
           check_mode: "http",
           availability_pct: 100,
-          baseline_latency_ms: 80,
           timeline: [],
         },
         {
@@ -206,7 +202,6 @@ describe("AdminDashboard feature summary", () => {
           latency_ms: null,
           check_mode: "http",
           availability_pct: 96,
-          baseline_latency_ms: null,
           timeline: [],
         },
       ],
@@ -311,7 +306,6 @@ describe("AdminDashboard feature summary", () => {
       complete: false,
       journeys: [],
       can_configure: true,
-      actor_id: 1,
       source: "standard",
     });
 
@@ -435,8 +429,6 @@ describe("AdminDashboard feature summary", () => {
       total_s3_users: 12,
       total_shared_connections: 3,
       total_users: 0,
-      unassigned_accounts: 0,
-      unassigned_s3_users: 0,
     });
 
     await renderDashboard();
@@ -721,7 +713,7 @@ describe("AdminDashboard feature summary", () => {
   });
 
   it("retains a failed onboarding dismissal and allows retry", async () => {
-    mocks.fetchOnboardingStatus.mockResolvedValue({ dismissed: false, complete: false, journeys: [], can_configure: true, actor_id: 1, source: "standard" });
+    mocks.fetchOnboardingStatus.mockResolvedValue({ dismissed: false, complete: false, journeys: [], can_configure: true, source: "standard" });
     mocks.dismissOnboarding.mockRejectedValueOnce(new Error("Unable to dismiss setup"));
     await renderDashboard();
     fireEvent.click(screen.getByRole("button", { name: "Hide setup", exact: true }));
@@ -773,8 +765,8 @@ describe("AdminDashboard feature summary", () => {
       }],
     }, measurements: Object.fromEntries(["bucket_count", "object_count", "used_bytes"].map((key) => [key, { contributing_count: 1, complete_count: 1 }])) });
     mocks.fetchAdminDashboardScope.mockResolvedValue({ endpoints: [
-      { endpoint_id: 1, name: "Ceph Archive", storage_enabled: true, traffic_enabled: true },
-      { endpoint_id: 3, name: "Ceph Production", storage_enabled: true, traffic_enabled: true },
+      { endpoint_id: 1, name: "Ceph Archive" },
+      { endpoint_id: 3, name: "Ceph Production" },
     ] });
     await renderDashboard();
     const card = screen.getByRole("region", { name: "Storage & traffic" });

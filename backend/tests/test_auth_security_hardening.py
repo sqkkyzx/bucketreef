@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 from jose import jwt
 from pwdlib import PasswordHash
 from pwdlib.hashers.bcrypt import BcryptHasher
-from sqlalchemy import text
+from sqlalchemy import select, text
 from starlette.requests import Request
 from webauthn.helpers import bytes_to_base64url
 
@@ -70,7 +70,9 @@ def _user(db_session, *, email: str = "security@example.com", role: str = UserRo
 
 def _set_general_setting(db_session, field: str, value: bool) -> None:
     load_app_settings_for_db(db_session)
-    row = db_session.query(AppSetting).filter(AppSetting.key == "default").one()
+    row = db_session.scalars(
+        select(AppSetting).where(AppSetting.key == "default")
+    ).one()
     settings = AppSettings.model_validate_json(row.payload_json)
     setattr(settings.general, field, value)
     row.payload_json = settings.model_dump_json(indent=2)
@@ -94,7 +96,7 @@ def test_ui_jwt_is_strictly_typed_and_rejects_wrong_type_audience_and_legacy_tok
     assert claims["sub"] == f"user:{user.id}"
     assert decode_typed_token(token, expected_type="api_access") is None
 
-    key = settings.effective_ui_jwt_keys()[0]
+    key = settings.ui_jwt_keys[0]
     kid = hashlib.sha256(key.encode()).hexdigest()[:16]
     wrong_audience = jwt.encode(
         {
@@ -331,9 +333,11 @@ def test_profile_webauthn_step_up_renews_current_session_without_issuing_tokens(
     db_session.commit()
     refresh_token_ids = {
         row.id
-        for row in db_session.query(RefreshToken)
-        .filter(RefreshToken.auth_session_id == credentials.session.id)
-        .all()
+        for row in db_session.scalars(
+            select(RefreshToken).where(
+                RefreshToken.auth_session_id == credentials.session.id
+            )
+        ).all()
     }
 
     headers = trusted_origin_headers(csrf_token=credentials.csrf_token)
@@ -350,7 +354,9 @@ def test_profile_webauthn_step_up_renews_current_session_without_issuing_tokens(
         headers=headers,
     )
     assert options.status_code == 200
-    challenge = db_session.query(AuthChallenge).filter(AuthChallenge.consumed_at.is_(None)).one()
+    challenge = db_session.scalars(
+        select(AuthChallenge).where(AuthChallenge.consumed_at.is_(None))
+    ).one()
     assert challenge.binding_sid == credentials.session.id
 
     monkeypatch.setattr(
@@ -371,9 +377,11 @@ def test_profile_webauthn_step_up_renews_current_session_without_issuing_tokens(
     assert WebAuthnService(db_session).is_recent(credentials.session) is True
     assert {
         row.id
-        for row in db_session.query(RefreshToken)
-        .filter(RefreshToken.auth_session_id == credentials.session.id)
-        .all()
+        for row in db_session.scalars(
+            select(RefreshToken).where(
+                RefreshToken.auth_session_id == credentials.session.id
+            )
+        ).all()
     } == refresh_token_ids
     allowed = auth_client.post(
         "/api/auth/api-tokens",
@@ -381,7 +389,9 @@ def test_profile_webauthn_step_up_renews_current_session_without_issuing_tokens(
         headers=headers,
     )
     assert allowed.status_code == 201
-    audit = db_session.query(AuditLog).filter(AuditLog.action == "webauthn_step_up_success").one()
+    audit = db_session.scalars(
+        select(AuditLog).where(AuditLog.action == "webauthn_step_up_success")
+    ).one()
     assert audit.entity_id == credentials.session.id
 
 
@@ -632,11 +642,11 @@ def test_profile_name_edit_is_disabled_by_default_and_can_be_enabled(auth_client
     credentials = authenticate_ui_client(auth_client, db_session, user)
     headers = trusted_origin_headers(csrf_token=credentials.csrf_token)
 
-    denied = auth_client.put("/api/users/me", json={"full_name": "New name"}, headers=headers)
+    denied = auth_client.patch("/api/users/me", json={"full_name": "New name"}, headers=headers)
     assert denied.status_code == 403
 
     _set_general_setting(db_session, "allow_user_profile_name_edit", True)
-    allowed = auth_client.put("/api/users/me", json={"full_name": "New name"}, headers=headers)
+    allowed = auth_client.patch("/api/users/me", json={"full_name": "New name"}, headers=headers)
     assert allowed.status_code == 200
     assert allowed.json()["full_name"] == "New name"
 
@@ -742,7 +752,11 @@ def test_refresh_replay_revokes_the_entire_family(db_session):
         with pytest.raises(RefreshReplayError):
             service.rotate(original.refresh_token)
 
-        rows = db_session.query(RefreshToken).filter(RefreshToken.auth_session_id == original.session.id).all()
+        rows = db_session.scalars(
+            select(RefreshToken).where(
+                RefreshToken.auth_session_id == original.session.id
+            )
+        ).all()
         assert len(rows) == 2
         assert all(row.revoked_at is not None for row in rows)
         db_session.refresh(original.session)
@@ -896,7 +910,9 @@ def test_oidc_callback_failure_is_generic_audited_and_never_persists_code_or_sta
     )
     assert response.status_code == 400
     assert response.json()["detail"] == "Invalid OIDC response"
-    audit = db_session.query(AuditLog).filter(AuditLog.action == "login_oidc_failure").one()
+    audit = db_session.scalars(
+        select(AuditLog).where(AuditLog.action == "login_oidc_failure")
+    ).one()
     persisted = f"{audit.message or ''} {audit.metadata_json or ''}"
     assert "secret-code" not in persisted
     assert "secret-state" not in persisted
@@ -921,8 +937,9 @@ def test_oidc_email_collision_creates_an_audited_manual_link_response(auth_clien
         "user": None,
         "session": None,
         "redirect_path": None,
-        "link_request_id": "link-request-1",
         "recovery_codes": None,
     }
-    audit = db_session.query(AuditLog).filter(AuditLog.action == "external_identity_link_requested").one()
+    audit = db_session.scalars(
+        select(AuditLog).where(AuditLog.action == "external_identity_link_requested")
+    ).one()
     assert audit.entity_id == "link-request-1"

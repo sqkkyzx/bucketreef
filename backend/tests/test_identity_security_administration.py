@@ -8,6 +8,7 @@ from datetime import timedelta
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import func, select
 
 from app.db import (
     AppSetting,
@@ -64,7 +65,9 @@ def _user(db_session, *, email: str, role: str) -> User:
 
 def _set_admin_passkey_policy(db_session, required: bool) -> None:
     load_app_settings_for_db(db_session)
-    row = db_session.query(AppSetting).filter(AppSetting.key == "default").one()
+    row = db_session.scalars(
+        select(AppSetting).where(AppSetting.key == "default")
+    ).one()
     settings = AppSettings.model_validate_json(row.payload_json)
     settings.general.require_passkey_for_admins = required
     row.payload_json = settings.model_dump_json(indent=2)
@@ -121,9 +124,9 @@ def test_common_mfa_reset_removes_all_factors_sessions_and_tokens(db_session):
     assert result.passkeys_removed == 1
     assert result.recovery_codes_removed == 1
     assert result.challenges_removed == 1
-    assert db_session.query(WebAuthnCredential).count() == 0
-    assert db_session.query(RecoveryCode).count() == 0
-    assert db_session.query(AuthChallenge).count() == 0
+    assert db_session.scalar(select(func.count()).select_from(WebAuthnCredential)) == 0
+    assert db_session.scalar(select(func.count()).select_from(RecoveryCode)) == 0
+    assert db_session.scalar(select(func.count()).select_from(AuthChallenge)) == 0
     db_session.refresh(target)
     db_session.refresh(session)
     db_session.refresh(token)
@@ -297,8 +300,14 @@ def test_admin_link_request_queue_is_filtered_by_role_hierarchy(auth_client, db_
     assert "subject" not in inventory.text
     assert privileged_decision.status_code == 403
     assert standard_decision.status_code == 200
-    assert db_session.query(ExternalIdentity).filter(ExternalIdentity.user_id == standard.id).count() == 1
-    audit = db_session.query(AuditLog).filter(AuditLog.action == "external_identity_link_decision").one()
+    assert db_session.scalar(
+        select(func.count())
+        .select_from(ExternalIdentity)
+        .where(ExternalIdentity.user_id == standard.id)
+    ) == 1
+    audit = db_session.scalars(
+        select(AuditLog).where(AuditLog.action == "external_identity_link_decision")
+    ).one()
     assert "standard-sensitive-subject" not in (audit.metadata_json or "")
 
 
@@ -321,12 +330,12 @@ def test_only_superadmin_can_manage_privileged_users_and_self_protection_applies
     super_credentials = authenticate_ui_client(auth_client, db_session, superadmin, mfa_verified=False)
     headers = trusted_origin_headers(csrf_token=super_credentials.csrf_token)
 
-    deactivate = auth_client.put(
+    deactivate = auth_client.patch(
         f"/api/admin/users/{superadmin.id}",
         json={"is_active": False},
         headers=headers,
     )
-    demote = auth_client.put(
+    demote = auth_client.patch(
         f"/api/admin/users/{superadmin.id}",
         json={"role": UserRole.UI_USER.value},
         headers=headers,
@@ -336,7 +345,9 @@ def test_only_superadmin_can_manage_privileged_users_and_self_protection_applies
     assert deactivate.status_code == 400
     assert demote.status_code == 400
     assert delete.status_code == 400
-    assert db_session.query(User).filter(User.id == superadmin.id).one().is_active is True
+    assert db_session.scalars(
+        select(User).where(User.id == superadmin.id)
+    ).one().is_active is True
 
 
 def test_stale_admin_session_can_read_security_data_and_revoke_access(auth_client, db_session):
@@ -430,17 +441,17 @@ def test_user_update_step_up_depends_on_persisted_security_change(auth_client, d
     credentials = authenticate_ui_client(auth_client, db_session, admin, mfa_verified=False)
     headers = trusted_origin_headers(csrf_token=credentials.csrf_token)
 
-    name_only = auth_client.put(
+    name_only = auth_client.patch(
         f"/api/admin/users/{target.id}",
         json={"full_name": "Updated Name"},
         headers=headers,
     )
-    identical_role = auth_client.put(
+    identical_role = auth_client.patch(
         f"/api/admin/users/{target.id}",
         json={"role": UserRole.UI_USER.value},
         headers=headers,
     )
-    role_change = auth_client.put(
+    role_change = auth_client.patch(
         f"/api/admin/users/{target.id}",
         json={"role": UserRole.UI_NONE.value},
         headers=headers,
@@ -453,7 +464,7 @@ def test_user_update_step_up_depends_on_persisted_security_change(auth_client, d
     assert role_change.json()["detail"] == "Recent WebAuthn verification required"
 
     _set_admin_passkey_policy(db_session, False)
-    role_change_without_policy = auth_client.put(
+    role_change_without_policy = auth_client.patch(
         f"/api/admin/users/{target.id}",
         json={"role": UserRole.UI_NONE.value},
         headers=headers,
@@ -482,7 +493,7 @@ def test_storage_endpoint_mutations_require_recent_webauthn_and_detection_reject
     credentials = authenticate_ui_client(auth_client, db_session, admin, mfa_verified=False)
     headers = trusted_origin_headers(csrf_token=credentials.csrf_token)
 
-    blocked_update = auth_client.put(
+    blocked_update = auth_client.patch(
         f"/api/admin/storage-endpoints/{endpoint.id}",
         json={"name": "endpoint-guard-renamed"},
         headers=headers,
@@ -520,7 +531,7 @@ def test_storage_endpoint_mutations_require_recent_webauthn_and_detection_reject
         "app.routers.admin.storage_endpoints.run_initial_healthchecks",
         lambda **_kwargs: None,
     )
-    verified_update = auth_client.put(
+    verified_update = auth_client.patch(
         f"/api/admin/storage-endpoints/{endpoint.id}",
         json={"name": "endpoint-guard-renamed"},
         headers=trusted_origin_headers(csrf_token=verified.csrf_token),
@@ -546,14 +557,14 @@ def test_group_access_mutations_require_recent_webauthn_but_descriptive_changes_
     assert descriptive_create.status_code == 201
     group_id = descriptive_create.json()["id"]
 
-    descriptive_update = auth_client.put(
+    descriptive_update = auth_client.patch(
         f"/api/admin/groups/{group_id}",
         json={"description": "Still descriptive"},
         headers=headers,
     )
     assert descriptive_update.status_code == 200
 
-    blocked_update = auth_client.put(
+    blocked_update = auth_client.patch(
         f"/api/admin/groups/{group_id}",
         json={"can_access_storage_ops": True},
         headers=headers,
@@ -570,7 +581,7 @@ def test_group_access_mutations_require_recent_webauthn_but_descriptive_changes_
 
     clear_ui_client(auth_client)
     verified = authenticate_ui_client(auth_client, db_session, admin, mfa_verified=True)
-    verified_update = auth_client.put(
+    verified_update = auth_client.patch(
         f"/api/admin/groups/{group_id}",
         json={"can_access_storage_ops": True},
         headers=trusted_origin_headers(csrf_token=verified.csrf_token),
@@ -622,12 +633,12 @@ def test_shared_connection_expansion_requires_recent_webauthn_but_revocation_doe
     credentials = authenticate_ui_client(auth_client, db_session, admin, mfa_verified=False)
     headers = trusted_origin_headers(csrf_token=credentials.csrf_token)
 
-    name_only = auth_client.put(
+    name_only = auth_client.patch(
         f"/api/admin/s3-connections/{connection.id}",
         json={"name": "guarded-shared-renamed"},
         headers=headers,
     )
-    deactivated = auth_client.put(
+    deactivated = auth_client.patch(
         f"/api/admin/s3-connections/{connection.id}",
         json={"is_active": False},
         headers=headers,
@@ -636,7 +647,7 @@ def test_shared_connection_expansion_requires_recent_webauthn_but_revocation_doe
         f"/api/admin/s3-connections/{removable.id}",
         headers=headers,
     )
-    blocked_reactivation = auth_client.put(
+    blocked_reactivation = auth_client.patch(
         f"/api/admin/s3-connections/{connection.id}",
         json={"is_active": True},
         headers=headers,
@@ -662,7 +673,7 @@ def test_shared_connection_expansion_requires_recent_webauthn_but_revocation_doe
 
     clear_ui_client(auth_client)
     verified = authenticate_ui_client(auth_client, db_session, admin, mfa_verified=True)
-    reactivated = auth_client.put(
+    reactivated = auth_client.patch(
         f"/api/admin/s3-connections/{connection.id}",
         json={"is_active": True},
         headers=trusted_origin_headers(csrf_token=verified.csrf_token),
@@ -683,11 +694,11 @@ def test_each_manager_tool_mutation_requires_recent_mfa(auth_client, db_session,
     unchanged_payload = {"manager_tool_access": {tool: current}}
     changed_payload = {"manager_tool_access": {tool: not current}}
 
-    unchanged = auth_client.put(f"/api/admin/users/{target.id}", json=unchanged_payload, headers=headers)
+    unchanged = auth_client.patch(f"/api/admin/users/{target.id}", json=unchanged_payload, headers=headers)
     assert unchanged.status_code == 200
     assert unchanged.json()["manager_tool_access"][tool] is current
 
-    denied = auth_client.put(f"/api/admin/users/{target.id}", json=changed_payload, headers=headers)
+    denied = auth_client.patch(f"/api/admin/users/{target.id}", json=changed_payload, headers=headers)
     assert denied.status_code == 403
     assert denied.json()["detail"] == "Recent WebAuthn verification required"
     db_session.refresh(target)
@@ -695,7 +706,7 @@ def test_each_manager_tool_mutation_requires_recent_mfa(auth_client, db_session,
 
     clear_ui_client(auth_client)
     verified = authenticate_ui_client(auth_client, db_session, admin, mfa_verified=True)
-    updated = auth_client.put(
+    updated = auth_client.patch(
         f"/api/admin/users/{target.id}",
         json=changed_payload,
         headers=trusted_origin_headers(csrf_token=verified.csrf_token),
@@ -727,7 +738,7 @@ def test_stale_session_must_step_up_for_user_creation_and_deletion(auth_client, 
 
     assert created.status_code == 403
     assert deleted.status_code == 403
-    assert db_session.query(User).filter(User.id == target.id).first() is not None
+    assert db_session.scalar(select(User).where(User.id == target.id)) is not None
 
 
 def test_authentication_setting_change_is_guarded_before_side_effects(auth_client, db_session, monkeypatch):
@@ -779,7 +790,7 @@ def test_ceph_admin_global_toggle_requires_superadmin_and_recent_mfa(
     _set_admin_passkey_policy(db_session, True)
     current = load_app_settings_for_db(db_session)
     current.general.ceph_admin_enabled = initial
-    app_settings_service.save_app_settings(current)
+    app_settings_service.save_app_settings_for_db(db_session, current)
     actor = _user(db_session, email="ceph-settings-guard@example.com", role=role)
     credentials = authenticate_ui_client(auth_client, db_session, actor, mfa_verified=verified)
 
@@ -868,9 +879,13 @@ def test_bearer_token_cannot_perform_sensitive_access_mutations(auth_client, db_
                 "client_id": "client-id",
                 "redirect_uri": "https://app.example.test/auth/callback",
                 "scopes": ["openid"],
+                "prompt": None,
                 "enabled": True,
+                "icon_url": None,
                 "use_pkce": True,
                 "use_nonce": True,
+                "linking_policy": "manual",
+                "trusted_email_domains": [],
             },
         ),
         (
@@ -885,8 +900,11 @@ def test_bearer_token_cannot_perform_sensitive_access_mutations(auth_client, db_
                 "user_filter": "(uid={username})",
                 "email_attribute": "mail",
                 "name_attribute": "displayName",
+                "subject_attribute": None,
                 "start_tls": False,
                 "tls_verify": True,
+                "tls_ca_file": None,
+                "allow_legacy_tls": False,
                 "timeout_seconds": 5,
                 "enabled": True,
                 "allow_insecure": False,
