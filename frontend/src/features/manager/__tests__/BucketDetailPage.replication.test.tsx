@@ -933,7 +933,10 @@ describe("BucketDetailPage replication state", () => {
     );
 
     await user.click(await screen.findByRole("tab", { name: "Usage & Metrics" }));
-    expect(await screen.findByTestId("bucket-feature-quota")).toBeInTheDocument();
+    const currentUsageTitle = screen.getByText("Current usage and quota");
+    const quotaFeature = await screen.findByTestId("bucket-feature-quota");
+    expect(quotaFeature).toBeInTheDocument();
+    expect(currentUsageTitle.compareDocumentPosition(quotaFeature) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it("hides Storage Ops quota configuration when the context is not quota eligible", async () => {
@@ -1684,7 +1687,9 @@ describe("BucketDetailPage replication state", () => {
     expect(await screen.findByText("Current usage and quota")).toBeInTheDocument();
     expect(screen.getAllByRole("button", { name: "Refresh", exact: true })).toHaveLength(1);
     const trafficTitle = screen.getByRole("heading", { name: "Traffic" });
+    const inventoryTitle = screen.getByRole("heading", { name: "Inventory statistics" });
     expect(trafficTitle).toHaveClass("ui-section");
+    expect(trafficTitle.compareDocumentPosition(inventoryTitle) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(screen.queryByText("Bucket: demo-bucket")).not.toBeInTheDocument();
   });
 

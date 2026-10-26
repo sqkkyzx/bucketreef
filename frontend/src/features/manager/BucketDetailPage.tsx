@@ -1373,26 +1373,6 @@ function BucketDetailPageContent({
             label: text("Usage & Metrics"),
             content: (
               <div className={bucketDetailSectionStackClass}>
-                {showQuotaTab && (
-                  <div className="settings-compact">
-                    <BucketQuotaFeature
-                      controller={quotaController}
-                      editable={canEditQuota}
-                      featureEnabled={quotaFeatureEnabled}
-                      loading={loadingBucket}
-                    />
-                  </div>
-                )}
-                <BucketUsageStatsPanel
-                  title={text("Inventory statistics")}
-                  snapshot={usageStatsSnapshot}
-                  loading={usageStatsLoading}
-                  error={usageStatsError}
-                  recalculating={usageStatsRecalculating}
-                  onCancel={cancelUsageStatsRecalculation}
-                  onRecalculate={recalculateUsageStats}
-                  text={text}
-                />
                 <MetricsCard
                   title={text("Current usage and quota")}
                   description={text("Live usage, quotas, and traffic sourced from backend metrics.")}
@@ -1419,6 +1399,16 @@ function BucketDetailPageContent({
                     />
                   </div>
                 </MetricsCard>
+                {showQuotaTab && (
+                  <div className="settings-compact">
+                    <BucketQuotaFeature
+                      controller={quotaController}
+                      editable={canEditQuota}
+                      featureEnabled={quotaFeatureEnabled}
+                      loading={loadingBucket}
+                    />
+                  </div>
+                )}
                 {!canViewLiveBucketMetrics && (
                   <PageBanner>
                     {!isCephAdmin && managerStatsMessage
@@ -1438,6 +1428,16 @@ function BucketDetailPageContent({
                   ) : (
                     <PageBanner tone="warning">{text("Select a context and a bucket to view detailed metrics.")}</PageBanner>
                   ))}
+                <BucketUsageStatsPanel
+                  title={text("Inventory statistics")}
+                  snapshot={usageStatsSnapshot}
+                  loading={usageStatsLoading}
+                  error={usageStatsError}
+                  recalculating={usageStatsRecalculating}
+                  onCancel={cancelUsageStatsRecalculation}
+                  onRecalculate={recalculateUsageStats}
+                  text={text}
+                />
               </div>
             ),
           },
